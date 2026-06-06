@@ -1,0 +1,10 @@
+<h1>Queue Tickets</h1>
+
+<ul>
+   {% for ticket in tickets %}
+         <li> {{ticket.queue_number}}- {{ticket.queue_type}}-{{ticket.status}}</li>
+
+    {% endfor %}
+
+</ul>
+

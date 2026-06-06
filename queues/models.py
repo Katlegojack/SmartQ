@@ -29,7 +29,6 @@ class QueueTicket(models.Model):
     queue_type = models.CharField(max_length=20,choices=QUEUE_TYPES,default=GENERAL)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=WAITING)
     created_at= models.DateTimeField(auto_now_add=True)
-
     def __str__(self):
         return self.queue_number
     
