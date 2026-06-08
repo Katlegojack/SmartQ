@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'queues',
     'branches',
     'services',
+    'bookings',
 ]
 
 MIDDLEWARE = [
