@@ -26,7 +26,7 @@ class Booking(models.Model):
     
     booking_date = models.DateField()
     booking_time = models.TimeField()
-
+    is_pregnant = models.BooleanField(default =False)
     status = models.CharField(max_length=20,choices=STATUS_CHOICES, default=PENDING)
     created_at = models.DateTimeField(auto_now_add=True)
     def __str__(self):
