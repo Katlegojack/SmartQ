@@ -20,14 +20,14 @@ def calculate_estimated_wait_time(ticket):
     branch = ticket.booking.branch
     service = ticket.booking.service
 
-    active_counters = get_active_counter_count(branch)
+    active_counters = get_active_counter_count(branch,ticket.queue_type)
 
     if active_counters == 0:
         return None
 
     people_ahead = get_people_ahead(ticket)
 
-    estimated_wait_time = (speople_ahead * service.average_service_time) / active_counters
+    estimated_wait_time = (people_ahead * service.average_service_time) / active_counters
 
     return round(estimated_wait_time)
 
