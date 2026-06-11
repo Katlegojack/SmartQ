@@ -47,4 +47,25 @@ def get_branch_daily_report(branch, booking_date):
             branch,
             booking_date
         ),
+        "activity_summary": get_branch_activity_summary(
+            branch,
+            booking_date
+        ),
+    }
+
+def get_branch_activity_summary(branch,booking_date):
+    totals =get_branch_daily_totals(branch,booking_date)
+    active_customers = totals["waiting"]+ totals["serving"]
+    resolved_customers = (
+        totals["completed"]
+        + totals["no_show"]
+        + totals["cancelled"]
+    )
+
+    total_customers = active_customers + resolved_customers
+
+    return {
+        "active_customers": active_customers,
+        "resolved_customers": resolved_customers,
+        "total_customers": total_customers,
     }
