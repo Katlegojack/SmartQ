@@ -32,6 +32,14 @@ class QueueTicket(models.Model):
     blank=True
     )
 
+    assigned_counter = models.ForeignKey(
+        "counters.Counter",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+
+
     queue_number = models.CharField(max_length=10)
     queue_type = models.CharField(max_length=20,choices=QUEUE_TYPES,default=GENERAL)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=WAITING)
