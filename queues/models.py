@@ -60,3 +60,25 @@ class QueuePause(models.Model):
 
     def __str__(self):
         return f"{self.branch} - {self.service} - {self.booking_date}"
+
+class QueueDisruptionImpact(models.Model):
+    AFFECTED ='affected'
+    RESCHEDULE_RISK ='reschedule_risk'
+
+    IMPACT_TYPES = [
+        (AFFECTED,'Affected'),
+        (RESCHEDULE_RISK,'Reschedule Risk'),
+    ]
+
+    queue_pause = models.ForeignKey('queues.QueuePause',on_delete=models.CASCADE)
+    ticket = models.ForeignKey('queues.QueueTicket',on_delete=models.CASCADE)
+    impact_type = models.CharField(max_length=35, choices=IMPACT_TYPES)
+    message = models.TextField(blank=True)
+    is_notified = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together =('queue_pause','ticket','impact_type')
+    
+    def __str__(self):
+        return f"{self.ticket.queue_number} - {self.impact_type}"
