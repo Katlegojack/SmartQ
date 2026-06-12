@@ -1,6 +1,6 @@
 from django.db import models
 from bookings.models import Booking
-
+from django.utils import timezone
 # Create your models here.
 class QueueTicket(models.Model):
     GENERAL = 'general'
@@ -47,4 +47,16 @@ class QueueTicket(models.Model):
     
     def __str__(self):
         return self.queue_number
-    
+
+class QueuePause(models.Model):
+    branch = models.ForeignKey('branches.branch',on_delete=models.CASCADE)
+    service = models.ForeignKey('services.service',on_delete=models.CASCADE)
+    booking_date =models.DateField()
+    started_at = models.DateTimeField(default=timezone.now)
+    ended_at = models.DateTimeField(null=True,blank=True)
+    reason = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.branch} - {self.service} - {self.booking_date}"
