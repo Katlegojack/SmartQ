@@ -1,4 +1,4 @@
-from .models import QueuePause,QueueTicket
+from .models import QueuePause,QueueTicket,QueueDisruptionImpact
 from django.utils import timezone
 
 def pause_queue(branch,service,booking_date,reason=''):
@@ -112,3 +112,63 @@ def get_disruption_report(queue_pause):
             ticket.queue_number for ticket in risk_tickets
         ],
     }
+
+def create_disruption_impact_records(queue_pause):
+     if queue_pause is None:
+          return {
+               'affected_created':0,
+               'reschedule_risk':0
+          }
+     affected_tickets =list(get_affected_waiting_tickets(queue_pause))
+     risk_tickets = get_reschedule_risk_tickets(queue_pause)
+
+     affected_created =0
+     reschedule_risk_created =0
+
+     for ticket in affected_tickets:
+          impact, created =QueueDisruptionImpact.objects.get_or_create(
+               queue_pause = queue_pause,
+               ticket = ticket,
+               impact_type = QueueDisruptionImpact.RESCHEDULE_RISK,
+               defaults= {"message":"You may need to be rescheduled due to a service disruption."}
+          )
+          if created:
+               reschedule_risk +=1
+
+     return {
+            'affected_created':affected_created,
+            'reschedule_risk_created': reschedule_risk
+          }
+
+def get_disruption_report(queue_pause):
+    affected_tickets = list(
+        get_affected_waiting_tickets(queue_pause)
+    )
+
+    risk_tickets = get_reschedule_risk_tickets(queue_pause)
+
+    return {
+        "pause_impact": get_pause_impact_summary(queue_pause),
+        "affected_waiting_count": len(affected_tickets),
+        "reschedule_risk_count": len(risk_tickets),
+        "reschedule_risk_tickets": [
+            ticket.queue_number for ticket in risk_tickets
+        ],
+    }
+def get_unnotified_disruption_impact(queue_pause=None):
+     impacts = QueueDisruptionImpact.objects.filter(is_notified=False)
+     if queue_pause is None:
+          impacts = impacts.objects.filter(
+               queue_pause =queue_pause
+          )
+     return impacts.order_by("created_at")
+
+
+def mark_disruption_impact_notified(impact):
+     if impact is None:
+          return None
+     impact.is_notified = True
+     impact.save()
+
+     return impact
+  
