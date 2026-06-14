@@ -66,5 +66,42 @@ def create_notification_for_unnotified_impacts(queue_pause=None):
         'notification_created':notifications_created,
     }         
 
-   
+
+def get_user_notification(user):
+    if user is None:
+        return Notification.objects.none()
+    
+    return Notification.objects.filter(user=user)
+
+def get_unread_notification(user):
+    if user is None:
+        return Notification.objects.none()
+    
+    return Notification.objects.filter(user=user, is_read=False)
+
+def get_unread_notification_count(user):
+    if user is None:
+        return 0
+    
+    return get_unread_notification(user).count()
+
+def mark_notification_as_read(notification):
+    if notification is None:
+        return None
+    
+    notification.is_read = True
+    notification.save()
+    return notification
+
+def mark_all_notification_as_read(user):
+    if user is None:
+        return 0
+    
+    updated_count =Notification.objects.filter(
+        user=user,
+        is_read = False
+    ).update(is_read=True)
+
+    return updated_count
+
 
