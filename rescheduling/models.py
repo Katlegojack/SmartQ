@@ -28,7 +28,7 @@ class RescheduleRecommendation(models.Model):
     status = models.CharField(max_length=30, choices=STATUS_CHOICES,default=PENDING)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at =models.DateTimeField(auto_now=True)
-    appiled_at =models.DateTimeField(null=True,blank=True)
+    applied_at =models.DateTimeField(null=True,blank=True)
     class Meta:
         ordering = ['-created_at']
     def __str__(self):
