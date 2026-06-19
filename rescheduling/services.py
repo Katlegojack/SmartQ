@@ -1,6 +1,7 @@
 from datetime import timedelta
-from .models import RescheduleRecommendation
+from .models import RescheduleRecommendation,RescheduleOption
 from queues.models import QueueDisruptionImpact
+from .slots import get_available_reschedule_slots
 
 def get_next_recommended_date(booking):
     return booking.booking_date + timedelta(days=1)
@@ -79,3 +80,82 @@ def create_reschedule_recommendations_for_risk_impacts(queue_pause=None):
         'recommendation_processed':recommendation_processed,
         'recommendation_created':recommendation_created,
     }
+
+def create_reschedule_options_for_recommendation(recommendation,max_slot=5):
+    if recommendation is None:
+        return{
+            
+            'options_processed':0,
+            'options_created':0,
+        }
+    booking =recommendation.booking
+
+    if booking is None:
+        return{
+            'options_processed':0,
+            'options_created':0,
+        }
+    
+    RescheduleOption.objects.filter(recommendation=recommendation).update(recommendation=False)
+    slots =get_available_reschedule_slots(booking,start_date=recommendation.old_booking_date+timedelta(days=1))
+    options_processed=0
+    options_created=0
+    for slot in slots:
+        options,created = RescheduleOption.objects.get_or_create(
+            recommendation=recommendation,
+            option_date =slot['date'],
+            option_time = slot['time'],
+            defaults={
+                'capacity':slot['capacity'],
+                'booked_count':slot['booked_count'],
+                'available_count':slot['available_count'],
+                'is_recommended':slot['is_recommended'],
+            }
+        )
+        if created is False:
+            options.capacity = slot['capacity']
+            options.booked_count = slot['booked_capacity']
+            options.available_count = slot['available_count']
+            options.is_recommended = slot['is_recommended']
+            options.save()
+        
+        options_processed +=1
+        if created:
+            options_created +=1
+        
+    return{
+        'options_processed':options_processed,
+        'options_created':options_created,
+    }
+
+def get_selected_reschedule_option(recommendation):
+    if recommendation is None:
+        return None
+    
+    return RescheduleOption.objects.filter(
+        recommendation=recommendation,
+        is_selected = True,
+    ).first()
+
+def select_reschedule_option(option):
+    if option is None:
+        return None
+    
+    if option.is_available_count <=0:
+        return None
+    
+    recommendation = option.recommendation
+    RescheduleOption.objects.filter(
+        recommendation = recommendation,
+
+    ).update(is_selected=False)
+
+    option.is_selected = True
+    option.save()
+
+    recommendation.suggested_booking_date = option.option_date
+    recommendation.suggested_booking_time = option.option_time
+    recommendation.status =RescheduleRecommendation.APPROVED
+    recommendation.save()
+
+    return option
