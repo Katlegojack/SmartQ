@@ -1,7 +1,10 @@
 from datetime import timedelta
+from django.utils import timezone
 from .models import RescheduleRecommendation,RescheduleOption
-from queues.models import QueueDisruptionImpact
-from .slots import get_available_reschedule_slots
+from queues.models import QueueDisruptionImpact,QueueTicket
+from .slots import get_available_reschedule_slots, get_slot_availability
+from queues.services import determine_queue_type
+
 
 def get_next_recommended_date(booking):
     return booking.booking_date + timedelta(days=1)
@@ -141,7 +144,7 @@ def select_reschedule_option(option):
     if option is None:
         return None
     
-    if option.is_available_count <=0:
+    if option.available_count <=0:
         return None
     
     recommendation = option.recommendation
@@ -159,3 +162,97 @@ def select_reschedule_option(option):
     recommendation.save()
 
     return option
+
+def generate_rescheduled_queue_number(booking,queue_type,current_ticket=None):
+    prefix = "A" if queue_type == QueueTicket.GENERAL else "P"
+
+    tickets = QueueTicket.objects.filter(
+        booking__branch=booking.branch,
+        booking__booking_date=booking.booking_date,
+        queue_type=queue_type
+    )
+
+    if current_ticket is not None:
+        tickets = tickets.exclude(
+            id=current_ticket.id
+        )
+
+    latest_ticket = tickets.order_by("-id").first()
+
+    if latest_ticket:
+        last_number = int(latest_ticket.queue_number[1:])
+        new_number = last_number + 1
+    else:
+        new_number = 1
+
+    return f"{prefix}{new_number:03d}"
+
+
+def apply_approved_reschedule(recommendation):
+    if recommendation is None:
+        return None
+
+    if recommendation.status == RescheduleRecommendation.APPLIED:
+        return recommendation
+
+    if recommendation.status != RescheduleRecommendation.APPROVED:
+        return None
+
+    selected_option = get_selected_reschedule_option(
+        recommendation
+    )
+
+    if selected_option is None:
+        return None
+
+    if selected_option.available_count <= 0:
+        return None
+
+    booking = recommendation.booking
+
+    if booking is None:
+        return None
+
+    ticket = recommendation.ticket
+
+    if ticket is None:
+        ticket = QueueTicket.objects.filter(
+            booking=booking
+        ).first()
+
+    if ticket is None:
+        return None
+
+    latest_slot = get_slot_availability(
+        booking,
+        selected_option.option_date,
+        selected_option.option_time,
+        QueueTicket.PRIORITY
+    )
+
+    if latest_slot["is_available"] is False:
+        return None
+
+    booking.booking_date = selected_option.option_date
+    booking.booking_time = selected_option.option_time
+    booking.status = booking.CONFIRMED
+    booking.save()
+
+    ticket.queue_type = QueueTicket.PRIORITY
+    ticket.queue_number = generate_rescheduled_queue_number(
+        booking,
+        QueueTicket.PRIORITY,
+        current_ticket=ticket
+    )
+    ticket.status = QueueTicket.WAITING
+    ticket.assigned_counter = None
+    ticket.save()
+
+    recommendation.ticket = ticket
+    recommendation.suggested_booking_date = selected_option.option_date
+    recommendation.suggested_booking_time = selected_option.option_time
+    recommendation.status = RescheduleRecommendation.APPLIED
+    recommendation.applied_at = timezone.now()
+    recommendation.save()
+
+    return recommendation
