@@ -17,6 +17,7 @@ class Notification(models.Model):
     ]
     user = models.ForeignKey(User,on_delete=models.CASCADE,related_name='notifications')
     title = models.CharField(max_length=100)
+    message = models.TextField(blank=True)
     notification_type = models.CharField(max_length=100, choices=NOTIFICATION_TYPE, default=GENERAL)
     related_ticket = models.ForeignKey('queues.QueueTicket',on_delete=models.SET_NULL,null=True, blank=True)
     related_impact = models.ForeignKey('queues.QueueDisruptionImpact',on_delete=models.SET_NULL,null=True,blank=True)
