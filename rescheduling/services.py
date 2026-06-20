@@ -255,4 +255,8 @@ def apply_approved_reschedule(recommendation):
     recommendation.applied_at = timezone.now()
     recommendation.save()
 
+    #This creates a customer notification after the reschedule is successfully applied
+    from notifications.services import create_reschedule_applied_notification
+    create_reschedule_applied_notification(recommendation)
+
     return recommendation
