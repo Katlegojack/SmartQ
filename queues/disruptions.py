@@ -129,15 +129,27 @@ def create_disruption_impact_records(queue_pause):
           impact, created =QueueDisruptionImpact.objects.get_or_create(
                queue_pause = queue_pause,
                ticket = ticket,
-               impact_type = QueueDisruptionImpact.RESCHEDULE_RISK,
-               defaults= {"message":"You may need to be rescheduled due to a service disruption."}
+               impact_type = QueueDisruptionImpact.AFFECTED,
+               defaults= {"message": "Your queue was affected by a service disruption."}
           )
           if created:
-               reschedule_risk +=1
+               affected_created +=1
+
+          for ticket in risk_tickets:
+               impact, created = QueueDisruptionImpact.objects.get_or_create(
+               queue_pause=queue_pause,
+               ticket=ticket,
+               impact_type=QueueDisruptionImpact.RESCHEDULE_RISK,
+               defaults={
+                    "message": "You may need to be rescheduled due to a service disruption."
+               }
+          )
+          if created:
+               reschedule_risk_created +=1
 
      return {
             'affected_created':affected_created,
-            'reschedule_risk_created': reschedule_risk
+            'reschedule_risk_created': reschedule_risk_created,
           }
 
 def get_disruption_report(queue_pause):
@@ -158,7 +170,7 @@ def get_disruption_report(queue_pause):
 def get_unnotified_disruption_impact(queue_pause=None):
      impacts = QueueDisruptionImpact.objects.filter(is_notified=False)
      if queue_pause is None:
-          impacts = impacts.objects.filter(
+          impacts = impacts.filter(
                queue_pause =queue_pause
           )
      return impacts.order_by("created_at")
