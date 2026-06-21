@@ -465,7 +465,7 @@ Booking
 Smart Q uses simple customer-friendly queue numbers.
 
 ### General Queue
-
+Example 
 ```text
 A001
 A002
