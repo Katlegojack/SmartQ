@@ -596,6 +596,9 @@ An admin will be able to:
 - View platform-wide reports
 
 ---
+More backend features from day10 + additional documentation. 
+
+
 
 ## Project Setup
 
