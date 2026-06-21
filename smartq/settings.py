@@ -45,6 +45,8 @@ INSTALLED_APPS = [
     'counters',
     'notifications',
     'rescheduling',
+     # Django REST Framework gives us API tools like serializers, API views, and permissions.
+    "rest_framework",
 ]
 
 MIDDLEWARE = [
