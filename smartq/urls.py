@@ -20,4 +20,8 @@ from django.urls import path,include
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('',include('queues.urls')),
+
+    #API route for notification endpoints, this connects api/v1/not.. to notifications/api_urls.py
+    path('api/v1/notifications/',include('notifications.api_urls')),
+
 ]
