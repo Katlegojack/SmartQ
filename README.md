@@ -2,31 +2,41 @@
 
 **Where Time Meets Priority**
 
-Smart Q is a Django-based Queue Intelligence Platform designed to make queues more predictable, transparent, fair, and efficient. The system allows customers to book services at a branch, receive a queue ticket, track their queue status, and be handled according to fair priority rules.
+Smart Q is a Django-based **Queue Intelligence Platform** designed to make queues more predictable, transparent, fair, and efficient.
 
-The long-term goal of Smart Q is to reduce unnecessary physical waiting, help organizations manage customer flow, and give customers better visibility into when they will be assisted.
+The system helps customers book services at a branch, receive queue tickets, understand their queue status, and get notified when important queue or rescheduling events happen. Smart Q is being developed as a practical software engineering project that combines booking management, queue operations, disruption handling, rescheduling logic, notifications, and API development.
+
+The long-term vision is to reduce unnecessary physical waiting, help organizations manage customer flow, and give customers clearer visibility into when they will be assisted.
 
 ---
 
 ## Table of Contents
 
+- [Project Vision](#project-vision)
 - [Project Overview](#project-overview)
 - [Problem Statement](#problem-statement)
-- [Solution](#solution)
+- [Solution Summary](#solution-summary)
 - [Current Project Status](#current-project-status)
+- [Current API Status](#current-api-status)
 - [Core Features](#core-features)
 - [Implemented Features](#implemented-features)
 - [Planned Features](#planned-features)
 - [Technology Stack](#technology-stack)
 - [System Architecture](#system-architecture)
 - [Current Django Apps](#current-django-apps)
-- [Database Design](#database-design)
+- [Database and Model Relationships](#database-and-model-relationships)
 - [Queue Number Rules](#queue-number-rules)
 - [Priority Queue Logic](#priority-queue-logic)
+- [Waiting-Time Intelligence](#waiting-time-intelligence)
+- [Queue Operations](#queue-operations)
+- [Disruption and Rescheduling Intelligence](#disruption-and-rescheduling-intelligence)
+- [Notification System](#notification-system)
+- [API Endpoints](#api-endpoints)
 - [Main User Roles](#main-user-roles)
 - [Project Setup](#project-setup)
 - [Running the Project](#running-the-project)
 - [Admin Usage](#admin-usage)
+- [API Testing](#api-testing)
 - [Development Workflow](#development-workflow)
 - [Security and Safety Considerations](#security-and-safety-considerations)
 - [Known Limitations](#known-limitations)
@@ -35,43 +45,56 @@ The long-term goal of Smart Q is to reduce unnecessary physical waiting, help or
 
 ---
 
+## Project Vision
+
+Smart Q is more than a basic digital queue system.
+
+It is being built as a queue intelligence platform that helps organizations answer important operational questions such as:
+
+```text
+Who is waiting?
+Who should be served next?
+How long might a customer wait?
+Which customers are affected by a disruption?
+Which customers may need to be rescheduled?
+Has the customer been notified?
+```
+
+The bigger vision is to give customers their time back by making queues:
+
+- digital
+- fair
+- trackable
+- predictable
+- safer during disruptions
+- easier for staff and managers to operate
+
+Smart Q aims to move queue management from a passive waiting system to an intelligent operational system.
+
+---
+
 ## Project Overview
 
-Smart Q is not just a basic queue management system. It is being built as a Queue Intelligence Platform that combines:
+Smart Q allows a customer to book a service at a branch. Once the booking is created, the system can generate a queue ticket and decide whether the customer belongs in the general queue or priority queue.
 
-- Appointment booking
-- Queue ticket generation
-- General and priority queue handling
-- Branch and service management
-- Customer profile information
-- Automatic queue type decisions
-- Future waiting-time prediction
-- Future notifications and analytics
+The system is currently being built as a **Django modular monolith**.
 
-The system is currently being developed using Django as a modular monolith. This means the project stays inside one Django backend, but responsibilities are separated into smaller Django apps such as `accounts`, `branches`, `services`, `bookings`, and `queues`.
+That means the backend is still one Django project, but responsibilities are separated into focused Django apps such as:
 
----
+```text
+accounts
+branches
+services
+bookings
+queues
+counters
+notifications
+rescheduling
+```
 
-## Problem Statement
+This keeps the system easier to understand, test, and grow.
 
-Many organizations still rely on physical queues where customers wait for long periods without knowing when they will be assisted. This creates several problems:
-
-- Customers waste time waiting physically.
-- Organizations struggle with overcrowding.
-- Staff cannot easily manage queue flow.
-- Priority customers may not be handled fairly.
-- Waiting times are often unclear or unrealistic.
-- Delays and system interruptions are not communicated properly.
-
-Smart Q aims to solve these problems by making queues digital, trackable, and predictable.
-
----
-
-## Solution
-
-Smart Q allows a customer to book a service at a branch. Once the booking is created, the system can automatically generate a queue ticket and decide whether the customer belongs in the general queue or priority queue.
-
-A simplified flow is:
+A simplified flow looks like this:
 
 ```text
 Customer/User
@@ -86,26 +109,132 @@ Priority Decision
    ↓
 Queue Ticket
    ↓
-A001 or P001
+Queue Operations
+   ↓
+Notifications / Rescheduling / Reports
 ```
 
-This gives the system the foundation to support live queue tracking, estimated waiting times, and fair queue management.
+---
+
+## Problem Statement
+
+Many organizations still rely on physical queues where customers wait for long periods without knowing when they will be assisted.
+
+This creates several problems:
+
+- Customers waste time waiting physically.
+- Organizations struggle with overcrowding.
+- Staff cannot easily manage the queue flow.
+- Priority customers may not be handled fairly.
+- Waiting times are often unclear or unrealistic.
+- Delays and system interruptions are not communicated properly.
+- Customers may remain in the queue even when there is no realistic chance of being assisted that day.
+- Managers may not have useful reports about queue performance, no-shows, delays, or service capacity.
+
+Smart Q aims to solve these problems by making queues digital, trackable, and intelligent.
+
+---
+
+## Solution Summary
+
+Smart Q provides a backend foundation for:
+
+- customer booking
+- branch and service management
+- automatic queue ticket generation
+- general and priority queue handling
+- queue movement
+- waiting-time estimation
+- counter capacity awareness
+- queue disruption tracking
+- reschedule-risk detection
+- notification creation
+- API access for frontend integration
+
+A simplified queue flow:
+
+```text
+Customer creates booking
+   ↓
+Booking stores branch, service, date, and time
+   ↓
+Smart Q decides General or Priority
+   ↓
+QueueTicket is created
+   ↓
+Queue number is generated
+   ↓
+Staff operate the queue
+   ↓
+Waiting time and queue position can be calculated
+   ↓
+Disruptions can be tracked
+   ↓
+Affected customers can be flagged
+   ↓
+Notifications can be created and exposed through the API
+```
 
 ---
 
 ## Current Project Status
 
-Smart Q is currently in active development.
+Smart Q is in active backend development.
 
-The project already has a working Django foundation with models, relationships, migrations, admin testing, automatic queue ticket generation, and automatic priority decision logic.
+The project currently has a strong Django backend foundation with models, business logic, service functions, migrations, admin testing, API work, GitHub workflow, and pull request discipline.
 
 Current status:
 
-- Backend foundation is in progress.
-- Django Admin is being used for testing models and business logic.
-- Customer-facing frontend is still limited.
-- Waiting-time prediction is planned but not fully implemented yet.
-- Notifications, analytics, and real-time queue updates are planned future features.
+- Django project foundation is complete.
+- Multiple Django apps have been created.
+- Core queue models and relationships are implemented.
+- Booking-to-ticket relationship is implemented.
+- Queue number generation is implemented.
+- Priority decision logic is implemented.
+- Queue movement logic has been worked on.
+- Waiting-time foundation has been created.
+- Queue disruption tracking has been implemented.
+- Reschedule-risk logic has been implemented.
+- Customer disruption impact tracking has been implemented.
+- Notification model and services are implemented.
+- Reschedule confirmation notification workflow is implemented.
+- Django REST Framework has been added.
+- Initial notification API endpoints are implemented and tested.
+- Frontend is still limited.
+- External notification channels such as SMS, email, and WhatsApp are not yet implemented.
+- Real-time updates are planned but not yet implemented.
+
+---
+
+## Current API Status
+
+Smart Q now has its first working Django REST Framework API endpoints.
+
+The notification API foundation is implemented.
+
+Current API endpoints:
+
+```text
+GET   /api/v1/notifications/
+GET   /api/v1/notifications/unread-count/
+PATCH /api/v1/notifications/<notification_id>/mark-read/
+```
+
+These endpoints allow a logged-in user to:
+
+- view their notifications
+- see their unread notification count
+- mark one of their notifications as read
+
+The notification API was tested using DRF `APIClient`.
+
+The API uses authentication protection through:
+
+```python
+IsAuthenticated
+```
+
+The notification list and mark-read endpoints protect user data by ensuring users can only access or update their own notifications.
 
 ---
 
@@ -113,11 +242,30 @@ Current status:
 
 ### 1. Smart Booking Management
 
-Customers will be able to book services based on branch, service, date, and time.
+Customers can book services based on:
+
+- branch
+- service
+- booking date
+- booking time
+- user account
+
+Bookings form the foundation of the queue process.
+
+---
 
 ### 2. Queue Ticket Generation
 
-Each booking can generate a queue ticket automatically.
+Each booking can be connected to a queue ticket.
+
+Queue tickets store:
+
+- queue number
+- queue type
+- queue status
+- assigned counter
+- creation time
+- booking relationship
 
 Examples:
 
@@ -126,186 +274,637 @@ A001 → General Queue
 P001 → Priority Queue
 ```
 
+---
+
 ### 3. Priority Queue Management
 
-Smart Q can decide whether a customer should be placed in the general queue or priority queue using customer profile and booking information.
+Smart Q can decide whether a customer belongs in the general queue or priority queue.
+
+Priority logic can consider:
+
+- age
+- disability status
+- pregnancy status
+
+This supports fairer queue handling.
+
+---
 
 ### 4. Branch Management
 
-Organizations can manage different service locations such as branches, offices, departments, or service centres.
+Branches represent service locations.
+
+Examples:
+
+```text
+Kimberley Branch
+Pretoria Branch
+Cape Town Branch
+```
+
+Branches can store:
+
+- code
+- name
+- address
+- city
+- opening time
+- closing time
+- active status
+
+---
 
 ### 5. Service Management
 
-Each service can have its own average service time, which will later support waiting-time calculations.
+Services represent what a customer wants to book.
 
-### 6. Queue Status Tracking
-
-Queue tickets use statuses such as:
-
-- Waiting
-- Serving
-- Completed
-- No Show
-- Cancelled
-
-### 7. Future Waiting-Time Prediction
-
-The system will later estimate waiting time using queue length, average service time, and active staff or counters.
-
-Example formula:
+Examples:
 
 ```text
-Estimated Wait Time = (People Ahead × Average Service Time) ÷ Active Staff Count
+Passport Collection
+ID Application
+General Enquiry
+License Renewal
 ```
 
-### 8. Future Disruption Handling
+Services store average service time, which supports waiting-time estimation and disruption capacity calculations.
 
-Smart Q is designed to eventually handle delays, outages, staff shortages, and queue pauses by recalculating capacity and rescheduling affected customers.
+---
+
+### 6. Counter Management
+
+Counters represent service points used by employees.
+
+Counters can support queue operations by helping Smart Q understand active service capacity.
+
+Counter information supports:
+
+- active counter count
+- queue movement
+- waiting-time calculations
+- future staff/counter availability logic
+
+---
+
+### 7. Queue Status Tracking
+
+Queue tickets can move through different statuses:
+
+```text
+waiting
+serving
+completed
+no_show
+cancelled
+```
+
+These statuses allow the system to understand what is happening in the queue.
+
+---
+
+### 8. Queue Operations
+
+The backend has been developed toward operational queue movement.
+
+Important queue operations include:
+
+- call next customer
+- mark ticket as serving
+- mark ticket as completed
+- mark ticket as no-show
+- cancel ticket
+- update queue movement
+- support recalculation after status changes
+
+---
+
+### 9. Waiting-Time Estimation Foundation
+
+Smart Q can estimate queue waiting time using:
+
+```text
+people ahead
+average service time
+active counters
+```
+
+A simple waiting-time idea is:
+
+```text
+Estimated Wait Time = (People Ahead × Average Service Time) ÷ Active Counter Count
+```
+
+This is not yet final AI forecasting, but it creates an important foundation for queue intelligence.
+
+---
+
+### 10. Disruption Handling
+
+Smart Q can now record queue pauses and calculate disruption impact.
+
+The system can answer:
+
+```text
+How long was the queue paused?
+How many service slots were lost?
+Which waiting customers were affected?
+Which customers are most at risk of being pushed to another day?
+```
+
+This is one of the strongest intelligence features in the system.
+
+---
+
+### 11. Rescheduling Foundation
+
+Smart Q supports reschedule recommendation logic.
+
+The system can:
+
+- create reschedule recommendations
+- create reschedule options
+- approve a recommendation
+- apply an approved recommendation
+- move the booking date and time
+- generate a new priority queue number
+- reset the ticket for the new appointment
+- mark the recommendation as applied
+
+---
+
+### 12. Notification System
+
+Smart Q now has a database notification system.
+
+Notifications can store:
+
+- user
+- title
+- message
+- notification type
+- related ticket
+- related disruption impact
+- read/unread state
+- creation time
+
+Notifications are created internally by backend workflows such as reschedule confirmation.
+
+---
+
+### 13. API Foundation
+
+Smart Q now uses Django REST Framework.
+
+The API foundation currently exposes notification data.
+
+This prepares the backend for future frontend integration.
 
 ---
 
 ## Implemented Features
 
-The following features have already been worked on:
+The following features have already been implemented or worked on.
+
+---
 
 ### Django Project Setup
 
 - Django project created.
 - Virtual environment configured.
+- Django installed.
 - Initial migrations applied.
+- Superuser created.
 - Project connected to GitHub.
+- `.gitignore` added.
+- Project pushed to GitHub.
+
+---
+
+### Django REST Framework Setup
+
+Django REST Framework was installed and registered.
+
+Implemented setup:
+
+- `djangorestframework` installed
+- `rest_framework` added to `INSTALLED_APPS`
+- `requirements.txt` created/updated
+- API foundation merged through pull request
+
+Purpose:
+
+```text
+Enable API serializers, API views, permissions, and API testing.
+```
+
+---
 
 ### Queues App
 
-- `QueueTicket` model created.
-- Queue types added:
-  - General
-  - Priority
-- Queue statuses added:
-  - Waiting
-  - Serving
-  - Completed
-  - No Show
-  - Cancelled
-- Queue tickets registered in Django Admin.
-- Ticket list page created at `/tickets/`.
+The `queues` app handles queue tickets and queue-related business logic.
+
+Implemented work includes:
+
+- `QueueTicket` model
+- queue type choices
+- queue status choices
+- queue ticket relationship to booking
+- ticket list page
+- queue number generation logic
+- waiting-time support
+- disruption support
+- queue operation support
+
+Queue types:
+
+```text
+general
+priority
+```
+
+Queue statuses:
+
+```text
+waiting
+serving
+completed
+no_show
+cancelled
+```
+
+---
 
 ### Branches App
 
-- `Branch` model created.
-- Branches can store:
-  - Branch code
-  - Name
-  - Address
-  - City
-  - Opening time
-  - Closing time
-  - Active status
+The `branches` app handles service locations.
+
+A branch can store:
+
+- branch code
+- branch name
+- address
+- city
+- opening time
+- closing time
+- active status
+
+Branches are important because queue numbers and service flow are branch-specific.
+
+---
 
 ### Services App
 
-- `Service` model created.
-- Services can store:
-  - Service code
-  - Name
-  - Description
-  - Average service time
-  - Active status
+The `services` app handles services that customers can book.
+
+A service can store:
+
+- service code
+- service name
+- service description
+- average service time
+- active status
+
+The `average_service_time` field is important because it supports:
+
+- waiting-time prediction
+- lost capacity calculation during disruptions
+- future analytics
+
+---
 
 ### Bookings App
 
-- `Booking` model created.
-- Booking connects:
-  - User
-  - Branch
-  - Service
-  - Booking date
-  - Booking time
-  - Booking status
+The `bookings` app handles customer bookings.
 
-### QueueTicket and Booking Relationship
+A booking connects:
 
-- Each `QueueTicket` is connected to a `Booking`.
-- The relationship is one-to-one.
-- One booking should generate one queue ticket.
+- user
+- branch
+- service
+- booking date
+- booking time
+- booking status
+
+Bookings are the starting point for queue ticket generation.
+
+---
+
+### Accounts App and Profile Model
+
+The `accounts` app stores customer profile information used in priority decisions.
+
+A profile can store:
+
+- user
+- date of birth
+- gender
+- disability status
+- created date
+
+Profile information supports automatic queue type decisions.
+
+---
+
+### Counters App
+
+The `counters` app supports service capacity.
+
+Counters help the system understand how many service points are active.
+
+This supports waiting-time estimation because active counters affect how fast a queue moves.
+
+---
 
 ### Automatic Queue Ticket Creation
 
-When a booking is saved through Django Admin, the system checks whether a queue ticket already exists.
+When a booking is created or saved, the system can create a queue ticket automatically.
 
-If no queue ticket exists, the system automatically creates one.
+Flow:
 
 ```text
 Booking saved
    ↓
-Check if QueueTicket exists
+Check whether QueueTicket already exists
    ↓
-Create QueueTicket automatically
+If no ticket exists, create one
+   ↓
+Decide queue type
    ↓
 Generate queue number
 ```
 
+This prevents a booking from existing without a queue ticket.
+
+---
+
 ### Automatic Queue Number Generation
 
-The system generates queue numbers automatically.
+Smart Q generates customer-friendly queue numbers.
 
-Rules:
+General queue:
 
-- General queue uses `A` prefix.
-- Priority queue uses `P` prefix.
-- Numbers are formatted using three digits.
-- Examples: `A001`, `A002`, `P001`, `P002`.
+```text
+A001
+A002
+A003
+```
 
-### Accounts App and Profile Model
+Priority queue:
 
-A profile model was added to store extra customer information.
+```text
+P001
+P002
+P003
+```
 
-The profile stores:
+Queue numbers are generated based on:
 
-- User
-- Date of birth
-- Gender
-- Disability status
-- Created date
+- branch
+- booking date
+- queue type
+
+This means different branches can have their own queue numbering for the same day.
+
+Example:
+
+```text
+Kimberley Branch - 2026-06-15 - General
+A001, A002, A003
+
+Pretoria Branch - 2026-06-15 - General
+A001, A002, A003
+```
+
+This is acceptable because each branch has its own queue.
+
+---
 
 ### Automatic Priority Decision Logic
 
-The system can now decide whether a booking should be general or priority.
+Priority status is not simply selected manually by the customer.
 
-A customer is placed in the priority queue if:
+The system decides priority using business rules.
+
+A customer can be placed in the priority queue if:
 
 ```text
 Age >= 55
 OR disability_status = True
-OR gender = Female AND is_pregnant = True
+OR pregnancy-related priority applies
 ```
 
-If none of these rules apply, the customer receives a general queue ticket.
+This supports fairer queue handling.
+
+---
+
+### Waiting-Time Foundation
+
+Smart Q has a foundation for waiting-time prediction.
+
+The system can use:
+
+```text
+queue position
+people ahead
+average service time
+active counters
+```
+
+to calculate estimated waiting information.
+
+This allows Smart Q to begin answering:
+
+```text
+What position am I in?
+How many people are ahead of me?
+How long might I wait?
+```
+
+This is an early stage of queue intelligence.
+
+---
+
+### Queue Operations
+
+Smart Q has queue movement logic under development.
+
+Supported operational concepts include:
+
+- call next customer
+- mark ticket as serving
+- mark ticket as completed
+- mark ticket as no-show
+- cancel ticket
+- reset ticket after rescheduling
+- assign ticket to counter
+- clear assigned counter
+
+These operations allow Smart Q to move from static tickets to an actual queue workflow.
+
+---
+
+### Queue Disruption Tracking
+
+A `QueuePause` model was created to track service-level queue disruptions.
+
+A queue pause is tied to:
+
+```text
+branch
+service
+booking date
+start time
+end time
+reason
+active state
+```
+
+This allows Smart Q to record when a queue stops moving.
+
+Example:
+
+```text
+Passport Collection queue paused at Kimberley Branch on 2026-06-15.
+```
+
+---
+
+### Disruption Impact Calculation
+
+Smart Q can calculate:
+
+```text
+pause duration
+lost service capacity
+affected waiting tickets
+reschedule-risk tickets
+disruption report
+```
+
+This allows the system to turn a disruption into operational intelligence.
+
+Example:
+
+```text
+Pause duration = 240 minutes
+Average service time = 10 minutes
+Lost capacity = 24 customers
+```
+
+That means about 24 service slots were lost.
+
+---
+
+### Customer Disruption Impact Tracking
+
+A `QueueDisruptionImpact` model was added to store which tickets were affected by a disruption.
+
+Impact types include:
+
+```text
+affected
+reschedule_risk
+```
+
+This means Smart Q can remember:
+
+```text
+This ticket was affected.
+This ticket is at risk of rescheduling.
+This customer has not been notified yet.
+```
+
+This is important because calculated results disappear, but database records can be used later for dashboards and notifications.
+
+---
+
+### Notification Model
+
+The `Notification` model stores system notifications.
+
+It includes:
+
+- user
+- title
+- message
+- notification type
+- related ticket
+- related impact
+- read state
+- created date
+
+Notification types include:
+
+```text
+general
+queue_update
+disruption
+reschedule
+```
+
+The `message` field was added so notifications can contain full customer-facing messages, not only short titles.
+
+---
+
+### Reschedule Applied Notification
+
+When an approved reschedule is applied, Smart Q can create a confirmation notification.
+
+Example message:
+
+```text
+Your booking has been rescheduled to 2026-06-16 at 08:00:00. Your new queue number is P001.
+```
+
+This connects backend rescheduling to customer communication.
+
+---
+
+### Notification APIs
+
+Smart Q now exposes notification data through Django REST Framework.
+
+Implemented notification endpoints:
+
+```text
+GET   /api/v1/notifications/
+GET   /api/v1/notifications/unread-count/
+PATCH /api/v1/notifications/<notification_id>/mark-read/
+```
+
+These endpoints support:
+
+- viewing notifications
+- showing unread count
+- marking one notification as read
 
 ---
 
 ## Planned Features
 
-The following features are planned for future versions:
+The following features are planned for future development:
 
-- Customer registration and login pages
+- Branch API endpoints
+- Service API endpoints
+- Booking API endpoints
+- Customer registration/login frontend
 - Customer booking form
-- Customer profile creation during registration
+- Customer dashboard
 - Employee dashboard
 - Branch manager dashboard
 - Admin dashboard improvements
+- Queue ticket API endpoints
+- Queue operation API endpoints
+- Mark all notifications as read endpoint
+- Notification filtering and pagination
 - Live queue position tracking
-- Waiting-time estimation
-- Counter/staff management
-- Queue pause and resume functionality
-- Delay notifications
-- Email notifications
-- SMS notifications
+- Real-time updates using WebSockets
+- External email notifications
+- SMS or WhatsApp notifications
 - Customer feedback system
 - Analytics dashboard
-- Reports for waiting time, no-shows, staff performance, and customer satisfaction
-- Real-time updates using WebSockets
-- Future AI-powered waiting-time forecasting
+- Historical reports
+- AI-assisted waiting-time forecasting
 
 ---
 
@@ -314,14 +913,17 @@ The following features are planned for future versions:
 | Layer | Technology |
 |---|---|
 | Backend | Django |
+| API Framework | Django REST Framework |
 | Language | Python |
-| Database | SQLite for development |
+| Development Database | SQLite |
 | Future Production Database | PostgreSQL |
-| Frontend | Django Templates currently; mobile-friendly web planned |
+| Frontend | Django Templates currently; frontend/mobile-friendly web planned |
 | Admin Tool | Django Admin |
 | Version Control | Git and GitHub |
+| API Testing | DRF APIClient |
 | Future Real-Time Updates | WebSockets |
-| Future Notifications | Email, SMS, and in-app notifications |
+| Future Notifications | Email, SMS, WhatsApp, in-app notifications |
+| Future Forecasting | AI/ML-based waiting-time prediction |
 
 ---
 
@@ -330,17 +932,61 @@ The following features are planned for future versions:
 Current simplified architecture:
 
 ```text
-User Browser
+Browser / API Client
    ↓
 Django URLs
    ↓
-Django Views
+Django Views / DRF API Views
+   ↓
+Serializers
    ↓
 Business Logic / Service Functions
    ↓
 Django Models / ORM
    ↓
 Database
+```
+
+Notification API architecture:
+
+```text
+GET /api/v1/notifications/
+   ↓
+smartq/urls.py
+   ↓
+notifications/api_urls.py
+   ↓
+NotificationIsAPIView
+   ↓
+NotificationSerializer
+   ↓
+JSON Response
+```
+
+Unread count API architecture:
+
+```text
+GET /api/v1/notifications/unread-count/
+   ↓
+UnreadNotificationCountAPIView
+   ↓
+get_unread_notification_count(user)
+   ↓
+Response: {"unread_count": number}
+```
+
+Mark-read API architecture:
+
+```text
+PATCH /api/v1/notifications/<id>/mark-read/
+   ↓
+MarkNotificationReadAPIView
+   ↓
+Find notification belonging to request.user
+   ↓
+mark_notification_as_read(notification)
+   ↓
+Return updated notification
 ```
 
 Future platform architecture:
@@ -350,12 +996,15 @@ Customer Web App
 Employee Dashboard
 Admin Dashboard
         ↓
-Django Backend
+Django REST API
         ↓
 Booking Service
 Queue Service
+Counter Service
 Priority Decision Logic
-Prediction Service
+Waiting-Time Service
+Disruption Service
+Rescheduling Service
 Notification Service
 Analytics Service
         ↓
@@ -368,104 +1017,222 @@ Database
 
 ### `accounts`
 
-Handles user profile data needed for queue decisions.
+Handles customer profile data.
+
+Main responsibility:
+
+```text
+Store extra user information needed for queue decisions.
+```
 
 Main model:
 
-- `Profile`
+```text
+Profile
+```
+
+---
 
 ### `branches`
 
 Handles service locations.
 
+Main responsibility:
+
+```text
+Store branch/location information.
+```
+
 Main model:
 
-- `Branch`
+```text
+Branch
+```
+
+---
 
 ### `services`
 
-Handles services that customers can book.
+Handles services customers can book.
+
+Main responsibility:
+
+```text
+Store service details and average service time.
+```
 
 Main model:
 
-- `Service`
+```text
+Service
+```
+
+---
 
 ### `bookings`
 
 Handles customer bookings.
 
-Main model:
-
-- `Booking`
-
-### `queues`
-
-Handles queue tickets, queue numbers, statuses, and queue-related business logic.
-
-Main model:
-
-- `QueueTicket`
-
-Important service file:
+Main responsibility:
 
 ```text
-queues/services.py
+Connect user, branch, service, date, and time.
 ```
 
-This file contains queue business logic such as:
+Main model:
 
-- Age calculation
-- Queue type decision
-- Queue number generation
-- Queue ticket creation
+```text
+Booking
+```
 
 ---
 
-## Database Design
+### `queues`
 
-Current relationship structure:
+Handles queue tickets and queue business logic.
+
+Main responsibilities:
 
 ```text
-User
- └── Profile
-
-User
- └── Booking
-      ├── Branch
-      ├── Service
-      └── QueueTicket
+queue tickets
+queue numbers
+queue statuses
+waiting-time foundation
+disruption tracking
+queue movement
 ```
 
-Detailed relationship flow:
+Important models include:
+
+```text
+QueueTicket
+QueuePause
+QueueDisruptionImpact
+```
+
+---
+
+### `counters`
+
+Handles service counters.
+
+Main responsibility:
+
+```text
+Track counter/service capacity for queue operations and waiting-time estimation.
+```
+
+---
+
+### `notifications`
+
+Handles in-app notifications and notification APIs.
+
+Main responsibilities:
+
+```text
+store notifications
+create notification records
+count unread notifications
+mark notifications as read
+expose notification APIs
+```
+
+Main model:
+
+```text
+Notification
+```
+
+Important files:
+
+```text
+notifications/models.py
+notifications/services.py
+notifications/serializers.py
+notifications/api_views.py
+notifications/api_urls.py
+```
+
+---
+
+### `rescheduling`
+
+Handles reschedule recommendations and application logic.
+
+Main responsibilities:
+
+```text
+create reschedule recommendations
+store reschedule options
+approve recommendations
+apply approved reschedules
+trigger reschedule confirmation notifications
+```
+
+Important concepts:
+
+```text
+RescheduleRecommendation
+RescheduleOption
+apply approved reschedule workflow
+```
+
+---
+
+## Database and Model Relationships
+
+Current high-level relationship structure:
 
 ```text
 User
-   ↓
+ ├── Profile
+ ├── Booking
+ │    ├── Branch
+ │    ├── Service
+ │    └── QueueTicket
+ │
+ └── Notification
+```
+
+Queue disruption relationship structure:
+
+```text
+QueuePause
+ ├── Branch
+ ├── Service
+ ├── Booking Date
+ └── QueueDisruptionImpact
+       └── QueueTicket
+```
+
+Rescheduling relationship structure:
+
+```text
 Booking
-   ├── Branch
-   ├── Service
-   └── QueueTicket
+ └── QueueTicket
+      ↓
+RescheduleRecommendation
+ └── RescheduleOption
 ```
 
-### Main Entities
+Notification relationship structure:
 
-| Entity | Purpose |
-|---|---|
-| User | Stores authentication information |
-| Profile | Stores customer details used for priority decisions |
-| Branch | Stores branch/location information |
-| Service | Stores services that customers can book |
-| Booking | Stores the customer's service booking |
-| QueueTicket | Stores queue number, queue type, and queue status |
+```text
+User
+ └── Notification
+      ├── related_ticket
+      └── related_impact
+```
 
 ---
 
 ## Queue Number Rules
 
-Smart Q uses simple customer-friendly queue numbers.
+Smart Q uses simple queue numbers.
 
 ### General Queue
-Example 
+
 ```text
 A001
 A002
@@ -480,52 +1247,45 @@ P002
 P003
 ```
 
-### Queue Number Logic
+The prefix shows the queue type:
 
-Queue numbers are generated based on:
+| Prefix | Meaning |
+|---|---|
+| A | General queue |
+| P | Priority queue |
 
-- Branch
-- Booking date
-- Queue type
-
-This means different branches can have their own queue numbers for the same day.
-
-Example:
+Queue numbers are generated using:
 
 ```text
-Kimberley Branch - 2026-06-15 - General
-A001, A002, A003
-
-Pretoria Branch - 2026-06-15 - General
-A001, A002, A003
+branch
+booking date
+queue type
 ```
 
-This is acceptable because the queues belong to different branches.
+This prevents one branch’s numbering from interfering with another branch’s queue.
 
 ---
 
 ## Priority Queue Logic
 
-Priority status is not selected manually by the customer.
+Priority status is decided by the system using business rules.
 
-The system decides priority using business rules.
+A customer can receive a priority ticket if:
 
-### Priority Conditions
+```text
+Age >= 55
+OR disability status is true
+OR pregnancy-related priority applies
+```
 
-A booking becomes priority if at least one of these conditions is true:
-
-1. The customer is 55 years or older.
-2. The customer has disability status.
-3. The customer is female and currently pregnant for that booking.
-
-### Priority Decision Flow
+Priority decision flow:
 
 ```text
 Get booking
    ↓
 Get user profile
    ↓
-Calculate age from date of birth
+Calculate age
    ↓
 Check age rule
    ↓
@@ -533,17 +1293,282 @@ Check disability rule
    ↓
 Check pregnancy rule
    ↓
-Return Priority or General
+Return priority or general
 ```
 
-### Example Results
+Example results:
 
 | Customer Details | Result |
 |---|---|
-| Age 60 | Priority Ticket: `P001` |
-| Disability status is true | Priority Ticket: `P001` |
-| Female and pregnant | Priority Ticket: `P001` |
-| No priority rule applies | General Ticket: `A001` |
+| Age 60 | Priority ticket |
+| Disability status true | Priority ticket |
+| Pregnancy priority applies | Priority ticket |
+| No priority rule applies | General ticket |
+
+---
+
+## Waiting-Time Intelligence
+
+Smart Q’s waiting-time foundation uses:
+
+```text
+people ahead
+average service time
+active counters
+```
+
+Simple idea:
+
+```text
+Estimated Wait Time = (People Ahead × Average Service Time) ÷ Active Counter Count
+```
+
+The system can begin producing:
+
+```text
+queue position
+people ahead
+estimated waiting time
+```
+
+This is not yet the final AI forecasting system.
+
+It is the first rule-based waiting-time foundation.
+
+Future AI forecasting may use:
+
+```text
+historical service data
+past delays
+no-show rates
+branch demand
+time of day
+day of week
+staff availability
+```
+
+---
+
+## Queue Operations
+
+Queue operations allow Smart Q to behave like a real queue system.
+
+Important operations include:
+
+```text
+call next customer
+mark as serving
+mark as completed
+mark as no-show
+cancel ticket
+assign counter
+clear counter
+reset after reschedule
+```
+
+These operations are important because a queue is not only data.
+
+A real queue moves.
+
+Smart Q must know who is waiting, who is being served, and who has already left the queue.
+
+---
+
+## Disruption and Rescheduling Intelligence
+
+Smart Q includes disruption intelligence.
+
+A disruption is when a queue stops moving or loses service capacity.
+
+Examples:
+
+```text
+System down
+Network failure
+Staff unavailable
+Service paused
+Counter capacity reduced
+```
+
+Smart Q can record a queue pause through `QueuePause`.
+
+It can calculate:
+
+```text
+pause duration
+lost service capacity
+affected customers
+reschedule-risk customers
+```
+
+Example:
+
+```text
+Pause duration = 240 minutes
+Average service time = 10 minutes
+Lost capacity = 24 customers
+```
+
+This means the system lost about 24 service slots.
+
+Smart Q can then identify customers most at risk of not being served on the same day.
+
+This does not automatically reschedule them immediately.
+
+It first identifies risk.
+
+That is safer.
+
+---
+
+## Notification System
+
+Smart Q has a database notification system.
+
+Notification fields include:
+
+```text
+user
+title
+message
+notification_type
+related_ticket
+related_impact
+is_read
+created_at
+```
+
+Example notification:
+
+```text
+Title:
+Reschedule confirmed
+
+Message:
+Your booking has been rescheduled to 2026-06-16 at 08:00:00. Your new queue number is P001.
+```
+
+Notification types include:
+
+```text
+general
+queue_update
+disruption
+reschedule
+```
+
+Current notification capabilities:
+
+```text
+create notification for disruption impact
+create notification for applied reschedule
+get user notifications
+get unread notifications
+count unread notifications
+mark one notification as read
+```
+
+---
+
+## API Endpoints
+
+### Notification List
+
+```http
+GET /api/v1/notifications/
+```
+
+Purpose:
+
+```text
+Return the logged-in user’s notifications.
+```
+
+Example response:
+
+```json
+[
+  {
+    "id": 1,
+    "title": "Reschedule confirmed",
+    "message": "Your booking has been rescheduled to 2026-06-16 at 08:00:00. Your new queue is P001.",
+    "notification_type": "reschedule",
+    "is_read": false,
+    "created_at": "2026-06-20T00:51:42.190144Z"
+  }
+]
+```
+
+Security:
+
+```text
+Only authenticated users can access this endpoint.
+Users only receive their own notifications.
+```
+
+---
+
+### Unread Notification Count
+
+```http
+GET /api/v1/notifications/unread-count/
+```
+
+Purpose:
+
+```text
+Return the logged-in user’s unread notification count.
+```
+
+Example response:
+
+```json
+{
+  "unread_count": 1
+}
+```
+
+Security:
+
+```text
+Only authenticated users can access this endpoint.
+The count is based on request.user.
+```
+
+---
+
+### Mark Notification as Read
+
+```http
+PATCH /api/v1/notifications/<notification_id>/mark-read/
+```
+
+Example:
+
+```http
+PATCH /api/v1/notifications/1/mark-read/
+```
+
+Purpose:
+
+```text
+Mark one notification as read.
+```
+
+Security:
+
+```text
+Only authenticated users can access this endpoint.
+Users can only mark their own notifications as read.
+```
+
+Important logic:
+
+```python
+get_object_or_404(Notification, id=notification_id, user=request.user)
+```
+
+This prevents a user from marking another user’s notification as read.
 
 ---
 
@@ -553,52 +1578,61 @@ Return Priority or General
 
 A customer will be able to:
 
-- Create an account
-- Log in
-- Choose a branch
-- Choose a service
-- Book a slot
-- View their ticket
-- Track their queue status
-- Receive notifications
-- Submit feedback
+- create an account
+- log in
+- manage profile information
+- choose a branch
+- choose a service
+- make a booking
+- receive a queue ticket
+- view queue status
+- receive notifications
+- view reschedule updates
+- submit feedback
+
+---
 
 ### Employee
 
 An employee will be able to:
 
-- View waiting customers
-- Call the next customer
-- Mark a customer as being assisted
-- Mark a customer as completed
-- Mark a customer as no-show
-- Report delays
+- view waiting customers
+- call next customer
+- mark customer as serving
+- mark customer as completed
+- mark customer as no-show
+- manage assigned counter activity
+
+---
 
 ### Branch Manager
 
 A branch manager will be able to:
 
-- Monitor branch queues
-- Manage staff availability
-- Pause or resume queues
-- Handle delays
-- View branch reports
-- Manage rescheduling
+- monitor branch queues
+- view service capacity
+- handle queue pauses
+- view disruption impact
+- manage reschedule decisions
+- view reports
+
+---
 
 ### Admin
 
 An admin will be able to:
 
-- Manage users
-- Manage branches
-- Manage services
-- Manage system configuration
-- View platform-wide reports
+- manage users
+- manage branches
+- manage services
+- manage bookings
+- manage queues
+- manage counters
+- view notifications
+- monitor system state
+- review reports
 
 ---
-More backend features from day10 + additional documentation. 
-
-
 
 ## Project Setup
 
@@ -609,29 +1643,33 @@ git clone https://github.com/Katlegojack/SmartQ.git
 cd SmartQ
 ```
 
+---
+
 ### 2. Create a Virtual Environment
 
-#### Windows PowerShell
+Windows PowerShell:
 
 ```powershell
 python -m venv venv
 ```
 
-#### macOS / Linux
+macOS/Linux:
 
 ```bash
 python3 -m venv venv
 ```
 
+---
+
 ### 3. Activate the Virtual Environment
 
-#### Windows PowerShell
+Windows PowerShell:
 
 ```powershell
 .\venv\Scripts\Activate.ps1
 ```
 
-If PowerShell blocks the activation script, run:
+If PowerShell blocks the script:
 
 ```powershell
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
@@ -643,31 +1681,33 @@ Then activate again:
 .\venv\Scripts\Activate.ps1
 ```
 
-#### macOS / Linux
+macOS/Linux:
 
 ```bash
 source venv/bin/activate
 ```
 
-### 4. Install Dependencies
+---
 
-If a `requirements.txt` file exists:
+### 4. Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-If the project does not yet have a `requirements.txt`, install Django manually:
+If `requirements.txt` is missing, install the main dependencies manually:
 
 ```bash
-pip install django
+pip install django djangorestframework
 ```
 
-After installing packages, you can create a requirements file using:
+Then freeze dependencies:
 
 ```bash
 pip freeze > requirements.txt
 ```
+
+---
 
 ### 5. Apply Migrations
 
@@ -676,13 +1716,15 @@ python manage.py makemigrations
 python manage.py migrate
 ```
 
+---
+
 ### 6. Create a Superuser
 
 ```bash
 python manage.py createsuperuser
 ```
 
-Follow the prompts to create an admin account.
+---
 
 ### 7. Run the Development Server
 
@@ -690,32 +1732,36 @@ Follow the prompts to create an admin account.
 python manage.py runserver
 ```
 
-Open the project in the browser:
+Project URL:
 
 ```text
 http://127.0.0.1:8000/
 ```
 
-Open Django Admin:
+Admin URL:
 
 ```text
 http://127.0.0.1:8000/admin/
 ```
 
-Open the queue ticket list page:
+Notification API URL:
 
 ```text
-http://127.0.0.1:8000/tickets/
+http://127.0.0.1:8000/api/v1/notifications/
 ```
 
 ---
 
 ## Running the Project
 
-Common development commands:
+Common commands:
 
 ```bash
 python manage.py runserver
+```
+
+```bash
+python manage.py check
 ```
 
 ```bash
@@ -730,114 +1776,245 @@ python manage.py migrate
 python manage.py createsuperuser
 ```
 
-Check project status before and after changes:
-
-```bash
-git status
-```
-
 ---
 
 ## Admin Usage
 
-Django Admin is currently used to test the backend logic.
+Django Admin is currently used heavily for testing backend logic.
 
-Recommended testing order:
+Recommended admin testing order:
 
-1. Create a user.
-2. Create a profile for the user.
-3. Create a branch.
-4. Create a service.
-5. Create a booking.
-6. Save the booking.
-7. Confirm that a queue ticket is automatically created.
-8. Confirm that the ticket number is generated as `A001` or `P001` depending on the priority rules.
+```text
+Create user
+↓
+Create profile
+↓
+Create branch
+↓
+Create service
+↓
+Create booking
+↓
+Confirm queue ticket creation
+↓
+Test queue number
+↓
+Test queue type
+↓
+Test queue movement
+↓
+Test disruption/rescheduling logic
+↓
+Test notification creation
+```
+
+---
+
+## API Testing
+
+APIs can be tested using DRF `APIClient`.
+
+Example:
+
+```python
+from rest_framework.test import APIClient
+from notifications.models import Notification
+
+notification = Notification.objects.first()
+user = notification.user
+
+client = APIClient()
+client.force_authenticate(user=user)
+
+response = client.get(
+    "/api/v1/notifications/",
+    HTTP_HOST="localhost"
+)
+
+print(response.status_code)
+print(response.data)
+```
+
+Important testing note:
+
+DRF `APIClient` may use a default host called:
+
+```text
+testserver
+```
+
+If Django rejects it with:
+
+```text
+Invalid HTTP_HOST header: 'testserver'
+```
+
+use:
+
+```python
+HTTP_HOST="localhost"
+```
+
+inside the test request.
 
 ---
 
 ## Development Workflow
 
-Recommended Git workflow:
+Smart Q uses a professional Git workflow.
 
-### Check status before starting
+Recommended flow:
 
-```bash
-git status
-```
-
-### Create a feature branch
-
-```bash
-git checkout -b feature/feature-name
+```text
+checkout main
+pull latest main
+create feature branch
+make changes
+run checks
+test feature
+commit
+push branch
+create pull request
+review files changed
+squash merge
+checkout main
+pull latest main
+confirm clean status
 ```
 
 Example:
 
 ```bash
-git checkout -b feature/waiting-time-engine
+git checkout main
+git pull origin main
+git checkout -b feature/example-feature
 ```
 
-### Add changes
+After changes:
 
 ```bash
+python manage.py check
+git status
 git add .
+git commit -m "Add example feature"
+git push -u origin feature/example-feature
 ```
 
-### Commit changes
+After PR merge:
 
 ```bash
-git commit -m "Add waiting time estimation logic"
+git checkout main
+git pull origin main
+git status
+python manage.py check
 ```
 
-### Push branch
+Important rule:
 
-```bash
-git push origin feature/feature-name
+```text
+Do not continue new work on a branch that has already been merged.
+Create a fresh branch from updated main.
 ```
-
-### Merge through GitHub
-
-Use a pull request to review and merge changes into `main`.
 
 ---
 
 ## Security and Safety Considerations
 
-Smart Q handles sensitive information, so security and safety are important.
+Smart Q handles sensitive customer and operational data.
 
-### Security Principles
+Security matters from the beginning.
 
-- Users must be authenticated.
-- Users should only access their own bookings.
-- Staff should only manage assigned branch queues.
-- Admin permissions should be limited to trusted users.
-- Sensitive profile information should not be exposed publicly.
-- Queue numbers and priority status should be generated by the system, not manually controlled by customers.
+### Authentication
 
-### Sensitive Data
+Users must be authenticated before accessing private API data.
 
-The system may store sensitive data such as:
+Notification APIs use:
 
-- Date of birth
-- Disability status
-- Pregnancy status
-- Booking history
-
-This information should only be used where necessary and should not be displayed publicly.
-
-### Safety Principles
-
-Smart Q should avoid giving customers false promises.
-
-For example, the system should not say:
-
-```text
-You will be assisted today.
+```python
+IsAuthenticated
 ```
 
-if delays, capacity, or staff shortages make that impossible.
+---
 
-The long-term system should recalculate waiting times and reschedule customers when service delivery becomes unrealistic.
+### Authorization
+
+Authentication answers:
+
+```text
+Who are you?
+```
+
+Authorization answers:
+
+```text
+What are you allowed to do?
+```
+
+For example, a user should only access their own notifications.
+
+This is enforced with:
+
+```python
+Notification.objects.filter(user=self.request.user)
+```
+
+and:
+
+```python
+get_object_or_404(Notification, id=notification_id, user=request.user)
+```
+
+---
+
+### User Data Protection
+
+Sensitive data may include:
+
+```text
+date of birth
+disability status
+pregnancy-related priority
+booking history
+queue history
+notifications
+rescheduling records
+```
+
+This data must not be exposed publicly.
+
+---
+
+### Queue Safety
+
+Smart Q should avoid unrealistic customer promises.
+
+The system should not promise:
+
+```text
+You will definitely be served today.
+```
+
+if disruptions or capacity problems make that uncertain.
+
+That is why disruption impact and reschedule-risk detection are important.
+
+---
+
+### API Safety
+
+Dangerous actions such as:
+
+```text
+pause queue
+resume queue
+call next customer
+apply reschedule
+complete ticket
+```
+
+should have stronger permission checks later.
+
+These should not be available to normal customers.
 
 ---
 
@@ -845,15 +2022,21 @@ The long-term system should recalculate waiting times and reschedule customers w
 
 Current limitations:
 
-- Most testing is still done through Django Admin.
-- The full customer-facing booking flow is not complete yet.
-- The employee dashboard is not complete yet.
-- The waiting-time prediction engine is not complete yet.
-- Real-time queue updates are not implemented yet.
-- Notifications are not implemented yet.
-- The pregnancy field may still appear in Django Admin for all users, even though the frontend should eventually show it only when relevant.
-- Backend validation for pregnancy status still needs to be improved.
-- The project currently uses SQLite for development.
+- Frontend is still limited.
+- Most operational testing is still done through Django Admin and shell.
+- Only notification APIs are currently exposed.
+- Branch and service APIs are planned next.
+- Booking API is not implemented yet.
+- Queue operation APIs are not implemented yet.
+- API pagination is not implemented yet.
+- Notification filtering by type is not implemented yet.
+- Mark all notifications as read is not implemented yet.
+- External SMS/email/WhatsApp notifications are not implemented yet.
+- Real-time WebSocket updates are not implemented yet.
+- Production database setup is not complete yet.
+- Production deployment configuration is not complete yet.
+- Role-based API permissions still need to be expanded.
+- Automated test suite still needs to be improved.
 
 ---
 
@@ -862,65 +2045,193 @@ Current limitations:
 ### Phase 1: Backend Foundation
 
 - Django setup
-- QueueTicket model
+- GitHub setup
+- Modular Django apps
+- User profiles
 - Branch model
 - Service model
 - Booking model
-- Profile model
-- Model relationships
+- Queue ticket model
+- Queue number generation
+- Priority logic
 - Admin testing
-- Automatic queue ticket generation
-- Automatic priority decision logic
 
-### Phase 2: Customer Booking Flow
+Status:
 
-- Customer registration
-- Customer login
-- Profile creation
-- Branch selection
-- Service selection
-- Booking form
-- My Ticket page
+```text
+Mostly implemented
+```
 
-### Phase 3: Employee Queue Dashboard
+---
 
-- View waiting customers
+### Phase 2: Queue Operations
+
 - Call next customer
-- Mark customer as serving
-- Mark customer as completed
-- Mark customer as no-show
-- Pause counter
+- Mark as serving
+- Mark as completed
+- Mark as no-show
+- Cancel ticket
+- Counter assignment
+- Counter capacity logic
 
-### Phase 4: Waiting-Time Engine
+Status:
 
-- Add active staff/counter tracking
-- Count people ahead
-- Use average service time
-- Calculate estimated wait time
-- Recalculate wait time after queue movement
+```text
+In progress / partially implemented
+```
 
-### Phase 5: Notifications and Disruptions
+---
 
-- Booking confirmation notifications
-- Delay alerts
-- Queue pause alerts
-- Rescheduling notices
-- Disruption recovery logic
+### Phase 3: Waiting-Time Engine
 
-### Phase 6: Analytics and Feedback
+- Queue position
+- People ahead
+- Average service time
+- Active counter count
+- Estimated waiting time
+- Recalculation after queue movement
 
-- Customer feedback
-- Waiting-time reports
-- No-show reports
-- Branch performance reports
-- Staff performance insights
+Status:
 
-### Phase 7: AI Forecasting
+```text
+Foundation implemented
+```
 
-- Collect historical queue data
-- Generate synthetic test data if needed
-- Train waiting-time prediction models
-- Forecast demand and busy periods
+---
+
+### Phase 4: Disruption Handling
+
+- Queue pause model
+- Pause duration
+- Lost service capacity
+- Affected customers
+- Reschedule-risk detection
+- Disruption report
+- Disruption impact records
+
+Status:
+
+```text
+Foundation implemented
+```
+
+---
+
+### Phase 5: Rescheduling
+
+- Reschedule recommendations
+- Reschedule options
+- Approval workflow
+- Apply approved reschedule
+- New queue number generation
+- Reschedule confirmation notification
+
+Status:
+
+```text
+Foundation implemented
+```
+
+---
+
+### Phase 6: Notifications
+
+- Notification model
+- Notification message field
+- Notification services
+- Reschedule confirmation notification
+- Notification list API
+- Unread count API
+- Mark notification as read API
+
+Status:
+
+```text
+Core foundation implemented
+```
+
+---
+
+### Phase 7: API Expansion
+
+Next planned APIs:
+
+```text
+Branch API
+Service API
+Booking API
+Queue Ticket API
+Queue Operation APIs
+Rescheduling APIs
+```
+
+Status:
+
+```text
+Started with notification APIs
+```
+
+---
+
+### Phase 8: Frontend Integration
+
+Planned frontend features:
+
+- customer dashboard
+- booking form
+- ticket page
+- notification bell
+- queue status view
+- employee dashboard
+- manager dashboard
+
+Status:
+
+```text
+Planned
+```
+
+---
+
+### Phase 9: Real-Time Updates
+
+Future real-time features:
+
+- live queue position
+- live queue status changes
+- live counter updates
+- real-time notifications
+
+Possible technology:
+
+```text
+Django Channels / WebSockets
+```
+
+Status:
+
+```text
+Planned
+```
+
+---
+
+### Phase 10: Analytics and AI
+
+Future intelligence features:
+
+- historical waiting-time reports
+- no-show analysis
+- disruption analytics
+- branch performance reports
+- demand forecasting
+- AI-assisted waiting-time prediction
+
+Status:
+
+```text
+Planned
+```
 
 ---
 
@@ -928,13 +2239,22 @@ Current limitations:
 
 **Katlego Mmako**
 
-Smart Q is being developed as a practical Django software engineering project focused on backend development, system design, queue management, automation, and future intelligent waiting-time prediction.
+Smart Q is being developed as a practical Django software engineering project focused on backend development, queue management, system design, API development, disruption intelligence, rescheduling workflows, and future AI-assisted waiting-time prediction.
 
 ---
 
-## Project Vision
+## Final Project Statement
 
-Smart Q is more than a queue system.
+Smart Q is being built to solve a real-world problem: people lose too much time in unclear, unmanaged queues.
 
-It is a platform designed to give people their time back by making queues predictable, transparent, fair, and easier to manage.
+The project is growing from a Django backend into a queue intelligence platform that can support digital bookings, fair queue handling, waiting-time estimation, disruption management, customer notifications, and future analytics.
 
+The current backend already includes strong foundations for bookings, queues, disruptions, rescheduling, notifications, and APIs.
+
+The next stage is to continue expanding the API layer so the frontend can interact with the system properly.
+
+Smart Q’s mission is simple:
+
+```text
+Make queues fairer, smarter, and more respectful of people’s time.
+```
