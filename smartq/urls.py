@@ -24,4 +24,10 @@ urlpatterns = [
     #API route for notification endpoints, this connects api/v1/not.. to notifications/api_urls.py
     path('api/v1/notifications/',include('notifications.api_urls')),
 
+    #API route for services endpoints, this connects /api/v1/services to services/api_urls.py
+    path('api/v1/services/',include('services.api_urls')),
+
+    #API route for branches endpoints, this connects /api/v1/branches to branches/api_urls.py
+    path('api/v1/branches/',include('branches.api_urls')),
+
 ]
