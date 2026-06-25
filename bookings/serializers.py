@@ -26,6 +26,40 @@ class BookingCreateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError('Booking cannot be in the past date')
             
 
+#This serializer is used when the customer wants to view their own booking
+#It gives more readable booking information than the create serializer
+class BookingListSerializer(serializers.ModelSerializer):
+    #Show the branch name instead of only the branch ID
+    branch_name = serializers.CharField(source='branch.name',read_only=True)
+    #SHow the service name instead of only the service ID
+    service_name = serializers.CharField(source='service.name',read_only=True)
+
+    #Show queue ticket information connected to this booking
+    queue_ticket = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Booking
+        #These are the fields returned when listing the customer's bookings
+        fields = ['id','branch','branch_name','service','service_name','booking_date','booking_time','is_pregnant','status','created_at','queue_ticket']
+
+        #This serializer is for reading booking data
+        read_only_fields = fields
+
+    def get_queue_ticket(self,obj):
+         #SOme bookings may not have queue ticket if something failed earlier, so we handle that safely instead of crashing
+        try:
+            ticket = obj.queueticket
+        except Exception:
+            return None
+            
+        #Return useful queue ticket data to the frontend
+        return {
+                'id':ticket.id,
+                'queue_number':ticket.queue_number,
+                'queue_type': ticket.queue_type,
+                'status':ticket.status,
+
+            }
 
 
 
