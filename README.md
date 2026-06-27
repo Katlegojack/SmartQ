@@ -1,5 +1,6 @@
 # Smart Q
 
+
 **Where Time Meets Priority**
 
 Smart Q is a Django-based **Queue Intelligence Platform** designed to make queues more predictable, transparent, fair, and efficient.
