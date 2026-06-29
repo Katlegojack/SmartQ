@@ -1,6 +1,13 @@
 #transaction keeps both -booking +queue ticket creation safe as 1 operation
 from django.db import transaction
 
+#get_object_or_404 helps us safely fetch 1 object or return 404
+from django.shortcuts import get_object_or_404
+
+#Response lets return custom API responses, status give us HTTP status codes like 400 or 200
+from rest_framework.response import Response
+from rest_framework import status
+
 # RetrieveAPIView is used when an API returns one specific model object.
 #CreateAPIView  is used when an api creates 1 model object,ListAPIView is used when an API returns a list of model objects.
 from rest_framework.generics import CreateAPIView,ListAPIView,RetrieveAPIView
@@ -19,6 +26,9 @@ from queues.services import create_queue_ticket_for_booking
 
 # Import the Booking model so we can query booking records.
 from .models import Booking
+
+#API view let us write custom PATCH endpoint
+from rest_framework.views import APIView
 
 class BookingCreateAPIView(CreateAPIView):
     #This serializer validates and creates booking objects
@@ -62,3 +72,51 @@ class BookingDetailAPIView(RetrieveAPIView):
         #So if booking 5 belongs to someone else, the API will return 404
         return Booking.objects.filter(user=self.request.user).select_related('branch','service')
     
+
+class BookingCancelAPIView(APIView):
+    #Only logged-in users
+    permission_classes = [IsAuthenticated]
+    
+    def patch(self,request,pk):
+        #find the boooking but only inside the logged in user's bookings
+        #This prevents 1 customer from cancelling another customer's bookings
+        booking = get_object_or_404(Booking,pk=pk, user=request.user)
+
+        #A completed ticket should not be cancelled,once service is completed, the booking history must stay accurate
+        if booking.status == Booking.COMPLETED:
+            return Response(
+                {'detail':'Completed bookings should not be cancelled'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        #A no show booking should not be cancelled by the customer afterwards, A no show means missed booking
+        if booking.status == Booking.NO_SHOW:
+            return Response(
+                {'detail':'No-show bookings cannot be cancelled'},
+                status= status.HTTP_400_BAD_REQUEST
+            )
+        
+        #If the booking is already cancelled, return it as it is.
+        #This makes the endpoint safe if it is twice
+        if booking.status == Booking.CANCELLED:
+            serializer = BookingListSerializer(booking)
+            return Response(serializer.data,status=status.HTTP_200_OK)
+        
+        #Cancel the booking
+        booking.status = Booking.CANCELLED
+        booking.save(update_fields=['status'])
+
+        #Cancel the connected queue ticket if it exists
+        try:
+            ticket =booking.queueticket
+            ticket.status = Booking.CANCELLED
+            ticket.save(updated_fields=['status'])
+        except Exception:
+            pass
+
+        #Return the updated booking data
+        serializer = BookingListSerializer(booking)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+            
+
+
+        
