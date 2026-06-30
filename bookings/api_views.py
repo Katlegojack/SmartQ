@@ -109,7 +109,7 @@ class BookingCancelAPIView(APIView):
         try:
             ticket =booking.queueticket
             ticket.status = Booking.CANCELLED
-            ticket.save(updated_fields=['status'])
+            ticket.save(update_fields=['status'])
         except Exception:
             pass
 
