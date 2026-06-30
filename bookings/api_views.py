@@ -16,13 +16,13 @@ from rest_framework.generics import CreateAPIView,ListAPIView,RetrieveAPIView
 from rest_framework.permissions import IsAuthenticated
 
 #Import the bookingSerializer,# BookingListSerializer is for showing bookings to the customer.
-from .serializers  import BookingCreateSerializer,BookingListSerializer
+from .serializers  import BookingCreateSerializer,BookingListSerializer,BookingReschudulerSerializer
 
 #Import QueueTicket so we can check duplicate tickets
 from queues.models import QueueTicket
 
 #Import existing queue-ticket creation logic
-from queues.services import create_queue_ticket_for_booking
+from queues.services import create_queue_ticket_for_booking,determine_queue_type,generate_queue_number
 
 # Import the Booking model so we can query booking records.
 from .models import Booking
@@ -118,5 +118,32 @@ class BookingCancelAPIView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
             
 
-
+class BookingRescheduleAPIView(APIView):
+    permission_classes = [IsAuthenticated] #Only logged in users
+    def patch(self,request,pk):
+        #Find the booking only if it belongs to a logged in user
+        #This prevents 1 customer from rescheduling another customer's booking
+        booking = get_object_or_404(Booking,pk=pk,user=request.user)
+        #Completed bookings are part of history and cannot be changed
+        if booking.status == Booking.COMPLETED:
+            return Response(
+                {'detail':'Completed booking cannot be rescheduled'},
+                status = status.HTTP_400_BAD_REQUEST
+            )
+        #CANCELLED BOOKINGS ARE finalised and cannot be reopened
+        if booking.status == Booking.CANCELLED:
+            return Response(
+                {'detail':'Cancelled ticket cannot be rescheduled'},
+                status = status.HTTP_400_BAD_REQUESTs
+            )
+        #Validate new booking date and time
+        serializer = BookingReschudulerSerializer(booking,data=request.data,partial=True)
+        #Stop immediately if validation fails
+        serializer.is_valid(raise_exception=True)
+        #Save the validated booking changes
+        booking = serializer.save()
+        #Return the updated booking
+        response_serializer = BookingReschudulerSerializer(booking)
+        return Response(response_serializer.data,status=status.HTTP_200_OK)
+    
         
