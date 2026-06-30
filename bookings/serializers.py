@@ -62,4 +62,19 @@ class BookingListSerializer(serializers.ModelSerializer):
             }
 
 
+class BookingReschudulerSerializer(serializers.ModelSerializer):
+    class Meta:
+        #Only these fields can be updated during rescheduling
+        fields = ['booking_date','booking_time']
+
+        #Validate that the customer is not choosing a past date
+        def validate_booking_date(self,value):
+            #Get today's date
+            today = timezone.now().date()
+            #Prevent customers from selecting a date in the past
+            if value <today :
+                raise serializers.ValidationError("Booking date cannot be in the past")
+            
+            return value
+        
 
