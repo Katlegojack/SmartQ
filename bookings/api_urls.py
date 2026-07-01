@@ -1,7 +1,7 @@
 #path let us define url routes for this app
 from django.urls import path
 #Import booking creation api view
-from .api_views import BookingCreateAPIView,MyBookingListAPIView,BookingDetailAPIView,BookingCancelAPIView
+from .api_views import BookingCreateAPIView,MyBookingListAPIView,BookingDetailAPIView,BookingCancelAPIView,BookingRescheduleAPIView
 
 #These are the booking api routes
 urlpatterns = [
@@ -17,6 +17,7 @@ urlpatterns = [
     #Cancels a booking that belongs to a logged in user : /api/v1/bookings/5/cancel/
     path('<int:pk>/cancel/',BookingCancelAPIView.as_view(),name='api_booking_cancel'),
 
-
+    #Reschedules a booking that belongs to a logged in user
+    path('<int:pk>/reschedule/',BookingRescheduleAPIView.as_view(),name='api_booking_reschedule'),
 
 ]

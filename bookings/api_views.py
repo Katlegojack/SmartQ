@@ -16,7 +16,7 @@ from rest_framework.generics import CreateAPIView,ListAPIView,RetrieveAPIView
 from rest_framework.permissions import IsAuthenticated
 
 #Import the bookingSerializer,# BookingListSerializer is for showing bookings to the customer.
-from .serializers  import BookingCreateSerializer,BookingListSerializer,BookingReschudulerSerializer
+from .serializers  import BookingCreateSerializer,BookingListSerializer,BookingRescheduleSerializer
 
 #Import QueueTicket so we can check duplicate tickets
 from queues.models import QueueTicket
@@ -134,16 +134,35 @@ class BookingRescheduleAPIView(APIView):
         if booking.status == Booking.CANCELLED:
             return Response(
                 {'detail':'Cancelled ticket cannot be rescheduled'},
-                status = status.HTTP_400_BAD_REQUESTs
+                status = status.HTTP_400_BAD_REQUEST
             )
         #Validate new booking date and time
-        serializer = BookingReschudulerSerializer(booking,data=request.data,partial=True)
+        serializer = BookingRescheduleSerializer(booking,data=request.data,partial=True)
         #Stop immediately if validation fails
         serializer.is_valid(raise_exception=True)
         #Save the validated booking changes
         booking = serializer.save()
+
+        #Try to update the connected queue ticket
+        #Every booking should have one queueticket because of the 1to1 relationship
+        try:
+            ticket = booking.queueticket
+            #Recalculate the queue type
+            #The customer's cisrcumstances may have changed since the original booking
+            ticket.queue_type = determine_queue_type(booking)
+            #Generate a new queue number for the new booking date.
+            ticket.queue_number =generate_queue_number(booking,ticket.queue_type)
+            
+            #A rescheduled ticket should go back to the waiting queue
+            ticket.status = QueueTicket.WAITING
+            #Save all the queue ticket changes
+            ticket.save(update_fields=['queue_type','queue_number','status'])
+        except Exception:
+            #If a queueticket somehow doesnt exist, create 1 using the existig business logic
+            create_queue_ticket_for_booking(booking)
+
         #Return the updated booking
-        response_serializer = BookingReschudulerSerializer(booking)
+        response_serializer = BookingListSerializer(booking)
         return Response(response_serializer.data,status=status.HTTP_200_OK)
     
         
