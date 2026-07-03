@@ -32,4 +32,6 @@ urlpatterns = [
 
     #API route for booking endpoints, this connects /api/v1/bookings to bookings/api_urls.py
     path('api/v1/bookings/',include('bookings.api_urls')),
+
+    path('api/v1/queues/',include('queues.api_urls')),
 ]
