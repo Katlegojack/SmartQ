@@ -81,3 +81,36 @@ def create_queue_ticket_for_booking(booking):
     )
 
     return queue_ticket
+
+#Business logic to call next waiting customer on a counter
+def call_next_ticket(counter):
+    """
+    Finds the next waiting queue ticket for the given counter,
+    assigns it to the counter and marks it as SERVING.
+
+    Returns:
+        QueueTicket if one is found.
+        None if no customers are waiting.
+    """
+
+    # Look for the next waiting ticket that matches this counter's queue type.
+    ticket = (
+        QueueTicket.objects.filter(
+        queue_type=counter.queue_type,
+        booking__branch=counter.branch,
+        status=QueueTicket.WAITING,
+        assigned_counter__isnull=True,
+        ).order_by("id").first()    
+    )
+    #No waiting customers
+    ticket.assigned_counter =counter
+    #Customer is now being served
+    ticket.status = QueueTicket.SERVING
+    #Save only the changed fields
+    ticket.save(update_fields=['assigned_counter','status'])
+
+    return ticket
+
+
+     
+    
