@@ -111,6 +111,39 @@ def call_next_ticket(counter):
 
     return ticket
 
+#Completes the customer currently being served at a given counter
+def complete_current_ticket(counter):
+    #Find the ticket currently assigned to this counter
+    ticket = QueueTicket.objects.filter(assigned_counter=counter,status=QueueTicket.SERVING).first()
+    #Nothing is being served
+    if ticket is None:
+        return None
+    
+    #Mark the ticket as completed now
+    ticket.status = QueueTicket.COMPLETED
+    #The counter becomes available again
+    ticket.assigned_counter = None
+    #Save only the modified fields
+    ticket.save(update_fields=['status','assigned_counter'])
+
+    return ticket
+
+#Marks customers that did not show up as no show
+def mark_current_ticket_no_show(counter):
+    #Find the ticket currenlty assigned to this counter
+    ticket =QueueTicket.objects.filter(assigned_counter=counter,status=QueueTicket.SERVING).first()
+    #If nothing is currently being served
+    if ticket is None:
+        return None
+    #Mark the customer as no-show
+    ticket.status =QueueTicket.NO_SHOW
+    #Free the counter 
+    ticket.assigned_counter = None
+    #save only modified fields
+    ticket.save(update_fields=['status','assigned_counter'])
+
+    return ticket
+
 
      
     
