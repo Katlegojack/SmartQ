@@ -11,7 +11,7 @@ The long-term vision is to reduce unnecessary physical waiting, help organizatio
 
 ---
 
-## Table of Contents
+##Table of Contents
 
 - [Project Vision](#project-vision)
 - [Project Overview](#project-overview)
@@ -2257,5 +2257,5 @@ The next stage is to continue expanding the API layer so the frontend can intera
 Smart Q’s mission is simple:
 
 ```text
-Make queues fairer, smarter, and more respectful of people’s time.
+Make queues fairer, smarter,transparent and more respectful of people’s time. 
 ```
