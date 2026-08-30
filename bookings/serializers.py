@@ -4,13 +4,28 @@ from rest_framework import serializers
 
 from accounts.models import Profile
 from branches.models import Branch
+from services.availability import get_branch_service, validate_booking_slot
 from services.models import Service
 from .models import Booking
 from .services import create_guest_walk_in
 
 
+def raise_slot_validation_error(error_code):
+    """Translate availability-engine outcomes into DRF validation errors."""
+    messages = {
+        "service_not_offered": "The selected service is not offered at this branch.",
+        "past_date": "Booking date cannot be in the past.",
+        "invalid_slot": "Select one of the available appointment time slots.",
+        "past_slot": "This appointment slot has already passed.",
+        "slot_full": "This appointment slot is fully booked.",
+    }
+    message = messages.get(error_code)
+    if message:
+        raise serializers.ValidationError({"booking_time": message})
+
+
 class BookingCreateSerializer(serializers.ModelSerializer):
-    """Validate customer input when a new online booking is created."""
+    """Validate a customer-created online appointment against branch capacity."""
 
     branch = serializers.PrimaryKeyRelatedField(
         queryset=Branch.objects.filter(is_active=True)
@@ -49,17 +64,18 @@ class BookingCreateSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         attrs = super().validate(attrs)
         branch = attrs.get("branch")
+        service = attrs.get("service")
+        booking_date = attrs.get("booking_date")
         booking_time = attrs.get("booking_time")
 
-        if branch and booking_time:
-            if booking_time < branch.opening_time or booking_time > branch.closing_time:
-                raise serializers.ValidationError(
-                    {
-                        "booking_time": (
-                            "Booking time must be within the selected branch's operating hours."
-                        )
-                    }
-                )
+        if branch and service and booking_date and booking_time:
+            _, error_code = validate_booking_slot(
+                branch,
+                service,
+                booking_date,
+                booking_time,
+            )
+            raise_slot_validation_error(error_code)
 
         return attrs
 
@@ -109,7 +125,7 @@ class BookingListSerializer(serializers.ModelSerializer):
 
 
 class BookingRescheduleSerializer(serializers.ModelSerializer):
-    """Allow registered customers to change only date/time of an online booking."""
+    """Validate a new appointment slot against the existing branch/service."""
 
     class Meta:
         model = Booking
@@ -122,23 +138,21 @@ class BookingRescheduleSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        booking = self.instance
+        if booking is None:
+            return attrs
 
-        branch = self.instance.branch if self.instance else None
-        booking_time = attrs.get(
-            "booking_time",
-            self.instance.booking_time if self.instance else None,
+        booking_date = attrs.get("booking_date", booking.booking_date)
+        booking_time = attrs.get("booking_time", booking.booking_time)
+
+        _, error_code = validate_booking_slot(
+            booking.branch,
+            booking.service,
+            booking_date,
+            booking_time,
+            exclude_booking=booking,
         )
-
-        if branch and booking_time:
-            if booking_time < branch.opening_time or booking_time > branch.closing_time:
-                raise serializers.ValidationError(
-                    {
-                        "booking_time": (
-                            "Booking time must be within the branch's operating hours."
-                        )
-                    }
-                )
-
+        raise_slot_validation_error(error_code)
         return attrs
 
 
@@ -166,6 +180,12 @@ class GuestWalkInSerializer(serializers.Serializer):
         if attrs.get("is_pregnant") and attrs.get("gender") != Profile.FEMALE:
             raise serializers.ValidationError(
                 {"is_pregnant": "Pregnancy priority applies only to a female profile."}
+            )
+
+        branch = self.context["branch"]
+        if get_branch_service(branch, attrs["service"]) is None:
+            raise serializers.ValidationError(
+                {"service": "This service is not offered at the selected branch."}
             )
 
         return attrs
