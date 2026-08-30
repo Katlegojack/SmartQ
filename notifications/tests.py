@@ -65,7 +65,7 @@ class CheckInReminderServiceTests(TestCase):
 
         self.assertEqual(result["created"], 1)
         reminder = Notification.objects.get(
-            booking_notifications_lookup if False else related_booking=self.booking,
+            related_booking=self.booking,
             notification_type=Notification.CHECK_IN_REMINDER,
         )
         self.assertEqual(reminder.reminder_at, self._aware_today(9, 0))
