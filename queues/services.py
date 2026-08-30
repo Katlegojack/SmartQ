@@ -10,14 +10,11 @@ from counters.models import Counter
 from .models import QueueTicket
 
 
-# Product rule: customers may activate their live queue ticket online starting
-# six hours before the booked appointment time. Reception can use the same
-# activation rule for an in-person check-in.
 CHECK_IN_OPEN_HOURS = 6
 
 
-# Business logic: calculate a user's age from their date of birth.
 def calculate_age(date_of_birth):
+    """Calculate age using Smart Q's current local date."""
     today = timezone.localdate()
     age = today.year - date_of_birth.year
 
@@ -27,25 +24,43 @@ def calculate_age(date_of_birth):
     return age
 
 
-# Business logic: decide whether a booking belongs to General or Priority.
+def get_priority_attributes(booking):
+    """Return age/gender/disability attributes for registered or guest customers."""
+    if booking.user_id:
+        profile = booking.user.profile
+        return {
+            "date_of_birth": profile.date_of_birth,
+            "gender": profile.gender,
+            "disability_status": profile.disability_status,
+        }
+
+    guest = booking.guest_customer
+    return {
+        "date_of_birth": guest.date_of_birth,
+        "gender": guest.gender,
+        "disability_status": guest.disability_status,
+    }
+
+
 def determine_queue_type(booking):
-    profile = booking.user.profile
-    age = calculate_age(profile.date_of_birth)
+    """Apply the same priority policy to account holders and guest walk-ins."""
+    attributes = get_priority_attributes(booking)
+    age = calculate_age(attributes["date_of_birth"])
 
     if age >= 55:
         return QueueTicket.PRIORITY
 
-    if profile.disability_status:
+    if attributes["disability_status"]:
         return QueueTicket.PRIORITY
 
-    if profile.gender == Profile.FEMALE and booking.is_pregnant:
+    if attributes["gender"] == Profile.FEMALE and booking.is_pregnant:
         return QueueTicket.PRIORITY
 
     return QueueTicket.GENERAL
 
 
 def get_booking_datetime(booking):
-    """Return the booking's date/time as an aware datetime in Smart Q's timezone."""
+    """Return the booking's aware appointment datetime."""
     booking_datetime = datetime.combine(booking.booking_date, booking.booking_time)
     if timezone.is_naive(booking_datetime):
         booking_datetime = timezone.make_aware(
@@ -56,11 +71,10 @@ def get_booking_datetime(booking):
 
 
 def get_check_in_opens_at(booking):
-    """Return the exact datetime when online/in-person check-in becomes available."""
+    """Check-in opens six hours before the appointment datetime."""
     return get_booking_datetime(booking) - timedelta(hours=CHECK_IN_OPEN_HOURS)
 
 
-# Business logic: generate the next customer-friendly queue number.
 def generate_queue_number(booking, queue_type):
     prefix = "A" if queue_type == QueueTicket.GENERAL else "P"
 
@@ -79,9 +93,8 @@ def generate_queue_number(booking, queue_type):
     return f"{prefix}{new_number:03d}"
 
 
-# A booking gets a digital ticket immediately, but it does not join the live
-# waiting queue until online or in-person check-in activates that ticket.
 def create_queue_ticket_for_booking(booking):
+    """Create a non-live SCHEDULED ticket for a future/online appointment."""
     queue_type = determine_queue_type(booking)
     queue_number = generate_queue_number(booking, queue_type)
 
@@ -94,18 +107,46 @@ def create_queue_ticket_for_booking(booking):
 
 
 @transaction.atomic
+def cancel_expired_unchecked_booking(booking, now=None):
+    """
+    Cancel an appointment whose appointment time passed without check-in.
+
+    Product rule: a customer who never checked in was never in the live queue,
+    so this outcome is CANCELLED rather than NO_SHOW.
+    """
+    if now is None:
+        now = timezone.now()
+
+    booking = Booking.objects.select_for_update().get(pk=booking.pk)
+
+    if booking.checked_in_at is not None:
+        return False
+    if booking.status in [Booking.CANCELLED, Booking.COMPLETED, Booking.NO_SHOW]:
+        return False
+    if now <= get_booking_datetime(booking):
+        return False
+
+    booking.status = Booking.CANCELLED
+    booking.save(update_fields=["status"])
+
+    try:
+        ticket = QueueTicket.objects.select_for_update().get(booking=booking)
+    except QueueTicket.DoesNotExist:
+        ticket = None
+
+    if ticket:
+        ticket.status = QueueTicket.CANCELLED
+        ticket.assigned_counter = None
+        ticket.save(update_fields=["status", "assigned_counter"])
+
+    return True
+
+
+@transaction.atomic
 def check_in_booking(booking):
-    """
-    Activate an eligible scheduled booking into the live queue.
-
-    Check-in may happen online or in person. It opens six hours before the
-    booked appointment time. The booking must still belong to the current
-    service date so a stale appointment cannot enter a later day's live queue.
-
-    Returns (ticket, error_code). error_code is None on success.
-    """
+    """Activate an eligible online or in-person booking into the live queue."""
     booking = Booking.objects.select_for_update().select_related(
-        "branch", "service", "user", "user__profile"
+        "branch", "service", "user", "user__profile", "guest_customer"
     ).get(pk=booking.pk)
 
     if booking.status in [Booking.CANCELLED, Booking.COMPLETED, Booking.NO_SHOW]:
@@ -118,14 +159,14 @@ def check_in_booking(booking):
             return None, "already_checked_in"
 
     now = timezone.now()
+    appointment_at = get_booking_datetime(booking)
+
+    if now > appointment_at:
+        cancel_expired_unchecked_booking(booking, now=now)
+        return None, "expired_cancelled"
+
     if now < get_check_in_opens_at(booking):
         return None, "too_early"
-
-    # Smart Q's current live-queue engine is date-scoped. Once the booking day
-    # has passed, the appointment must be handled by the later late/no-show or
-    # rescheduling policy rather than entering a new day's queue silently.
-    if booking.booking_date != timezone.localdate():
-        return None, "wrong_date"
 
     try:
         ticket = QueueTicket.objects.select_for_update().get(booking=booking)
@@ -139,9 +180,6 @@ def check_in_booking(booking):
     ]:
         return None, "final_state"
 
-    # Recalculate priority at queue activation because profile information may
-    # have changed since booking creation. If the queue class changes,
-    # regenerate the visible queue number so A/P prefix and queue type agree.
     new_queue_type = determine_queue_type(booking)
     if new_queue_type != ticket.queue_type:
         ticket.queue_type = new_queue_type
@@ -158,8 +196,6 @@ def check_in_booking(booking):
         ]
     )
 
-    # checked_in_at means live-queue activation time. It does not prove that
-    # the customer is physically inside the branch.
     booking.checked_in_at = now
     booking.status = Booking.PENDING
     booking.save(update_fields=["checked_in_at", "status"])
@@ -168,7 +204,6 @@ def check_in_booking(booking):
 
 
 def get_current_ticket(counter):
-    """Return the ticket currently being served at a counter, if one exists."""
     return QueueTicket.objects.filter(
         assigned_counter=counter,
         status=QueueTicket.SERVING,
@@ -176,7 +211,7 @@ def get_current_ticket(counter):
 
 
 def get_waiting_tickets(branch, booking_date=None, queue_type=None):
-    """Return customers whose tickets have been activated into the live queue."""
+    """Return customers activated into the live queue for a branch/date."""
     if booking_date is None:
         booking_date = timezone.localdate()
 
@@ -187,7 +222,13 @@ def get_waiting_tickets(branch, booking_date=None, queue_type=None):
         status=QueueTicket.WAITING,
         assigned_counter__isnull=True,
         booking__status__in=[Booking.PENDING, Booking.CONFIRMED],
-    ).select_related("booking", "booking__branch", "booking__service")
+    ).select_related(
+        "booking",
+        "booking__branch",
+        "booking__service",
+        "booking__user",
+        "booking__guest_customer",
+    )
 
     if queue_type:
         tickets = tickets.filter(queue_type=queue_type)
@@ -207,7 +248,7 @@ def get_waiting_tickets(branch, booking_date=None, queue_type=None):
 
 @transaction.atomic
 def call_next_ticket(counter, booking_date=None):
-    """Assign the next activated waiting customer to an OPEN counter."""
+    """Assign the next checked-in waiting customer to an OPEN counter."""
     if counter.status != Counter.OPEN:
         return None
 
@@ -247,7 +288,6 @@ def call_next_ticket(counter, booking_date=None):
 
 @transaction.atomic
 def complete_current_ticket(counter):
-    """Complete the customer currently being served and release the counter."""
     ticket = QueueTicket.objects.select_for_update().filter(
         assigned_counter=counter,
         status=QueueTicket.SERVING,
@@ -268,10 +308,16 @@ def complete_current_ticket(counter):
 
 @transaction.atomic
 def mark_current_ticket_no_show(counter):
-    """Mark the currently served customer as a no-show and release the counter."""
+    """
+    Mark a called/serving customer as NO_SHOW.
+
+    This only applies after check-in. Unchecked expired appointments are
+    cancelled instead and never enter the live queue.
+    """
     ticket = QueueTicket.objects.select_for_update().filter(
         assigned_counter=counter,
         status=QueueTicket.SERVING,
+        booking__checked_in_at__isnull=False,
     ).select_related("booking").first()
 
     if ticket is None:
