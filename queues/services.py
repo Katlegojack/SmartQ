@@ -106,12 +106,25 @@ def check_in_booking(booking):
     ]:
         return None, "final_state"
 
-    # Recalculate priority at check-in in case profile information changed
-    # between booking creation and arrival.
-    ticket.queue_type = determine_queue_type(booking)
+    # Recalculate priority at arrival because profile information may have
+    # changed since booking creation. If the queue class changes, regenerate
+    # the visible queue number so an A-number never represents Priority (or
+    # a P-number General).
+    new_queue_type = determine_queue_type(booking)
+    if new_queue_type != ticket.queue_type:
+        ticket.queue_type = new_queue_type
+        ticket.queue_number = generate_queue_number(booking, new_queue_type)
+
     ticket.status = QueueTicket.WAITING
     ticket.assigned_counter = None
-    ticket.save(update_fields=["queue_type", "status", "assigned_counter"])
+    ticket.save(
+        update_fields=[
+            "queue_type",
+            "queue_number",
+            "status",
+            "assigned_counter",
+        ]
+    )
 
     booking.checked_in_at = timezone.now()
     booking.status = Booking.PENDING
