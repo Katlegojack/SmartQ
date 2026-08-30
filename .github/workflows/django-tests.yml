@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - feature/day28-operational-core
+      - feature/day29-auth-roles
   pull_request:
     branches:
       - main
+      - feature/day28-operational-core
 
 jobs:
   test:
@@ -25,8 +27,14 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --upgrade pip && pip install -r requirements.txt
 
+      - name: Check for missing migrations
+        run: python manage.py makemigrations --check --dry-run
+
       - name: Run Django system checks
         run: python manage.py check
+
+      - name: Run account authentication tests
+        run: python manage.py test accounts
 
       - name: Run queue regression tests
         run: python manage.py test queues
