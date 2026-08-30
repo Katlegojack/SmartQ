@@ -1,12 +1,38 @@
-# Smart Q — Day 28 Operational Core
+# Smart Q - Day 28 Operational Core
 
-## Purpose
+## Status
 
-Day 28 moves Smart Q from having isolated queue actions toward a frontend-ready operational queue workflow.
+**Day 28 is complete and verified.**
 
-The goal of this work is not to redesign Smart Q. It is to make the existing architecture safer and expose the queue information the real frontend needs.
+The Day 28 branch passed automated GitHub Actions verification covering:
 
-The work follows the existing Smart Q architecture:
+```powershell
+python manage.py check
+python manage.py test queues
+python manage.py test bookings
+python manage.py test
+```
+
+All stages completed successfully before the pull request was prepared for merge.
+
+---
+
+# 1. Purpose
+
+Day 28 moves Smart Q from having isolated queue actions toward a safer, frontend-ready operational queue workflow.
+
+The goal was not to redesign Smart Q. The goal was to harden the existing backend so that the frontend can reliably ask the backend:
+
+```text
+Who is waiting?
+Who is currently being served?
+What is my queue position?
+How long might I wait?
+Can this user operate a counter?
+Can this counter call another customer?
+```
+
+The work continues to follow the existing architecture:
 
 ```text
 API Request
@@ -20,67 +46,61 @@ Django Models / ORM
 Database
 ```
 
-Business state changes remain inside service functions. API views handle authentication, object lookup and HTTP responses.
+Business state changes remain in service functions. API views handle authentication/authorization, object lookup and HTTP responses. Serializers convert model data into frontend-friendly JSON.
 
 ---
 
-## Why this work was necessary
+# 2. Problems Found Before Day 28
 
-Before Day 28, Smart Q already supported these staff actions:
+Repository inspection identified several issues that could prevent Smart Q from becoming a reliable operational queue system.
 
-```text
-Call Next
-Complete Current Ticket
-Mark Current Ticket No-Show
-```
+1. Queue-operation endpoints used only `IsAuthenticated`, meaning a normal logged-in customer could potentially operate counters.
+2. `call_next_ticket()` could crash when no waiting ticket existed because code accessed the ticket before safely handling `None`.
+3. Call Next was not restricted strongly enough to today's live queue.
+4. A counter could potentially call another customer while already serving someone.
+5. QueueTicket status and Booking status could become inconsistent.
+6. Completion and no-show operations updated the queue ticket but not necessarily the corresponding booking history.
+7. Counter helper logic contained a misspelled relationship field (`assinged_counter`).
+8. Counter summary logic mixed lists and numeric counts.
+9. Queue statistics helpers used inconsistent function names.
+10. `BookingCreateSerializer.validate_booking_date()` was incorrectly nested inside `Meta`, so Django REST Framework did not use it as a validator.
+11. Booking/rescheduling time input was not checked against branch opening hours.
+12. Booking cancellation/rescheduling used broad `except Exception` blocks that could hide genuine programming errors.
+13. Customer/staff frontends had action endpoints but lacked the read APIs required to display current queue state.
+14. The combined waiting queue claimed to prioritize Priority tickets but alphabetical ordering actually placed General first.
+15. Existing automated test files were mostly empty, so queue regressions could reappear unnoticed.
 
-However, several important problems remained:
-
-1. Any authenticated user could call staff queue-operation endpoints.
-2. `call_next_ticket()` could crash when no waiting ticket existed because it accessed the ticket before checking for `None`.
-3. A counter could potentially call a future booking because the queue service was not restricted to today's booking date.
-4. QueueTicket status and Booking status could become inconsistent.
-5. Counter helper functions contained field-name and counting bugs.
-6. Queue statistics contained inconsistent function names.
-7. The booking creation date validator was accidentally nested inside `Meta`, so it was not being used by DRF.
-8. Customer and staff frontends had action endpoints but were missing essential read endpoints.
-9. Broad `except Exception` blocks could hide real programming errors.
-10. There were no meaningful automated queue API regression tests.
-
-Day 28 addresses these problems without replacing the existing project structure.
+Day 28 addresses these issues without replacing the existing domain model or project structure.
 
 ---
 
-# Changes Implemented
+# 3. Staff Authorization Boundary
 
-## 1. Staff-only queue operations
-
-### File
+## File
 
 `queues/permissions.py`
 
-### New permission
+## New permission
 
 ```python
 class IsQueueStaff(BasePermission):
 ```
 
-Smart Q does not yet have a dedicated staff-role model, so Django's existing `User.is_staff` field is used as the current authorization boundary.
+Smart Q does not yet have a dedicated role/branch-assignment model, so Day 28 uses Django's existing `User.is_staff` field as an **interim authorization boundary**.
 
-This means:
+Current behavior:
 
 ```text
-Authenticated customer → cannot operate counter
-Authenticated staff user → can operate counter
+Unauthenticated user  -> denied
+Normal customer       -> denied
+Django staff user     -> allowed to use queue staff endpoints
 ```
 
-This is safer than the previous `IsAuthenticated` rule, which only checked whether a user was logged in.
+This closes an important security gap compared with the previous `IsAuthenticated` rule.
 
-### Important future improvement
+### Why this is interim
 
-`is_staff` is an intermediate security boundary, not the final role system.
-
-Future Smart Q should introduce explicit roles such as:
+`is_staff` is not a complete business-role system. The intended future role model remains:
 
 ```text
 CUSTOMER
@@ -90,132 +110,158 @@ BRANCH_MANAGER
 SYSTEM_ADMIN
 ```
 
-and branch-level authorization so staff can operate only their assigned branch/counters.
+Future authorization must also be branch scoped so a staff member assigned to one branch cannot operate another branch simply by knowing its database IDs.
 
 ---
 
-## 2. Queue lifecycle hardening
+# 4. Queue Lifecycle Hardening
 
-### File
+## File
 
 `queues/services.py`
-
-Queue lifecycle functions were reorganized and documented.
 
 ### `call_next_ticket(counter)`
 
 The function now:
 
-1. Requires the counter to be OPEN.
+1. Requires the counter to be `OPEN`.
 2. Defaults to today's date.
 3. Checks whether the counter is already serving someone.
 4. Searches only today's waiting tickets.
-5. Searches only tickets matching the counter's branch and queue type.
-6. Ignores cancelled/completed booking states.
-7. Uses FIFO ordering.
-8. Assigns the selected ticket to the counter.
-9. Changes ticket status from `WAITING` to `SERVING`.
-10. Changes booking status from `PENDING` to `CONFIRMED`.
+5. Matches the counter's branch.
+6. Matches the counter's queue type.
+7. Excludes tickets whose bookings are no longer active.
+8. Uses FIFO ordering inside the matching queue.
+9. Safely returns `None` when nobody can be called.
+10. Assigns the selected ticket to the counter.
+11. Changes QueueTicket from `WAITING` to `SERVING`.
+12. Aligns the Booking lifecycle by moving `PENDING` to `CONFIRMED`.
 
 Simplified flow:
 
 ```text
-OPEN Counter
-    ↓
+Counter OPEN?
+    ├── No -> stop
+    └── Yes
+         ↓
 Already serving someone?
-    ├── Yes → do not call another customer
+    ├── Yes -> stop
     └── No
          ↓
-Find today's next matching WAITING ticket
+Find today's matching WAITING ticket
          ↓
 Assign counter
          ↓
-WAITING → SERVING
+QueueTicket WAITING -> SERVING
          ↓
-Booking PENDING → CONFIRMED
+Booking PENDING -> CONFIRMED
 ```
 
-### Why transactions were added
+---
 
-Queue transitions are wrapped with:
+# 5. Transaction and Concurrency Safety
+
+Critical queue state changes now use:
 
 ```python
 @transaction.atomic
 ```
 
-This means the database treats the transition as one operation.
+Important ticket selections also use:
 
-`select_for_update()` was also introduced for important ticket selection paths. This matters when Smart Q later runs on PostgreSQL and multiple staff members use the queue simultaneously.
+```python
+select_for_update()
+```
+
+### In simpler terms
+
+Queue operations often change more than one database value at once.
+
+For example:
+
+```text
+Ticket becomes SERVING
++ Counter becomes assigned
++ Booking becomes CONFIRMED
+```
+
+A transaction treats that workflow as one database operation rather than several unrelated changes.
+
+`select_for_update()` also prepares the system for production databases such as PostgreSQL where multiple staff members may press **Call Next** at nearly the same time.
+
+### Remaining concurrency work
+
+Queue-number generation itself still needs stronger production-grade protection against simultaneous number generation. That is intentionally listed as future hardening rather than falsely claimed as solved.
 
 ---
 
-## 3. Booking and queue status synchronization
+# 6. Booking and QueueTicket Synchronization
 
-Previously the QueueTicket could be completed while the Booking remained `pending`.
+Before Day 28, the two related state machines could contradict one another.
 
-That creates contradictory history:
+Example of an invalid history:
 
 ```text
 Booking: pending
 QueueTicket: completed
 ```
 
-The lifecycle is now synchronized.
+Day 28 aligns important transitions.
 
-### Call Next
-
-```text
-QueueTicket: WAITING → SERVING
-Booking: PENDING → CONFIRMED
-```
-
-### Complete
+## Call Next
 
 ```text
-QueueTicket: SERVING → COMPLETED
-Booking: CONFIRMED → COMPLETED
-assigned_counter → None
+QueueTicket: WAITING -> SERVING
+Booking:     PENDING -> CONFIRMED
 ```
 
-### No Show
+## Complete
 
 ```text
-QueueTicket: SERVING → NO_SHOW
-Booking: CONFIRMED → NO_SHOW
-assigned_counter → None
+QueueTicket: SERVING -> COMPLETED
+Booking:     -> COMPLETED
+assigned_counter -> None
 ```
 
-### Cancel
+## No Show
 
 ```text
-Booking → CANCELLED
-QueueTicket → CANCELLED
-assigned_counter → None
+QueueTicket: SERVING -> NO_SHOW
+Booking:     -> NO_SHOW
+assigned_counter -> None
 ```
 
-This gives Smart Q one consistent customer history.
+## Cancel
+
+```text
+Booking:     -> CANCELLED
+QueueTicket: -> CANCELLED
+assigned_counter -> None
+```
+
+This gives customer history, staff operations and future reports a single consistent truth.
 
 ---
 
-## 4. Customer live queue API
+# 7. Customer Live Queue API
 
-### Endpoint
+## Endpoint
 
 ```http
 GET /api/v1/queues/my-current/
 ```
 
-### Permission
+## Permission
 
 Authenticated customer.
 
-### Purpose
+## Purpose
 
 This endpoint powers the customer Queue Tracker screen.
 
-It returns the customer's active queue ticket for today together with the existing waiting-time prediction logic.
+It finds the logged-in customer's active ticket for today and combines it with Smart Q's existing rule-based waiting-time logic.
 
-Example conceptual response:
+Conceptual response:
 
 ```json
 {
@@ -234,76 +280,99 @@ Example conceptual response:
 }
 ```
 
-This exposes existing Smart Q intelligence instead of leaving it trapped inside Python service functions.
+This is an important product milestone because the waiting-time engine is no longer just internal Python logic; it can now directly power the frontend.
 
-When a ticket is already `SERVING`, the endpoint reports zero remaining wait.
+When a ticket is already `SERVING`, remaining wait values are returned as zero.
 
 ---
 
-## 5. Staff current-customer API
+# 8. Staff Current-Customer API
 
-### Endpoint
+## Endpoint
 
 ```http
 GET /api/v1/queues/counters/<counter_id>/current/
 ```
 
-### Permission
+## Permission
 
 Staff only.
 
-### Purpose
+## Purpose
 
-A counter dashboard needs to know who is currently being served.
+A staff dashboard needs to know who is currently being served at the selected counter.
 
-This endpoint lets the frontend display:
+This endpoint supports a frontend view such as:
 
 ```text
-Counter 3
+COUNTER 3
+
 Currently Serving
 A014
 ID Application
 Customer Name
 ```
 
-without guessing state in the frontend.
+If the counter is free, the API returns a clear not-found/free-counter response instead of fabricating state in the frontend.
 
 ---
 
-## 6. Staff waiting-queue API
+# 9. Staff Waiting-Queue API
 
-### Endpoint
+## Endpoint
 
 ```http
 GET /api/v1/queues/branches/<branch_id>/waiting/
 ```
 
-Optional query parameter:
+Optional filters:
 
 ```text
 ?queue_type=general
 ?queue_type=priority
 ```
 
-### Permission
+## Permission
 
 Staff only.
 
-### Purpose
+## Purpose
 
-This provides today's live waiting queue for reception/counter dashboards.
+This endpoint provides today's waiting queue for staff/reception dashboards.
 
-The backend owns the queue state. The frontend only displays it.
+Invalid queue types are rejected with `400 Bad Request`.
+
+### Priority ordering correction
+
+During Day 28 verification, an additional bug was found.
+
+The code comment said Priority tickets should appear before General tickets in a combined waiting-room view, but this ordering:
+
+```python
+order_by("queue_type", ...)
+```
+
+would alphabetically place `general` before `priority`.
+
+Day 28 now uses an explicit database sort rank so the combined list is intentionally:
+
+```text
+Priority
+then
+General
+```
+
+while FIFO ordering is preserved inside each queue type.
 
 ---
 
-## 7. Queue serializer expansion
+# 10. Queue Serializer Expansion
 
-### File
+## File
 
 `queues/serializers.py`
 
-The queue ticket response now includes useful booking context:
+The queue ticket serializer was expanded with frontend-useful booking context such as:
 
 ```text
 booking_id
@@ -314,68 +383,78 @@ booking_time
 customer_name
 ```
 
-This avoids forcing the frontend to make several additional requests simply to show one queue ticket.
+This reduces unnecessary frontend requests when one queue row/card needs basic booking context.
 
 The serializer remains read-only.
 
 ---
 
-## 8. Booking validation fixes
+# 11. Booking Validation Fixes
 
-### File
+## File
 
 `bookings/serializers.py`
 
 ### Past-date validation
 
-The original `validate_booking_date()` function was nested inside the serializer's `Meta` class.
+The original creation validator was accidentally nested inside the serializer's `Meta` class.
 
-DRF therefore did not treat it as a field validator.
+DRF therefore would not use it as a field validator.
 
-It was moved to the correct serializer level.
+Day 28 moves it to the correct serializer level.
 
-The API now rejects:
+Now:
 
 ```text
 booking_date < today
 ```
 
-### Branch operating-hours validation
+is rejected.
 
-Booking creation and rescheduling now validate that the requested time is within:
+### Branch operating hours
+
+Booking creation and rescheduling now validate that the requested time is inside:
 
 ```text
 branch.opening_time
 branch.closing_time
 ```
 
-This prevents obviously invalid appointments such as booking a branch at 23:00 when it closes at 16:30.
+Example:
 
-This is not yet the final availability engine. Capacity/slot availability remains future work.
+```text
+Branch hours: 08:00 - 16:30
+Request: 23:00
+Result: validation error
+```
+
+This is **not yet** the final availability engine. Capacity-aware appointment slots remain future work.
 
 ---
 
-## 9. Safer cancellation and rescheduling
+# 12. Safer Cancellation and Rescheduling
 
-### File
+## File
 
 `bookings/api_views.py`
 
 Cancellation and rescheduling now use database transactions.
 
-Broad error handling such as:
+Broad handling such as:
 
 ```python
 except Exception:
 ```
 
-was replaced with the queue-ticket missing case.
+was replaced with explicit missing-related-object handling.
 
-This is important because broad exception handling can hide actual bugs.
+### Why this matters
+
+Catching every exception can hide real programming errors and allow inconsistent state to survive silently.
 
 ### Rescheduling rules
 
-The endpoint now rejects rescheduling when the booking is:
+The endpoint now explicitly rejects rescheduling when a booking is:
 
 ```text
 COMPLETED
@@ -383,17 +462,33 @@ CANCELLED
 NO_SHOW
 ```
 
-A successfully rescheduled booking returns to an active pending state and its queue ticket is reset to `WAITING` with a newly generated queue number.
+A successful reschedule:
+
+```text
+validates date/time
+      ↓
+updates booking
+      ↓
+recalculates queue type
+      ↓
+generates new queue number
+      ↓
+QueueTicket -> WAITING
+      ↓
+clears assigned counter
+      ↓
+Booking -> PENDING
+```
 
 ---
 
-## 10. Counter service fixes
+# 13. Counter Service Fixes
 
-### File
+## File
 
 `counters/services.py`
 
-Fixed the incorrect field name:
+Fixed the misspelled relation:
 
 ```text
 assinged_counter
@@ -405,7 +500,7 @@ to:
 assigned_counter
 ```
 
-The counter summary also previously mixed a list of free counters with a numeric count. It now returns consistent integer values:
+Counter summary output now uses integer counts consistently:
 
 ```json
 {
@@ -418,116 +513,158 @@ The counter summary also previously mixed a list of free counters with a numeric
 
 ---
 
-## 11. Statistics fixes
+# 14. Statistics Fixes
 
-### File
+## File
 
 `queues/statistics.py`
 
-The project had two inconsistent names:
+The module contained inconsistent helper naming around:
 
 ```text
 get_queue_branch_statistics
 get_branch_queue_statistics
 ```
 
-This caused report helper functions to reference a function that did not exist.
-
-The statistics module now consistently uses:
-
-```python
-get_branch_queue_statistics()
-```
-
-and documents the purpose of each aggregation helper.
+Day 28 normalizes the internal usage so report helpers call the function that actually exists.
 
 ---
 
-# Automated Tests Added
+# 15. Automated Regression Tests
 
-### File
+## File
 
 `queues/tests.py`
 
-Day 28 introduces regression tests around the operational queue workflow.
+Day 28 replaces the almost-empty queue test file with meaningful API regression coverage.
 
-Current tests cover:
+Verified scenarios include:
 
-### 1. Customer authorization
-
-A normal customer attempting to call the next ticket must receive:
+### Authorization
 
 ```text
+Normal authenticated customer
+        ↓
+POST Call Next
+        ↓
 403 Forbidden
 ```
 
-### 2. Staff Call Next
-
-Verifies:
+### Closed counter protection
 
 ```text
-WAITING → SERVING
-counter assigned
-Booking PENDING → CONFIRMED
+Counter CLOSED
+      ↓
+Call Next
+      ↓
+409 Conflict
 ```
 
-### 3. Complete Current Ticket
-
-Verifies:
+### Staff Call Next lifecycle
 
 ```text
-SERVING → COMPLETED
-counter released
-Booking → COMPLETED
+QueueTicket WAITING -> SERVING
+Counter assigned
+Booking PENDING -> CONFIRMED
 ```
 
-### 4. Customer current queue tracker
+### Future booking protection
 
-Verifies the customer receives:
+A booking for tomorrow remains waiting and is not called into today's queue.
+
+### Busy counter protection
+
+A counter already serving one customer cannot call a second waiting customer.
+
+### Completion synchronization
 
 ```text
-queue ticket
-queue number
-prediction
-queue position
+QueueTicket -> COMPLETED
+Booking -> COMPLETED
+Counter released
 ```
+
+### No-show synchronization
+
+```text
+QueueTicket -> NO_SHOW
+Booking -> NO_SHOW
+Counter released
+```
+
+### Current counter read API
+
+Staff can retrieve the ticket currently being served.
+
+### Customer current queue API
+
+Customer receives their active ticket plus queue prediction fields.
+
+### Priority ordering
+
+Combined branch waiting view returns Priority before General.
+
+### Invalid queue type
+
+Unsupported values such as:
+
+```text
+?queue_type=vip
+```
+
+return `400 Bad Request`.
 
 ---
 
-# Testing Commands
+# 16. Continuous Integration Added
 
-After pulling this branch locally, run:
+## File
 
-```powershell
-python manage.py check
-python manage.py test queues
-python manage.py test bookings
-python manage.py test
-```
+`.github/workflows/django-tests.yml`
 
-Expected result:
+Day 28 introduces automated GitHub Actions verification.
+
+The workflow:
+
+1. Checks out the repository.
+2. Sets up Python 3.12.
+3. Installs `requirements.txt`.
+4. Runs Django system checks.
+5. Runs queue tests.
+6. Runs booking tests.
+7. Runs the complete Django test suite.
+
+Verification result for the final Day 28 code change:
 
 ```text
-System check identified no issues
+Django system checks     PASS
+Queue regression tests  PASS
+Booking tests           PASS
+Full test suite          PASS
 ```
 
-and all automated tests should pass.
-
-The connected GitHub environment used to prepare this work can edit and inspect the repository but does not execute the Django project, so the branch must be run locally/CI before merging into `main`.
+This is an important process improvement because future regressions can be detected automatically on relevant branch pushes and pull requests.
 
 ---
 
-# New/Updated API Surface
+# 17. New/Updated API Surface
 
-```text
-CUSTOMER
-GET  /api/v1/queues/my-current/
+## Customer
 
-STAFF READ
-GET  /api/v1/queues/branches/<branch_id>/waiting/
-GET  /api/v1/queues/counters/<counter_id>/current/
+```http
+GET /api/v1/queues/my-current/
+```
 
-STAFF OPERATIONS
+## Staff read
+
+```http
+GET /api/v1/queues/branches/<branch_id>/waiting/
+GET /api/v1/queues/counters/<counter_id>/current/
+```
+
+## Staff operations
+
+```http
 POST /api/v1/queues/counters/<counter_id>/call-next/
 POST /api/v1/queues/counters/<counter_id>/complete/
 POST /api/v1/queues/counters/<counter_id>/no-show/
@@ -535,47 +672,114 @@ POST /api/v1/queues/counters/<counter_id>/no-show/
 
 ---
 
-# What Day 28 Does NOT Claim to Finish
+# 18. What Day 28 Does NOT Claim to Finish
 
 The following remain deliberate future work:
 
-- dedicated staff/manager/admin role model
+- dedicated business-role model
 - branch-level staff assignments
-- customer check-in
+- authentication/token API for a separate production frontend
+- customer arrival/check-in
 - walk-in registration
-- slot-capacity booking availability
-- Branch ↔ Service availability mapping
-- authentication API/token strategy for a separate frontend
-- counter open/pause/resume APIs
-- manager dashboard API
-- disruption/rescheduling manager APIs
-- real-time WebSocket updates
-- SMS/WhatsApp/email delivery
-- historical queue-event timestamps
+- branch-to-service availability mapping
+- capacity-aware booking slots
+- counter open/pause/resume/close APIs
+- staff-to-counter assignment
+- manager dashboard APIs
+- manager-facing disruption/rescheduling APIs
+- historical queue event timestamps
+- external SMS/WhatsApp/email/push delivery
+- real-time updates
 - production PostgreSQL deployment
-- AI/ML wait-time forecasting
+- queue-number concurrency hardening
+- production monitoring/logging/backups
+- genuine AI/ML wait-time forecasting
 
-These should be implemented in controlled slices rather than rushed into one unsafe change.
+These should be implemented in controlled slices instead of being rushed into one unsafe change.
 
 ---
 
-# Engineering Principle
+# 19. Engineering Lessons
 
-The most important Day 28 principle is:
+## Authentication is not authorization
 
-> The frontend must never become responsible for Smart Q's business rules.
+`IsAuthenticated` proves a person is logged in. It does not prove they are allowed to operate a counter.
 
-The backend owns:
+## State machines must agree
+
+Booking and QueueTicket represent different parts of the same service journey. Their final states must not contradict one another.
+
+## Frontend read APIs matter as much as action APIs
+
+A staff interface cannot function with only "Call Next" and "Complete" actions. It also needs to read the current customer and waiting queue.
+
+## Tests should cover negative paths
+
+A useful test suite checks not only whether an operation works, but whether invalid operations are blocked.
+
+Examples:
 
 ```text
-who can operate queues
-who is next
-what status a ticket is in
-what status a booking is in
-what counter owns a ticket
-what the customer's queue prediction is
+customer tries staff action
+closed counter calls next
+future booking is called early
+busy counter serves two customers
+invalid filter is submitted
 ```
 
-The frontend should request that information and display it.
+## Comments must match behavior
 
-This separation keeps Smart Q maintainable when the temporary pitch frontend is later replaced by the real production frontend.
+The Priority-before-General bug showed that comments can become misleading if they describe intended behavior rather than verified behavior.
+
+## CI turns testing into a repeatable engineering process
+
+Instead of relying only on memory and shell testing, the repository now has an automated verification path.
+
+---
+
+# 20. Day 28 Completion Summary
+
+Day 28 significantly strengthens Smart Q's transition from a collection of backend features into an operational queue platform.
+
+Before Day 28, Smart Q could already create bookings, generate priority-aware queue tickets and perform basic queue actions. However, authorization, state consistency, read APIs and automated regression protection were incomplete.
+
+After Day 28:
+
+```text
+Customer booking
+      ↓
+Queue ticket
+      ↓
+Live queue tracker API
+      ↓
+Staff waiting-queue API
+      ↓
+Staff Call Next
+      ↓
+Current-counter API
+      ↓
+Complete / No Show
+      ↓
+Booking + QueueTicket stay synchronized
+      ↓
+Automated CI verifies the workflow
+```
+
+This does not make Smart Q production-ready, but it gives the project a much stronger operational core and a safer foundation for the next backend slices.
+
+## Next major objective
+
+The next phase should focus on closing the operational-MVP gap through:
+
+```text
+authentication API
+role + branch permissions
+customer check-in
+walk-ins
+booking availability/capacity
+counter lifecycle
+manager APIs
+historical queue events
+```
+
+Only after those foundations are stable should Smart Q move aggressively into production infrastructure, real-time delivery and genuine machine-learning wait-time forecasting.
