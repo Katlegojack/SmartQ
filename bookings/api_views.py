@@ -13,6 +13,7 @@ from queues.services import (
     create_queue_ticket_for_booking,
     determine_queue_type,
     generate_queue_number,
+    get_check_in_opens_at,
 )
 from .models import Booking
 from .serializers import (
@@ -22,11 +23,20 @@ from .serializers import (
 )
 
 
-def check_in_error_response(error_code):
+def check_in_error_response(error_code, booking=None):
     """Translate reusable check-in service outcomes into clear HTTP responses."""
+    if error_code == "too_early":
+        opens_at = get_check_in_opens_at(booking) if booking is not None else None
+        return Response(
+            {
+                "detail": "Check-in is not open yet. It opens six hours before your appointment.",
+                "check_in_opens_at": opens_at,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     if error_code == "wrong_date":
         return Response(
-            {"detail": "This booking can only be checked in on its booking date."},
+            {"detail": "This booking can no longer enter the current live queue."},
             status=status.HTTP_400_BAD_REQUEST,
         )
     if error_code == "final_state":
@@ -36,7 +46,7 @@ def check_in_error_response(error_code):
         )
     if error_code == "already_checked_in":
         return Response(
-            {"detail": "This booking is already checked in."},
+            {"detail": "This booking is already checked in and is part of the live queue."},
             status=status.HTTP_409_CONFLICT,
         )
     return None
@@ -76,7 +86,7 @@ class BookingDetailAPIView(RetrieveAPIView):
 
 
 class BookingCheckInAPIView(APIView):
-    """Allow a customer to check in their own booking on the scheduled date."""
+    """Allow a customer to activate their own booking into the live queue."""
 
     permission_classes = [IsAuthenticated]
 
@@ -84,7 +94,7 @@ class BookingCheckInAPIView(APIView):
         booking = get_object_or_404(Booking, pk=pk, user=request.user)
         ticket, error_code = check_in_booking(booking)
 
-        error_response = check_in_error_response(error_code)
+        error_response = check_in_error_response(error_code, booking=booking)
         if error_response:
             return error_response
 
@@ -96,7 +106,7 @@ class BookingCheckInAPIView(APIView):
 
 
 class StaffBookingCheckInAPIView(APIView):
-    """Allow reception/authorised staff to check in a customer at their branch."""
+    """Allow authorised branch staff to activate a customer's live queue ticket."""
 
     permission_classes = [IsQueueViewer]
 
@@ -108,7 +118,7 @@ class StaffBookingCheckInAPIView(APIView):
         self.check_object_permissions(request, booking)
 
         ticket, error_code = check_in_booking(booking)
-        error_response = check_in_error_response(error_code)
+        error_response = check_in_error_response(error_code, booking=booking)
         if error_response:
             return error_response
 
@@ -221,8 +231,8 @@ class BookingRescheduleAPIView(APIView):
         else:
             create_queue_ticket_for_booking(booking)
 
-        # Rescheduling invalidates any previous arrival/check-in. The customer
-        # must check in again on the new booking date before joining the live queue.
+        # A rescheduled appointment must be activated into the live queue again
+        # after its new six-hour check-in window opens.
         booking.checked_in_at = None
         booking.status = Booking.PENDING
         booking.save(update_fields=["checked_in_at", "status"])
