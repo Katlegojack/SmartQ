@@ -10,8 +10,8 @@ class AccountSerializer(serializers.ModelSerializer):
     """Read-only representation of the authenticated Smart Q account."""
 
     role = serializers.CharField(source="profile.role", read_only=True)
-    branch_id = serializers.IntegerField(source="profile.branch_id", read_only=True)
-    branch_name = serializers.CharField(source="profile.branch.name", read_only=True)
+    branch_id = serializers.SerializerMethodField()
+    branch_name = serializers.SerializerMethodField()
     date_of_birth = serializers.DateField(source="profile.date_of_birth", read_only=True)
     gender = serializers.CharField(source="profile.gender", read_only=True)
     disability_status = serializers.BooleanField(
@@ -35,6 +35,12 @@ class AccountSerializer(serializers.ModelSerializer):
             "disability_status",
         ]
         read_only_fields = fields
+
+    def get_branch_id(self, obj):
+        return obj.profile.branch_id
+
+    def get_branch_name(self, obj):
+        return obj.profile.branch.name if obj.profile.branch else None
 
 
 class CustomerRegistrationSerializer(serializers.Serializer):
