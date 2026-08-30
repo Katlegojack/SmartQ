@@ -2,6 +2,24 @@ from django.db import migrations, models
 import django.db.models.deletion
 
 
+def map_existing_superusers(apps, schema_editor):
+    """
+    Preserve the authority of existing Django superusers without promoting all
+    historical `is_staff` users into Smart Q operational roles.
+    """
+    Profile = apps.get_model("accounts", "Profile")
+    Profile.objects.filter(user__is_superuser=True).update(role="system_admin")
+
+
+def reverse_superuser_mapping(apps, schema_editor):
+    """Return migrated SYSTEM_ADMIN superuser profiles to the safe customer default."""
+    Profile = apps.get_model("accounts", "Profile")
+    Profile.objects.filter(
+        user__is_superuser=True,
+        role="system_admin",
+    ).update(role="customer")
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -35,6 +53,10 @@ class Migration(migrations.Migration):
                 default="customer",
                 max_length=30,
             ),
+        ),
+        migrations.RunPython(
+            map_existing_superusers,
+            reverse_superuser_mapping,
         ),
         migrations.AddConstraint(
             model_name="profile",
