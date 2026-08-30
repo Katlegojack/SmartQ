@@ -7,12 +7,14 @@ on:
       - feature/day29-auth-roles
       - feature/day30-check-in
       - feature/day31-reception-walkins
+      - feature/day32-branch-service-capacity
   pull_request:
     branches:
       - main
       - feature/day28-operational-core
       - feature/day29-auth-roles
       - feature/day30-check-in
+      - feature/day31-reception-walkins
 
 jobs:
   test:
@@ -39,6 +41,9 @@ jobs:
 
       - name: Run account authentication tests
         run: python manage.py test accounts
+
+      - name: Run service and capacity tests
+        run: python manage.py test services
 
       - name: Run queue regression tests
         run: python manage.py test queues
