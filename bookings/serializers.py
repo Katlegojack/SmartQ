@@ -1,3 +1,4 @@
+from django.core.exceptions import ObjectDoesNotExist
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -81,11 +82,11 @@ class BookingListSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_queue_ticket(self, obj):
-        # A missing reverse OneToOne relationship should return null instead of
-        # hiding unrelated programming errors with a broad `except Exception`.
+        # Only the expected "no related queue ticket" case is swallowed. Other
+        # exceptions should surface during development instead of being hidden.
         try:
             ticket = obj.queueticket
-        except Booking.queueticket.RelatedObjectDoesNotExist:
+        except ObjectDoesNotExist:
             return None
 
         return {
