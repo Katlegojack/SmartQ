@@ -158,9 +158,9 @@ def get_check_in_reminder_slots(booking):
     """
     Return the six hourly reminder slots before an appointment.
 
-    For a 15:00 appointment, reminders are eligible at 09:00, 10:00, 11:00,
-    12:00, 13:00 and 14:00. The appointment time itself is the cancellation
-    deadline when no check-in happened.
+    For a 15:00 appointment: 09:00, 10:00, 11:00, 12:00, 13:00, 14:00.
+    The appointment time itself is the cancellation deadline if no check-in
+    ever occurred.
     """
     opens_at = get_check_in_opens_at(booking)
     appointment_at = get_booking_datetime(booking)
@@ -176,11 +176,11 @@ def get_check_in_reminder_slots(booking):
 
 def create_due_check_in_reminders(now=None):
     """
-    Generate all reminder slots that are due and have not already been created.
+    Create only the reminder belonging to the current hourly slot.
 
-    This function is deliberately scheduler-agnostic. A management command can
-    run it hourly now; production can later call the same service from Celery,
-    cron, a cloud scheduler, or another approved job runner.
+    The function is scheduler-agnostic and idempotent. If infrastructure misses
+    an hour, Smart Q does not dump stale reminders on the customer later. If the
+    current slot is retried, the database uniqueness rule prevents duplicates.
     """
     if now is None:
         now = timezone.now()
@@ -206,28 +206,33 @@ def create_due_check_in_reminders(now=None):
         if now < get_check_in_opens_at(booking):
             continue
 
+        current_slot = None
         for reminder_at in get_check_in_reminder_slots(booking):
-            if reminder_at > now:
+            if reminder_at <= now < reminder_at + timedelta(hours=1):
+                current_slot = reminder_at
                 break
 
-            notification, created = Notification.objects.get_or_create(
-                related_booking=booking,
-                reminder_at=reminder_at,
-                notification_type=Notification.CHECK_IN_REMINDER,
-                defaults={
-                    "user": booking.user,
-                    "title": "Check in to join the live queue",
-                    "message": (
-                        f"Your {booking.service.name} appointment at "
-                        f"{booking.booking_time} is approaching. Check in now to "
-                        "activate your place in the Smart Q live queue."
-                    ),
-                    "related_ticket": getattr(booking, "queueticket", None),
-                },
-            )
+        if current_slot is None:
+            continue
 
-            if created:
-                created_count += 1
+        notification, created = Notification.objects.get_or_create(
+            related_booking=booking,
+            reminder_at=current_slot,
+            notification_type=Notification.CHECK_IN_REMINDER,
+            defaults={
+                "user": booking.user,
+                "title": "Check in to join the live queue",
+                "message": (
+                    f"Your {booking.service.name} appointment at "
+                    f"{booking.booking_time} is approaching. Check in now to "
+                    "activate your place in the Smart Q live queue."
+                ),
+                "related_ticket": getattr(booking, "queueticket", None),
+            },
+        )
+
+        if created:
+            created_count += 1
 
     return {
         "created": created_count,
