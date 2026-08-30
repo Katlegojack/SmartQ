@@ -36,4 +36,20 @@ class Migration(migrations.Migration):
                 max_length=30,
             ),
         ),
+        migrations.AddConstraint(
+            model_name="profile",
+            constraint=models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        role__in=["receptionist", "counter_staff", "branch_manager"],
+                        branch__isnull=False,
+                    )
+                    | models.Q(
+                        role__in=["customer", "system_admin"],
+                        branch__isnull=True,
+                    )
+                ),
+                name="profile_role_has_valid_branch_scope",
+            ),
+        ),
     ]
