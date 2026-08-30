@@ -14,7 +14,7 @@ from .models import QueueTicket
 
 
 class QueueOperationalAPITests(APITestCase):
-    """Regression tests for the Day 28 operational queue workflow."""
+    """Regression tests for the operational queue and Day 29 authorization rules."""
 
     def setUp(self):
         self.branch = Branch.objects.create(
@@ -22,6 +22,15 @@ class QueueOperationalAPITests(APITestCase):
             name="Kimberley Branch",
             address="1 Test Street",
             city="Kimberley",
+            opening_time=time(8, 0),
+            closing_time=time(16, 30),
+            is_active=True,
+        )
+        self.other_branch = Branch.objects.create(
+            branch_code="PTA01",
+            name="Pretoria Branch",
+            address="2 Test Street",
+            city="Pretoria",
             opening_time=time(8, 0),
             closing_time=time(16, 30),
             is_active=True,
@@ -43,18 +52,20 @@ class QueueOperationalAPITests(APITestCase):
             date_of_birth=date(1995, 1, 1),
             gender=Profile.MALE,
             disability_status=False,
+            role=Profile.CUSTOMER,
         )
 
         self.staff = User.objects.create_user(
             username="staff",
             password="test-password",
-            is_staff=True,
         )
         Profile.objects.create(
             user=self.staff,
             date_of_birth=date(1990, 1, 1),
             gender=Profile.OTHER,
             disability_status=False,
+            role=Profile.COUNTER_STAFF,
+            branch=self.branch,
         )
 
         self.booking = Booking.objects.create(
@@ -88,7 +99,7 @@ class QueueOperationalAPITests(APITestCase):
         self.booking.save(update_fields=["status"])
 
     def test_customer_cannot_operate_staff_counter(self):
-        """A normal authenticated customer must not be able to call the queue."""
+        """A customer role must not be able to call the queue."""
         self.client.force_authenticate(user=self.customer)
 
         response = self.client.post(
@@ -98,6 +109,66 @@ class QueueOperationalAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.ticket.refresh_from_db()
         self.assertEqual(self.ticket.status, QueueTicket.WAITING)
+
+    def test_receptionist_can_view_queue_but_cannot_operate_counter(self):
+        """Reception can see live queues but does not perform service transitions."""
+        receptionist = User.objects.create_user(username="reception", password="pw")
+        Profile.objects.create(
+            user=receptionist,
+            date_of_birth=date(1992, 1, 1),
+            gender=Profile.OTHER,
+            role=Profile.RECEPTIONIST,
+            branch=self.branch,
+        )
+        self.client.force_authenticate(user=receptionist)
+
+        read_response = self.client.get(
+            reverse("api_branch_waiting_queue", kwargs={"branch_id": self.branch.id})
+        )
+        operate_response = self.client.post(
+            reverse("api_call_next_ticket", kwargs={"counter_id": self.counter.id})
+        )
+
+        self.assertEqual(read_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(operate_response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_branch_staff_cannot_operate_another_branch(self):
+        """Role permission must also enforce the staff member's branch assignment."""
+        other_staff = User.objects.create_user(username="otherstaff", password="pw")
+        Profile.objects.create(
+            user=other_staff,
+            date_of_birth=date(1990, 1, 1),
+            gender=Profile.OTHER,
+            role=Profile.COUNTER_STAFF,
+            branch=self.other_branch,
+        )
+        self.client.force_authenticate(user=other_staff)
+
+        response = self.client.post(
+            reverse("api_call_next_ticket", kwargs={"counter_id": self.counter.id})
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.status, QueueTicket.WAITING)
+
+    def test_system_admin_can_access_any_branch(self):
+        """SYSTEM_ADMIN is intentionally global and does not require a branch assignment."""
+        admin_user = User.objects.create_user(username="sysadmin", password="pw")
+        Profile.objects.create(
+            user=admin_user,
+            date_of_birth=date(1985, 1, 1),
+            gender=Profile.OTHER,
+            role=Profile.SYSTEM_ADMIN,
+            branch=None,
+        )
+        self.client.force_authenticate(user=admin_user)
+
+        response = self.client.get(
+            reverse("api_branch_waiting_queue", kwargs={"branch_id": self.branch.id})
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_closed_counter_cannot_call_customer(self):
         """A closed counter must be opened before it changes queue state."""
@@ -152,6 +223,7 @@ class QueueOperationalAPITests(APITestCase):
             date_of_birth=date(1998, 1, 1),
             gender=Profile.OTHER,
             disability_status=False,
+            role=Profile.CUSTOMER,
         )
         second_booking = Booking.objects.create(
             user=second_user,
@@ -239,6 +311,7 @@ class QueueOperationalAPITests(APITestCase):
             date_of_birth=date(1960, 1, 1),
             gender=Profile.OTHER,
             disability_status=False,
+            role=Profile.CUSTOMER,
         )
         priority_booking = Booking.objects.create(
             user=priority_user,
