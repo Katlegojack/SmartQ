@@ -6,7 +6,7 @@ Smart Q is a Django + Django REST Framework **Queue Intelligence Platform** desi
 
 The system is being built around the full service journey: account creation, booking, arrival/check-in, live queue tracking, counter service, disruptions, rescheduling, notifications, management visibility, and eventually data-driven waiting-time prediction.
 
-> **Current development state:** Day 30 customer arrival/check-in is implemented and verified on `feature/day30-check-in`. GitHub Actions passes the migration-drift check, Django system check, accounts tests, queue regression tests, booking/check-in tests, and the complete project test suite.
+> **Current development state:** Days 28, 29, and 30 are implemented, verified, and integrated into `main`. Day 30 customer arrival/check-in is now part of the main branch through PR #19. The verified Day 30 code passed the migration-drift check, Django system check, accounts tests, queue regression tests, booking/check-in tests, and the complete project test suite.
 
 ---
 
@@ -302,25 +302,20 @@ Smart Q daily documentation records the objective, architecture, code, API contr
 
 ---
 
-## Current Git Dependency Chain
+## Current Git State
+
+Days 28–30 are now integrated into `main`.
 
 ```text
-main
-  ↑
-PR #16 - Day 28 (verified; GitHub still marks Draft)
-  ↑
-feature/day28-operational-core
-  ↑
-PR #17 - Day 29 (verified; Draft)
-  ↑
-feature/day29-auth-roles
-  ↑
-PR #18 - Day 30 (verified; Draft)
-  ↑
-feature/day30-check-in
+PR #16 - Day 28 operational core           → merged
+PR #17 - Day 29 authentication + roles     → merged
+PR #18 - Day 30 check-in branch chain      → merged
+PR #19 - feature/day30-check-in → main     → merged
+
+main now contains the complete verified Day 28 + Day 29 + Day 30 implementation.
 ```
 
-The chained branches preserve verified work while the connected GitHub action cannot change PR #16's Draft flag. After PR #16 is manually marked Ready and merged, later PRs can be retargeted toward `main` in order.
+The Day 30 feature branch is no longer ahead of `main`; `main` contains all of its commits and is the source of truth for the next development day.
 
 ---
 
