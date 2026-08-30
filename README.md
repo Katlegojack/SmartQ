@@ -4,31 +4,62 @@
 
 Smart Q is a Django + Django REST Framework **Queue Intelligence Platform** designed to make queues more predictable, transparent, fair, and operationally efficient.
 
-The system is being built around the full service journey: account creation, booking, arrival/check-in, live queue tracking, counter service, disruptions, rescheduling, notifications, management visibility, and eventually data-driven waiting-time prediction.
+The product is built around the full service journey: account creation, appointment booking, online/in-person check-in, live queue tracking, reception workflows, counter service, disruptions, rescheduling, notifications, management visibility, and eventually data-driven waiting-time prediction.
 
-> **Current development state:** Days 28, 29, and 30 are implemented, verified, and integrated into `main`. Day 30 customer arrival/check-in is now part of the main branch through PR #19. The verified Day 30 code passed the migration-drift check, Django system check, accounts tests, queue regression tests, booking/check-in tests, and the complete project test suite.
+> **Current development state:** Days 28–30 are integrated into `main`. Day 31 reception search, guest walk-ins, six-hour online check-in, hourly reminder logic, and unchecked-appointment cancellation are implemented and verified on `feature/day31-reception-walkins`.
 
 ---
 
-## Vision
+## Product Principle
 
-Smart Q aims to replace uncertain physical waiting with a digital operational system that can answer:
+Smart Q exists so customers do not need to stand physically in a queue just to hold a place in it.
+
+A **check-in means live-queue activation**. It may happen online or in person.
 
 ```text
-Who has an appointment?
-Who has actually arrived?
-Who is actively waiting?
-Who should be served next?
-What is the customer's queue position?
-How long might they wait?
-Which staff member may operate this branch?
-What happens when the queue is disrupted?
-How is the branch performing?
+ADVANCE APPOINTMENT
+        ↓
+SCHEDULED
+        ↓
+6 HOURS BEFORE APPOINTMENT
+        ↓
+CHECK-IN OPENS
+        ↓
+ONLINE CHECK-IN OR STAFF CHECK-IN
+        ↓
+WAITING
+        ↓
+CALL NEXT
+        ↓
+SERVING
+   ├── COMPLETED
+   └── NO_SHOW
 ```
 
-A core principle is:
+If the appointment time passes and the customer never checked in:
 
-> **Every Smart Q workflow should reduce uncertainty for customers, staff, and managers.**
+```text
+checked_in_at = NULL
+appointment time elapsed
+        ↓
+CANCELLED
+```
+
+The customer was never in the live queue, therefore that outcome is **not** a no-show.
+
+If the customer checked in, joined the live queue, was called, and then did not present:
+
+```text
+checked_in_at exists
+        ↓
+WAITING
+        ↓
+CALLED / SERVING
+        ↓
+customer absent
+        ↓
+NO_SHOW
+```
 
 ---
 
@@ -67,7 +98,7 @@ notifications
 rescheduling
 ```
 
-Business rules remain in backend service functions so the frontend does not decide priority, queue order, check-in eligibility, or service state transitions.
+Queue order, priority, check-in eligibility, expiry, and operational state transitions are backend decisions rather than frontend-controlled values.
 
 ---
 
@@ -83,10 +114,10 @@ SYSTEM_ADMIN
 
 | Role | Current authorization |
 |---|---|
-| Customer | Customer-owned APIs only |
-| Receptionist | Read queue + check in customers at assigned branch |
-| Counter Staff | Read/operate queue + check in customers at assigned branch |
-| Branch Manager | Read/operate queue + check in customers at assigned branch |
+| Customer | Own account/bookings/queue only |
+| Receptionist | Branch queue reads, search, customer check-in, guest walk-ins |
+| Counter Staff | Branch queue reads/operations + reception-compatible check-in |
+| Branch Manager | Branch operational access |
 | System Admin | Global operational access |
 
 Branch-scoped staff must have a branch. Customers and System Admin do not.
@@ -102,63 +133,13 @@ POST /api/v1/accounts/logout/
 GET  /api/v1/accounts/me/
 ```
 
-Public registration always creates a normal `CUSTOMER` account. Caller-supplied staff/admin privilege fields cannot promote the user.
+Public registration always creates a normal `CUSTOMER` account. Caller-supplied privilege fields cannot create staff/admin authority.
 
-Django sessions are the current authentication foundation. A separately hosted production frontend will still require a deliberate CORS/CSRF/secure-cookie or token strategy.
-
----
-
-## Day 30: Scheduled Appointment vs Live Queue
-
-Before Day 30, booking creation immediately placed the ticket in `WAITING`. That incorrectly treated an appointment as if the customer had already arrived.
-
-Day 30 introduces the correct lifecycle:
-
-```text
-BOOKING CREATED
-    ↓
-QueueTicket = SCHEDULED
-checked_in_at = null
-    ↓
-CUSTOMER ARRIVES / RECEPTION CHECK-IN
-    ↓
-checked_in_at = timestamp
-QueueTicket = WAITING
-    ↓
-CALL NEXT
-    ↓
-SERVING
-   ├── COMPLETED
-   └── NO_SHOW
-```
-
-### QueueTicket states
-
-```text
-scheduled
-waiting
-serving
-completed
-no_show
-cancelled
-```
-
-### Check-in rules
-
-A booking can join the live queue only when:
-
-- it is for today;
-- it has not already been checked in;
-- it is not cancelled, completed, or no-show;
-- the customer owns it, or authorised staff belong to the booking's branch.
-
-A successful check-in stores `Booking.checked_in_at` and moves the ticket from `SCHEDULED` to `WAITING`.
-
-Rescheduling clears `checked_in_at` and returns the ticket to `SCHEDULED`, requiring a fresh arrival on the new date.
+Django sessions are the current authentication foundation. Final production deployment still requires an explicit CORS/CSRF/secure-cookie or token strategy.
 
 ---
 
-## Booking APIs
+## Booking and Check-In APIs
 
 ```http
 POST  /api/v1/bookings/
@@ -170,7 +151,91 @@ PATCH /api/v1/bookings/<id>/cancel/
 PATCH /api/v1/bookings/<id>/reschedule/
 ```
 
-Customer self check-in is ownership-scoped. Staff check-in reuses Day 29 role and branch object permissions.
+### Check-in timing
+
+Check-in opens exactly **6 hours before the appointment datetime**.
+
+Example:
+
+```text
+Appointment: 15:00
+Check-in opens: 09:00
+```
+
+Before the window, the API rejects check-in and returns the opening time.
+
+Once the customer checks in:
+
+```text
+Booking.checked_in_at = activation timestamp
+QueueTicket.status = WAITING
+```
+
+`checked_in_at` does not prove physical branch presence.
+
+---
+
+## Reception APIs
+
+### Search branch customers/bookings
+
+```http
+GET /api/v1/bookings/reception/search/?q=<query>
+```
+
+Search supports booking ID, username, first/last name, email, guest name, and guest phone number. Results are restricted to the authorised staff member's branch.
+
+### Create guest walk-in
+
+```http
+POST /api/v1/bookings/reception/walk-ins/
+```
+
+A guest walk-in does **not** require a Smart Q account.
+
+Minimum operational data:
+
+```text
+full name
+optional phone number
+date of birth
+gender
+disability status
+pregnancy for the visit
+service
+```
+
+The backend creates:
+
+```text
+GuestCustomer
+Booking.source = WALK_IN
+Booking.checked_in_at = now
+QueueTicket.status = WAITING
+```
+
+Guest walk-ins use the same automatic General/Priority rules as registered customers.
+
+---
+
+## Customer Identity Model
+
+A Booking now belongs to exactly one customer identity:
+
+```text
+Registered Django/Smart Q user
+            OR
+GuestCustomer
+```
+
+A database constraint prevents a booking from having both or neither.
+
+Booking source is explicit:
+
+```text
+online
+walk_in
+```
 
 ---
 
@@ -181,8 +246,6 @@ Customer self check-in is ownership-scoped. Staff check-in reuses Day 29 role an
 ```http
 GET /api/v1/queues/my-current/
 ```
-
-Returns the checked-in customer's active ticket, queue position, people ahead, and rule-based estimated wait.
 
 ### Staff reads
 
@@ -199,49 +262,79 @@ POST /api/v1/queues/counters/<counter_id>/complete/
 POST /api/v1/queues/counters/<counter_id>/no-show/
 ```
 
-`Call Next` now selects only customers who have actually checked in.
+Call Next selects only checked-in `WAITING` customers.
+
+Live queue order uses check-in time rather than booking creation time.
 
 ---
 
-## Queue Ordering and ETA
+## Priority Policy
 
-Live queue order now uses **check-in time**, not ticket creation time.
+Queue type is assigned by the backend.
+
+Current priority conditions:
 
 ```text
-Customer A books 5 days early, checks in at 09:10
-Customer B books today, checks in at 09:00
-
-Live FIFO order:
-B before A
+age >= 55
+OR disability status
+OR female + pregnancy for the visit
 ```
 
-Queue position and people-ahead calculations use checked-in `WAITING` tickets only.
+The customer/receptionist does not manually select General or Priority.
 
-The current estimator remains rule-based:
+The same policy applies to registered customers and guest walk-ins.
+
+---
+
+## Waiting-Time Estimate
+
+Current waiting-time calculation is deterministic:
 
 ```text
 Estimated Wait ≈
 (People Ahead × Average Service Time) ÷ Active Counters
 ```
 
-A trained ML model remains future work.
+It is **not yet ML**.
+
+Queue position and people-ahead calculations use checked-in live customers only.
 
 ---
 
-## Queue Statistics
+## Check-In Reminders
 
-Daily queue statistics distinguish:
+For advance online appointments, Smart Q creates an in-app reminder every hour during the six-hour check-in window until the customer checks in.
+
+Example for a 15:00 appointment:
 
 ```text
-scheduled
-waiting
-serving
-completed
-no_show
-cancelled
+09:00
+10:00
+11:00
+12:00
+13:00
+14:00
 ```
 
-Scheduled appointments are expected customers but are not counted as customers physically waiting at the branch.
+Successful check-in stops future reminders.
+
+Same-hour scheduler retries do not duplicate reminders because reminder slots are protected by a database uniqueness constraint.
+
+The reminder engine does not backfill old missed reminders after scheduler downtime.
+
+### Scheduler command
+
+```powershell
+python manage.py process_check_in_reminders
+```
+
+This command:
+
+- creates the currently due hourly reminder;
+- skips customers already checked in;
+- cancels appointments whose time passed without check-in.
+
+The business logic is scheduler-agnostic. Production may later use cron, Celery Beat, a cloud scheduler, or another approved mechanism.
 
 ---
 
@@ -253,13 +346,13 @@ GET   /api/v1/notifications/unread-count/
 PATCH /api/v1/notifications/<notification_id>/mark-read/
 ```
 
-External SMS, WhatsApp, email, and push delivery remain future work.
+Current delivery is in-app. SMS, WhatsApp, email, and push remain future external channels.
 
 ---
 
 ## Automated Verification
 
-GitHub Actions runs:
+GitHub Actions currently runs:
 
 ```powershell
 python manage.py makemigrations --check --dry-run
@@ -267,24 +360,13 @@ python manage.py check
 python manage.py test accounts
 python manage.py test queues
 python manage.py test bookings
+python manage.py test notifications
 python manage.py test
 ```
 
-**Day 30 final result: all stages PASS.**
+**Day 31 implementation result: all stages PASS.**
 
-Day 30 regression coverage includes:
-
-- successful customer self check-in;
-- wrong-date rejection;
-- cross-customer ownership protection;
-- duplicate check-in conflict;
-- final-state rejection;
-- reception check-in at assigned branch;
-- wrong-branch staff denial;
-- reschedule resets check-in;
-- booking creation creates `SCHEDULED`, not `WAITING`;
-- Call Next ignores un-checked-in appointments;
-- Day 28/29 queue and authorization regressions.
+Coverage includes six-hour check-in timing, appointment expiry cancellation, duplicate check-in protection, branch-scoped reception search, guest walk-ins, guest priority assignment, reminder timing/deduplication, reminder stop-after-check-in, and all earlier queue/authentication regressions.
 
 ---
 
@@ -296,26 +378,22 @@ Permanent engineering records:
 docs/DAY28_OPERATIONAL_CORE.md
 docs/DAY29_AUTH_ROLES.md
 docs/DAY30_CHECK_IN.md
+docs/DAY31_RECEPTION_WALKINS.md
 ```
-
-Smart Q daily documentation records the objective, architecture, code, API contract, security decisions, test commands, bugs/fixes, CI results, limitations, and next step.
 
 ---
 
 ## Current Git State
 
-Days 28–30 are now integrated into `main`.
+Days 28–30 are already integrated into `main`.
 
 ```text
-PR #16 - Day 28 operational core           → merged
-PR #17 - Day 29 authentication + roles     → merged
-PR #18 - Day 30 check-in branch chain      → merged
-PR #19 - feature/day30-check-in → main     → merged
-
-main now contains the complete verified Day 28 + Day 29 + Day 30 implementation.
+main
+  ↑
+feature/day31-reception-walkins
 ```
 
-The Day 30 feature branch is no longer ahead of `main`; `main` contains all of its commits and is the source of truth for the next development day.
+Day 31 branches directly from the clean merged `main` state.
 
 ---
 
@@ -323,14 +401,19 @@ The Day 30 feature branch is no longer ahead of `main`; `main` contains all of i
 
 Smart Q now includes:
 
-- customer accounts and login/logout;
+- customer accounts and session authentication;
 - Smart Q roles and branch authorization;
 - branches and services;
 - booking create/list/detail/cancel/reschedule;
-- automatic General/Priority classification;
+- online and staff check-in;
+- six-hour check-in opening window;
+- hourly check-in reminder engine;
+- automatic cancellation of expired unchecked appointments;
+- reception booking/customer search;
+- guest walk-ins without accounts;
+- shared guest/registered priority rules;
 - digital queue numbers;
-- explicit scheduled vs checked-in lifecycle;
-- customer and reception check-in;
+- scheduled / waiting / serving / completed / no-show / cancelled lifecycle;
 - live waiting queues;
 - queue position and rule-based ETA;
 - counter Call Next / Complete / No Show;
@@ -345,28 +428,26 @@ Smart Q now includes:
 
 ## Important Remaining Operational Gaps
 
-The next major work includes:
+Next major backend work:
 
-1. Reception booking search / customer lookup.
-2. Walk-in customer + ticket workflow.
-3. Booking availability/capacity engine.
-4. Branch ↔ Service availability mapping.
-5. Counter lifecycle APIs and staff-to-counter assignment.
-6. Manager live dashboard APIs.
-7. Manager disruption/rescheduling APIs.
-8. Historical QueueEvent timestamps for analytics and ML.
-9. External notifications.
-10. Password reset/account verification and throttling.
-11. PostgreSQL and queue-number concurrency hardening.
-12. Production secrets, HTTPS, logs, monitoring, and backups.
-13. Real-time delivery strategy.
-14. Genuine trained/evaluated ML waiting-time forecasting.
+1. Booking availability/capacity engine.
+2. Branch ↔ Service availability mapping.
+3. Counter lifecycle APIs and staff-to-counter assignment.
+4. Manager live dashboard APIs.
+5. Manager disruption/rescheduling APIs.
+6. Historical QueueEvent timestamps for analytics and ML.
+7. External notification channels.
+8. Password reset/account verification and throttling.
+9. PostgreSQL and queue-number concurrency hardening.
+10. Production secrets, HTTPS, logs, monitoring, and backups.
+11. Real-time delivery strategy.
+12. Genuine trained/evaluated ML waiting-time forecasting.
 
 ---
 
 ## Roadmap
 
-### Implemented foundation
+### Operational MVP foundation
 
 ```text
 Profiles
@@ -377,23 +458,23 @@ Services
 Bookings
 Queue Tickets
 Priority Logic
-Notifications
-Disruption / Rescheduling Foundation
-DRF APIs
+Online / Staff Check-In
+Reception Search
+Guest Walk-Ins
+Hourly Check-In Reminders
+Expiry Cancellation
 Queue Operations
 Live Queue Reads
-Customer / Reception Check-In
+Notifications
 Automated Tests
 CI
 ```
 
-### Next operational-MVP phase
+### Next operational phase
 
 ```text
-Reception Search
-Walk-Ins
-Booking Availability
 Branch-Service Mapping
+Booking Availability / Capacity
 Counter Lifecycle
 Staff Assignment
 Manager APIs
@@ -433,14 +514,15 @@ Operational recommendations
 |---|---|
 | Backend | Django 6 |
 | API | Django REST Framework |
-| Authentication foundation | Django sessions |
-| Authorization | Profile roles + DRF object permissions |
+| Authentication | Django sessions |
+| Authorization | Profile roles + object-level branch permissions |
 | Language | Python |
 | Development DB | SQLite |
 | Target production DB | PostgreSQL |
 | Internal administration | Django Admin |
 | Tests | Django + DRF APITestCase |
 | CI | GitHub Actions |
+| Background-job foundation | Scheduler-agnostic Django management command |
 | Future real-time | Polling first; WebSockets where justified |
 | Future AI | Trained/evaluated wait-time forecasting |
 
@@ -466,23 +548,29 @@ python manage.py check
 python manage.py test
 ```
 
+Process check-in reminders manually during development:
+
+```powershell
+python manage.py process_check_in_reminders
+```
+
 ---
 
 ## Product Maturity
 
 | Stage | Meaning | Current position |
 |---|---|---|
-| Pitch prototype | Full product journey can be demonstrated | Strong foundation |
-| Pilot operational MVP | Real customer/staff workflow safely works at one branch | In progress |
+| Pitch prototype | Product journey can be demonstrated | Strong foundation |
+| Pilot operational MVP | Real customer/reception/staff workflow at one branch | In progress, significantly advanced |
 | Production platform | Secure, monitored, scalable, enterprise-ready | Future work |
 
 ---
 
 ## Final Project Statement
 
-Smart Q is being built to give people greater control over time normally lost in uncertain physical queues while giving service organisations safer, clearer operational control.
+Smart Q is being built to give people greater control over time normally lost in uncertain physical queues while giving service organisations safer and clearer operational control.
 
-Day 30 makes the live queue materially more truthful: **an appointment is no longer the same thing as a customer who has actually arrived.**
+The customer can now activate a queue position remotely during the approved check-in window, while reception can serve people who arrive without a Smart Q account through a controlled guest walk-in workflow.
 
 ```text
 Make queues fairer, smarter, more transparent,

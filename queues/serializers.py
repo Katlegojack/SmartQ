@@ -12,7 +12,10 @@ class QueueTicketSerializer(serializers.ModelSerializer):
     booking_date = serializers.DateField(source="booking.booking_date", read_only=True)
     booking_time = serializers.TimeField(source="booking.booking_time", read_only=True)
     checked_in_at = serializers.DateTimeField(source="booking.checked_in_at", read_only=True)
-    customer_name = serializers.SerializerMethodField()
+    customer_name = serializers.CharField(
+        source="booking.customer_display_name",
+        read_only=True,
+    )
 
     class Meta:
         model = QueueTicket
@@ -32,9 +35,3 @@ class QueueTicketSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = fields
-
-    def get_customer_name(self, obj):
-        """Prefer the customer's full name, but safely fall back to username."""
-        user = obj.booking.user
-        full_name = user.get_full_name().strip()
-        return full_name or user.username
