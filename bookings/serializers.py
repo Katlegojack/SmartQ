@@ -10,7 +10,6 @@ from .models import Booking
 class BookingCreateSerializer(serializers.ModelSerializer):
     """Validate customer input when a new booking is created."""
 
-    # Customers may only choose active catalogue records.
     branch = serializers.PrimaryKeyRelatedField(
         queryset=Branch.objects.filter(is_active=True)
     )
@@ -28,18 +27,17 @@ class BookingCreateSerializer(serializers.ModelSerializer):
             "booking_time",
             "is_pregnant",
             "status",
+            "checked_in_at",
             "created_at",
         ]
-        read_only_fields = ["id", "status", "created_at"]
+        read_only_fields = ["id", "status", "checked_in_at", "created_at"]
 
     def validate_booking_date(self, value):
-        """Prevent customers from creating bookings in the past."""
         if value < timezone.localdate():
             raise serializers.ValidationError("Booking date cannot be in the past.")
         return value
 
     def validate(self, attrs):
-        """Keep booking times inside the selected branch's operating hours."""
         attrs = super().validate(attrs)
         branch = attrs.get("branch")
         booking_time = attrs.get("booking_time")
@@ -58,10 +56,11 @@ class BookingCreateSerializer(serializers.ModelSerializer):
 
 
 class BookingListSerializer(serializers.ModelSerializer):
-    """Read-only customer booking representation."""
+    """Read-only booking representation including live check-in state."""
 
     branch_name = serializers.CharField(source="branch.name", read_only=True)
     service_name = serializers.CharField(source="service.name", read_only=True)
+    is_checked_in = serializers.BooleanField(read_only=True)
     queue_ticket = serializers.SerializerMethodField()
 
     class Meta:
@@ -76,14 +75,14 @@ class BookingListSerializer(serializers.ModelSerializer):
             "booking_time",
             "is_pregnant",
             "status",
+            "checked_in_at",
+            "is_checked_in",
             "created_at",
             "queue_ticket",
         ]
         read_only_fields = fields
 
     def get_queue_ticket(self, obj):
-        # Only the expected "no related queue ticket" case is swallowed. Other
-        # exceptions should surface during development instead of being hidden.
         try:
             ticket = obj.queueticket
         except ObjectDoesNotExist:
@@ -112,7 +111,6 @@ class BookingRescheduleSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         attrs = super().validate(attrs)
 
-        # During PATCH requests, unchanged values come from the current booking.
         branch = self.instance.branch if self.instance else None
         booking_time = attrs.get(
             "booking_time",

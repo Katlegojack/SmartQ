@@ -5,10 +5,12 @@ on:
     branches:
       - feature/day28-operational-core
       - feature/day29-auth-roles
+      - feature/day30-check-in
   pull_request:
     branches:
       - main
       - feature/day28-operational-core
+      - feature/day29-auth-roles
 
 jobs:
   test:
@@ -39,7 +41,7 @@ jobs:
       - name: Run queue regression tests
         run: python manage.py test queues
 
-      - name: Run booking tests
+      - name: Run booking/check-in tests
         run: python manage.py test bookings
 
       - name: Run full test suite

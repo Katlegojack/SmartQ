@@ -1,23 +1,35 @@
-#path let us define url routes for this app
 from django.urls import path
-#Import booking creation api view
-from .api_views import BookingCreateAPIView,MyBookingListAPIView,BookingDetailAPIView,BookingCancelAPIView,BookingRescheduleAPIView
 
-#These are the booking api routes
+from .api_views import (
+    BookingCancelAPIView,
+    BookingCheckInAPIView,
+    BookingCreateAPIView,
+    BookingDetailAPIView,
+    BookingRescheduleAPIView,
+    MyBookingListAPIView,
+    StaffBookingCheckInAPIView,
+)
+
+
 urlpatterns = [
-    # Creates a new booking for the logged-in user. Full URL: /api/v1/bookings/
-    path('',BookingCreateAPIView.as_view(),name='api_booking_create'),
-    # Returns bookings that belong to the logged-in user. Full URL: /api/v1/bookings/my/
-    path('my/',MyBookingListAPIView.as_view(),name='api_my_booking_list'),
+    path("", BookingCreateAPIView.as_view(), name="api_booking_create"),
+    path("my/", MyBookingListAPIView.as_view(), name="api_my_booking_list"),
+    path("<int:pk>/", BookingDetailAPIView.as_view(), name="api_booking_detail"),
 
-    # Returns one specific booking that belongs to the logged-in user.
-    # Full URL example: /api/v1/bookings/5/
-    path("<int:pk>/",BookingDetailAPIView.as_view(),name="api_booking_detail"),
+    # Customer self check-in on the scheduled booking date.
+    path("<int:pk>/check-in/", BookingCheckInAPIView.as_view(), name="api_booking_check_in"),
 
-    #Cancels a booking that belongs to a logged in user : /api/v1/bookings/5/cancel/
-    path('<int:pk>/cancel/',BookingCancelAPIView.as_view(),name='api_booking_cancel'),
+    # Reception/staff check-in uses the Day 29 role + branch permission system.
+    path(
+        "<int:pk>/staff-check-in/",
+        StaffBookingCheckInAPIView.as_view(),
+        name="api_staff_booking_check_in",
+    ),
 
-    #Reschedules a booking that belongs to a logged in user
-    path('<int:pk>/reschedule/',BookingRescheduleAPIView.as_view(),name='api_booking_reschedule'),
-
+    path("<int:pk>/cancel/", BookingCancelAPIView.as_view(), name="api_booking_cancel"),
+    path(
+        "<int:pk>/reschedule/",
+        BookingRescheduleAPIView.as_view(),
+        name="api_booking_reschedule",
+    ),
 ]
