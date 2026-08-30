@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 from django.db import transaction
 from django.db.models import Case, IntegerField, Value, When
 from django.utils import timezone
@@ -6,6 +8,12 @@ from accounts.models import Profile
 from bookings.models import Booking
 from counters.models import Counter
 from .models import QueueTicket
+
+
+# Product rule: customers may activate their live queue ticket online starting
+# six hours before the booked appointment time. Reception can use the same
+# activation rule for an in-person check-in.
+CHECK_IN_OPEN_HOURS = 6
 
 
 # Business logic: calculate a user's age from their date of birth.
@@ -36,6 +44,22 @@ def determine_queue_type(booking):
     return QueueTicket.GENERAL
 
 
+def get_booking_datetime(booking):
+    """Return the booking's date/time as an aware datetime in Smart Q's timezone."""
+    booking_datetime = datetime.combine(booking.booking_date, booking.booking_time)
+    if timezone.is_naive(booking_datetime):
+        booking_datetime = timezone.make_aware(
+            booking_datetime,
+            timezone.get_current_timezone(),
+        )
+    return booking_datetime
+
+
+def get_check_in_opens_at(booking):
+    """Return the exact datetime when online/in-person check-in becomes available."""
+    return get_booking_datetime(booking) - timedelta(hours=CHECK_IN_OPEN_HOURS)
+
+
 # Business logic: generate the next customer-friendly queue number.
 def generate_queue_number(booking, queue_type):
     prefix = "A" if queue_type == QueueTicket.GENERAL else "P"
@@ -56,7 +80,7 @@ def generate_queue_number(booking, queue_type):
 
 
 # A booking gets a digital ticket immediately, but it does not join the live
-# waiting queue until check-in. SCHEDULED is therefore the safe initial state.
+# waiting queue until online or in-person check-in activates that ticket.
 def create_queue_ticket_for_booking(booking):
     queue_type = determine_queue_type(booking)
     queue_number = generate_queue_number(booking, queue_type)
@@ -72,18 +96,17 @@ def create_queue_ticket_for_booking(booking):
 @transaction.atomic
 def check_in_booking(booking):
     """
-    Move today's eligible booking from scheduled appointment to live queue.
+    Activate an eligible scheduled booking into the live queue.
 
-    Returns a tuple of (ticket, error_code). error_code is None on success and
-    is intentionally simple so both customer and reception API views can reuse
-    exactly the same business rules.
+    Check-in may happen online or in person. It opens six hours before the
+    booked appointment time. The booking must still belong to the current
+    service date so a stale appointment cannot enter a later day's live queue.
+
+    Returns (ticket, error_code). error_code is None on success.
     """
     booking = Booking.objects.select_for_update().select_related(
         "branch", "service", "user", "user__profile"
     ).get(pk=booking.pk)
-
-    if booking.booking_date != timezone.localdate():
-        return None, "wrong_date"
 
     if booking.status in [Booking.CANCELLED, Booking.COMPLETED, Booking.NO_SHOW]:
         return None, "final_state"
@@ -93,6 +116,16 @@ def check_in_booking(booking):
             return booking.queueticket, "already_checked_in"
         except QueueTicket.DoesNotExist:
             return None, "already_checked_in"
+
+    now = timezone.now()
+    if now < get_check_in_opens_at(booking):
+        return None, "too_early"
+
+    # Smart Q's current live-queue engine is date-scoped. Once the booking day
+    # has passed, the appointment must be handled by the later late/no-show or
+    # rescheduling policy rather than entering a new day's queue silently.
+    if booking.booking_date != timezone.localdate():
+        return None, "wrong_date"
 
     try:
         ticket = QueueTicket.objects.select_for_update().get(booking=booking)
@@ -106,10 +139,9 @@ def check_in_booking(booking):
     ]:
         return None, "final_state"
 
-    # Recalculate priority at arrival because profile information may have
-    # changed since booking creation. If the queue class changes, regenerate
-    # the visible queue number so an A-number never represents Priority (or
-    # a P-number General).
+    # Recalculate priority at queue activation because profile information may
+    # have changed since booking creation. If the queue class changes,
+    # regenerate the visible queue number so A/P prefix and queue type agree.
     new_queue_type = determine_queue_type(booking)
     if new_queue_type != ticket.queue_type:
         ticket.queue_type = new_queue_type
@@ -126,7 +158,9 @@ def check_in_booking(booking):
         ]
     )
 
-    booking.checked_in_at = timezone.now()
+    # checked_in_at means live-queue activation time. It does not prove that
+    # the customer is physically inside the branch.
+    booking.checked_in_at = now
     booking.status = Booking.PENDING
     booking.save(update_fields=["checked_in_at", "status"])
 
@@ -142,7 +176,7 @@ def get_current_ticket(counter):
 
 
 def get_waiting_tickets(branch, booking_date=None, queue_type=None):
-    """Return checked-in customers who are actively waiting at a branch."""
+    """Return customers whose tickets have been activated into the live queue."""
     if booking_date is None:
         booking_date = timezone.localdate()
 
@@ -173,7 +207,7 @@ def get_waiting_tickets(branch, booking_date=None, queue_type=None):
 
 @transaction.atomic
 def call_next_ticket(counter, booking_date=None):
-    """Assign the next checked-in waiting customer to an OPEN counter."""
+    """Assign the next activated waiting customer to an OPEN counter."""
     if counter.status != Counter.OPEN:
         return None
 
