@@ -2,11 +2,11 @@
 
 **Where Time Meets Priority**
 
-Smart Q is a Django-based **Queue Intelligence Platform** designed to make queues more predictable, transparent, fair and operationally efficient.
+Smart Q is a Django-based **Queue Intelligence Platform** designed to make queues more predictable, transparent, fair, and operationally efficient.
 
-The platform is being built around the complete service journey rather than appointment booking alone: customers create bookings and receive queue tickets, the backend applies priority rules, customers can track their live queue state and estimated wait, staff operate counters, and managers will eventually use disruption, rescheduling and analytics tools to keep queues moving.
+The platform is being built around the complete service journey rather than appointment booking alone: customers create bookings, receive queue tickets and track queue progress; staff operate live counters; reception and managers receive role-appropriate operational visibility; and the backend provides the foundation for disruption recovery, analytics, and future ML-based waiting-time prediction.
 
-> **Current status:** Day 28 operational-core hardening is implemented and verified by GitHub Actions. Django system checks, queue regression tests, booking tests and the full project test suite pass on `feature/day28-operational-core`.
+> **Current development state:** Day 29 authentication + role-based branch authorization is implemented and verified on `feature/day29-auth-roles`. GitHub Actions passes the migration check, Django system check, account tests, queue tests, booking tests, and the full project test suite. PR #17 is temporarily based on `feature/day28-operational-core` because Day 28 PR #16 is still marked Draft in GitHub.
 
 ---
 
@@ -22,17 +22,16 @@ Who should be served next?
 What is the customer's current position?
 How long might they wait?
 Which counters are available?
+Who is allowed to operate this branch?
 What happens when service is disrupted?
 Which customers may need rescheduling?
 Has the customer been notified?
 How is the branch performing?
 ```
 
-The product is intended to evolve toward use in environments such as government service centres, municipalities, banks, hospitals, clinics, universities, embassies, retail service desks and other high-volume service organisations.
-
 A core product principle is:
 
-> **Every Smart Q workflow should reduce uncertainty for customers, staff and managers.**
+> **Every Smart Q workflow should reduce uncertainty for customers, staff, and managers.**
 
 ---
 
@@ -47,6 +46,8 @@ Django URL Routing
         ↓
 Django REST Framework API Views
         ↓
+Authentication + Role/Branch Permissions
+        ↓
 Serializers
         ↓
 Business Logic / Service Layer
@@ -56,7 +57,7 @@ Django Models / ORM
 Database
 ```
 
-Current Django apps:
+Current apps:
 
 ```text
 accounts
@@ -69,202 +70,147 @@ notifications
 rescheduling
 ```
 
-Business rules remain in backend service functions so the frontend does not become responsible for queue state, priority rules or operational decisions.
+Business rules remain in backend service functions so the frontend does not become responsible for queue state, priority rules, or operational decisions.
 
 ---
 
-## Core Domain Flow
+## Smart Q Roles
+
+Day 29 introduces the first Smart Q-specific authorization model:
 
 ```text
-Customer
-   ↓
-Profile
-   ↓
+CUSTOMER
+RECEPTIONIST
+COUNTER_STAFF
+BRANCH_MANAGER
+SYSTEM_ADMIN
+```
+
+| Role | Current authorization |
+|---|---|
+| Customer | Customer-owned APIs only |
+| Receptionist | Read live queue state for assigned branch |
+| Counter Staff | Read + operate live queue for assigned branch |
+| Branch Manager | Read + operate live queue for assigned branch |
+| System Admin | Global operational access |
+
+Branch rules are enforced by the Profile model/database:
+
+```text
+CUSTOMER        → branch = NULL
+SYSTEM_ADMIN    → branch = NULL
+RECEPTIONIST    → branch required
+COUNTER_STAFF   → branch required
+BRANCH_MANAGER  → branch required
+```
+
+Existing profiles migrate safely to `CUSTOMER`. Existing Django superusers are mapped to `SYSTEM_ADMIN`; ordinary historical `is_staff=True` users are not automatically granted Smart Q operational authority.
+
+---
+
+## Authentication
+
+Day 29 adds the account API foundation using Django session authentication.
+
+```http
+POST /api/v1/accounts/register/
+POST /api/v1/accounts/login/
+POST /api/v1/accounts/logout/
+GET  /api/v1/accounts/me/
+```
+
+Public registration always creates:
+
+```text
+role = CUSTOMER
+branch = NULL
+is_staff = False
+is_superuser = False
+```
+
+Caller-supplied privilege fields cannot promote the account. Django password validators are reused, and User + Profile creation is transactional.
+
+### Production authentication note
+
+Session authentication is a valid Django/DRF foundation. If the final production frontend is hosted on another origin, Smart Q will require an explicit CORS, CSRF, secure-cookie, and deployment strategy. JWT/token authentication will be chosen only if the deployment architecture requires it.
+
+---
+
+## Core Queue Flow
+
+```text
+Authenticated Identity
+        ↓
+Smart Q Profile + Role
+        ↓
 Branch + Service
-   ↓
+        ↓
 Booking
-   ↓
+        ↓
 Priority Decision
-   ↓
+        ↓
 Queue Ticket
-   ↓
+        ↓
 WAITING
-   ↓
+        ↓
 Call Next
-   ↓
+        ↓
 SERVING
    ├── COMPLETED
    └── NO_SHOW
 ```
 
-Cancellation and rescheduling are controlled alternate paths around this lifecycle.
-
-A future operational phase will introduce explicit **arrival/check-in** so a scheduled booking does not automatically become part of the live queue before the customer arrives.
+Cancellation and rescheduling are controlled alternate paths. A future phase will add explicit customer **check-in** before a scheduled booking joins the live operational queue.
 
 ---
 
 ## Current Backend Capabilities
 
-### Accounts and priority information
+Smart Q currently includes:
 
-`Profile` stores information used by queue-priority rules, including date of birth, gender and disability status.
+- Django users + Smart Q Profiles
+- Customer / Receptionist / Counter Staff / Branch Manager / System Admin roles
+- Branch-scoped staff authorization
+- Branches and services
+- Customer bookings
+- automatic General/Priority decisions
+- queue numbers (`A001`, `P001`, ...)
+- queue tickets and lifecycle states
+- counters
+- Call Next / Complete / No Show operations
+- Booking ↔ QueueTicket state synchronization
+- rule-based queue position and wait-time estimation
+- customer live queue tracker API
+- staff waiting-queue and current-counter APIs
+- cancellation and rescheduling APIs
+- queue disruption/rescheduling backend foundation
+- in-app notifications
+- automated Django/DRF regression tests
+- GitHub Actions CI
 
-Current automatic priority logic can classify a booking as Priority when:
-
-```text
-Age >= 55
-OR disability_status = True
-OR pregnancy-related priority applies
-```
-
-Queue number examples:
-
-```text
-A001 -> General
-P001 -> Priority
-```
-
-### Branches
-
-Branches store:
-
-- branch code
-- name
-- address
-- city
-- opening time
-- closing time
-- active status
-
-### Services
-
-Services store:
-
-- service code
-- name
-- description
-- average service time
-- active status
-
-`average_service_time` supports the current waiting-time estimator and disruption-capacity calculations.
-
-### Bookings
-
-Booking states:
-
-```text
-pending
-confirmed
-completed
-cancelled
-no_show
-```
-
-Implemented customer booking operations:
-
-- create booking
-- list own bookings
-- retrieve own booking
-- cancel booking
-- reschedule booking
-- automatically create/update the connected queue ticket
-
-Day 28 also fixes past-date validation and validates booking/reschedule times against branch operating hours.
-
-### Queue Tickets
-
-Queue ticket states:
-
-```text
-waiting
-serving
-completed
-no_show
-cancelled
-```
-
-A ticket stores its queue number, queue type, booking relationship, status, assigned counter and creation time.
-
-### Counters
-
-Counters represent branch service points and currently support:
-
-```text
-open
-closed
-paused
-```
-
-Each counter also has a queue type so General and Priority queues can be handled independently where required.
-
-### Waiting-Time Intelligence
-
-The current estimator is **rule based**, not yet machine learning.
-
-It uses:
-
-```text
-people ahead
-average service time
-active counters
-```
-
-Conceptually:
-
-```text
-Estimated Wait = (People Ahead x Average Service Time) / Active Counters
-```
-
-The backend can currently calculate:
-
-- people ahead
-- queue position
-- estimated wait time
-
-This provides a baseline for later ML-based forecasting.
-
-### Disruption and Rescheduling Foundation
-
-Smart Q already contains backend foundations for:
-
-- queue pauses
-- pause duration
-- lost service capacity
-- affected customers
-- reschedule-risk customers
-- persisted disruption impacts
-- reschedule recommendations
-- reschedule options
-- approval/application workflows
-- queue-number regeneration after rescheduling
-- reschedule confirmation notifications
-
-### Notifications
-
-The in-app notification system supports:
-
-- notification records
-- notification type
-- message body
-- related queue ticket/disruption impact
-- read/unread state
-- unread count
-- mark-as-read workflow
-
-External SMS, WhatsApp, email and push delivery remain future work.
+Current waiting-time estimation is **rule-based, not ML**. A trained prediction model remains future work.
 
 ---
 
-## REST API Status
+## REST API
 
-### Public catalogue
+### Accounts
+
+```http
+POST /api/v1/accounts/register/
+POST /api/v1/accounts/login/
+POST /api/v1/accounts/logout/
+GET  /api/v1/accounts/me/
+```
+
+### Catalogue
 
 ```http
 GET /api/v1/branches/
 GET /api/v1/services/
 ```
 
-### Customer bookings
+### Bookings
 
 ```http
 POST  /api/v1/bookings/
@@ -274,14 +220,17 @@ PATCH /api/v1/bookings/<id>/cancel/
 PATCH /api/v1/bookings/<id>/reschedule/
 ```
 
-Customer booking queries are scoped to `request.user` so one customer cannot read or modify another customer's booking by guessing an ID.
-
-### Notifications
+### Customer queue
 
 ```http
-GET   /api/v1/notifications/
-GET   /api/v1/notifications/unread-count/
-PATCH /api/v1/notifications/<notification_id>/mark-read/
+GET /api/v1/queues/my-current/
+```
+
+### Staff queue reads
+
+```http
+GET /api/v1/queues/branches/<branch_id>/waiting/
+GET /api/v1/queues/counters/<counter_id>/current/
 ```
 
 ### Queue operations
@@ -292,209 +241,173 @@ POST /api/v1/queues/counters/<counter_id>/complete/
 POST /api/v1/queues/counters/<counter_id>/no-show/
 ```
 
-Day 28 protects these operations with an interim staff permission boundary using Django `User.is_staff`.
-
-### Day 28 live queue read APIs
+### Notifications
 
 ```http
-GET /api/v1/queues/my-current/
-GET /api/v1/queues/branches/<branch_id>/waiting/
-GET /api/v1/queues/counters/<counter_id>/current/
-```
-
-These allow the frontend to answer:
-
-```text
-Customer -> What is my live queue state, position and estimated wait?
-Staff    -> Who is waiting at this branch?
-Staff    -> Who is currently being served at this counter?
+GET   /api/v1/notifications/
+GET   /api/v1/notifications/unread-count/
+PATCH /api/v1/notifications/<notification_id>/mark-read/
 ```
 
 ---
 
-## Day 28 - Operational Core Hardening
-
-Day 28 focused on making the existing queue engine safer, consistent and frontend-ready.
-
-Implemented and verified:
-
-- staff-only permission boundary for counter operations using `User.is_staff` as an interim solution
-- normal customers receive `403 Forbidden` when attempting staff queue operations
-- `call_next_ticket()` safely handles an empty queue
-- closed/paused counters cannot call customers
-- Call Next only selects today's bookings
-- a busy counter cannot call a second customer
-- critical queue transitions use database transactions
-- `select_for_update()` added around critical ticket selection/state transitions
-- Booking and QueueTicket lifecycle states are synchronized
-- completion updates both Booking and QueueTicket to completed
-- no-show updates both Booking and QueueTicket to no-show
-- cancellation clears any counter assignment
-- rescheduling rejects completed/cancelled/no-show bookings
-- rescheduling resets the ticket to waiting with a new queue number
-- booking past-date validation fixed
-- branch operating-hour validation added
-- broad `except Exception` handling removed from important booking flows
-- counter field/counting bugs fixed
-- queue statistics helper naming fixed
-- combined waiting queue explicitly places Priority before General
-- queue serializer expanded with frontend-useful context
-- customer current-queue API added
-- branch waiting-queue API added
-- counter current-customer API added
-- automated regression tests expanded
-- GitHub Actions CI workflow added
-
-Detailed engineering documentation:
+## Authorization Model
 
 ```text
-docs/DAY28_OPERATIONAL_CORE.md
+Authentication
+"Who are you?"
+        ↓
+Smart Q Role
+"What kind of action may you perform?"
+        ↓
+Branch Scope
+"Where may you perform it?"
+        ↓
+Object Permission
+"May you act on this Branch/Counter?"
 ```
 
-### Day 28 verification
+Important safeguards now include:
 
-The branch was verified automatically using GitHub Actions with:
+- customers cannot operate counters;
+- receptionists can read but not mutate live queue state;
+- counter staff and branch managers are restricted to their branch;
+- system administrators can operate globally;
+- public registration cannot create privileged accounts;
+- customer booking data remains user-scoped;
+- critical queue changes use database transactions;
+- Booking and QueueTicket lifecycle states stay synchronized;
+- regression tests cover both valid and denied operations.
+
+---
+
+## Automated Verification
+
+GitHub Actions currently runs:
 
 ```powershell
+python manage.py makemigrations --check --dry-run
 python manage.py check
+python manage.py test accounts
 python manage.py test queues
 python manage.py test bookings
 python manage.py test
 ```
 
-All four verification stages passed on the Day 28 branch.
-
-The expanded queue regression tests cover:
-
-- customer authorization rejection
-- closed counter protection
-- staff Call Next lifecycle
-- future booking protection
-- prevention of double-serving at one counter
-- completion lifecycle synchronization
-- no-show lifecycle synchronization
-- current-counter read API
-- customer queue tracker API
-- Priority-before-General combined waiting queue
-- invalid queue-type validation
+**Day 29 final result: all stages PASS.**
 
 ---
 
-## Security Direction
+## Documentation
 
-Authentication and authorization are different:
-
-```text
-Authentication -> Who are you?
-Authorization  -> What are you allowed to do?
-```
-
-Customer-owned booking and notification APIs scope data to the logged-in user.
-
-Day 28 adds an interim staff authorization boundary:
-
-```python
-user.is_staff
-```
-
-This is not the final Smart Q role system. The target design remains:
+Permanent engineering records:
 
 ```text
-CUSTOMER
-RECEPTIONIST
-COUNTER_STAFF
-BRANCH_MANAGER
-SYSTEM_ADMIN
+docs/DAY28_OPERATIONAL_CORE.md
+docs/DAY29_AUTH_ROLES.md
 ```
 
-The future system must also enforce branch-scoped authorization so staff assigned to Branch A cannot operate Branch B simply by knowing a counter ID.
+Smart Q daily documentation records the objective, architecture, code, API contract, security decisions, test commands, bugs/fixes, CI results, limitations, and next step.
+
+---
+
+## Current Git Workflow State
+
+```text
+main
+  ↑
+PR #16 - Day 28 (verified, still Draft in GitHub)
+  ↑
+feature/day28-operational-core
+  ↑
+PR #17 - Day 29 (verified, Draft)
+  ↑
+feature/day29-auth-roles
+```
+
+PR #17 temporarily targets the verified Day 28 branch. After PR #16 is manually marked **Ready for review** and squash-merged, PR #17 should be retargeted to `main` and merged after its checks are confirmed.
 
 ---
 
 ## Known Operational Gaps
 
-Smart Q has a strong backend foundation but is not production-ready yet.
+The next important work includes:
 
-Important remaining work:
-
-1. Authentication API strategy for the separate production frontend.
-2. Dedicated role and branch-assignment model instead of relying on `is_staff`.
-3. Customer check-in so scheduled appointments enter the live queue after arrival.
-4. Walk-in/reception workflow.
-5. Booking availability and capacity engine.
-6. Branch-to-Service availability mapping.
-7. Counter lifecycle APIs for open/pause/resume/close and staff assignment.
-8. Manager dashboard APIs and branch-level operational metrics.
-9. Manager-facing disruption/rescheduling REST APIs.
-10. Historical queue timestamps/events such as check-in, called, service-start and completed times.
-11. Real-time updates, initially feasible through polling and later WebSockets where justified.
-12. External SMS/WhatsApp/email/push notifications.
-13. Broader automated testing, especially concurrency and branch-level permissions.
-14. Production PostgreSQL and secure deployment configuration.
-15. Genuine AI/ML wait-time forecasting trained and evaluated on suitable data.
+1. Customer arrival/check-in before joining the live queue.
+2. Walk-in/reception ticket workflow.
+3. Capacity-aware booking availability.
+4. Branch ↔ Service mapping.
+5. Counter lifecycle and staff-to-counter assignment.
+6. Manager dashboard and disruption-management APIs.
+7. Historical queue event timestamps for analytics/ML.
+8. Password reset/account verification and login throttling.
+9. Final production CORS/CSRF/session-or-token authentication deployment strategy.
+10. External SMS/email/WhatsApp/push notifications.
+11. PostgreSQL, environment secrets, HTTPS, logging, monitoring, and backups.
+12. Queue-number concurrency hardening.
+13. Genuine trained/evaluated ML waiting-time prediction.
 
 ---
 
 ## Roadmap
 
-### Phase 1 - Core Domain Foundation
-
-Profiles, branches, services, bookings, queue tickets, queue numbers and priority rules.
-
-**Status:** foundation implemented.
-
-### Phase 2 - Booking API
-
-Create, My Bookings, Detail, Cancel and Reschedule.
-
-**Status:** implemented and hardened further on Day 28.
-
-### Phase 3 - Operational Queue Engine
-
-Call Next, Serving, Complete, No Show, counter assignment and queue read APIs.
-
-**Status:** core implemented and Day 28 verification passed.
-
-### Phase 4 - Queue Intelligence
-
-People ahead, queue position, rule-based ETA and counter capacity.
-
-**Status:** foundation implemented and live customer API exposed.
-
-### Phase 5 - Disruption and Recovery
-
-Queue pauses, lost capacity, affected customers, reschedule risk, recommendations and notifications.
-
-**Status:** backend foundation implemented; manager-facing APIs remain.
-
-### Phase 6 - Operational MVP Completion
+### Implemented foundation
 
 ```text
-Auth API
-Roles
-Branch Permissions
-Check-In
-Walk-Ins
-Availability
-Counter Lifecycle
-Manager Dashboard APIs
-Historical Events
-Expanded Automated Tests
+Profiles
+Branches
+Services
+Bookings
+Queue Tickets
+Priority Logic
+Notifications
+Disruption / Rescheduling Foundation
+DRF APIs
+Queue Operations
+Live Queue Reads
+Authentication APIs
+Smart Q Roles
+Branch Authorization
+Automated Tests
+CI
 ```
 
-**Status:** next major backend stage.
+### Next operational-MVP phase
 
-### Phase 7 - Real-Time and Production Readiness
+```text
+Customer Check-In
+Walk-Ins / Reception
+Booking Availability
+Counter Lifecycle
+Staff Assignment
+Manager APIs
+Historical Queue Events
+```
 
-Polling/WebSockets, external notifications, PostgreSQL, secure environment configuration, logging, monitoring, backups and deployment.
+### Production phase
 
-**Status:** planned.
+```text
+PostgreSQL
+Secure configuration
+CORS/CSRF deployment policy
+External notifications
+Real-time delivery
+Monitoring
+Backups
+Audit/compliance
+```
 
-### Phase 8 - Analytics and AI
+### Analytics + AI phase
 
-Historical queue dataset, actual wait measurement, demand patterns, peak analysis, model training/evaluation, ML wait-time prediction and operational recommendations.
-
-**Status:** planned. Current wait prediction remains rule based.
+```text
+Historical dataset
+Actual wait/service-duration measurement
+Demand/peak analysis
+Model training
+Model evaluation
+ML wait prediction
+Operational recommendations
+```
 
 ---
 
@@ -502,17 +415,18 @@ Historical queue dataset, actual wait measurement, demand patterns, peak analysi
 
 | Layer | Technology |
 |---|---|
-| Backend | Django |
+| Backend | Django 6 |
 | API | Django REST Framework |
+| Authentication foundation | Django sessions |
+| Authorization | Profile roles + DRF object permissions |
 | Language | Python |
-| Development Database | SQLite |
-| Target Production Database | PostgreSQL |
-| Internal Administration | Django Admin |
-| Version Control | Git + GitHub |
-| Automated Verification | Django tests + GitHub Actions |
-| Future Real-Time | Polling initially; WebSockets/Channels where justified |
-| Future Notifications | In-app + email/SMS/WhatsApp/push |
-| Future AI | ML wait-time forecasting after data/evaluation work |
+| Development DB | SQLite |
+| Target production DB | PostgreSQL |
+| Internal administration | Django Admin |
+| Tests | Django + DRF APITestCase |
+| CI | GitHub Actions |
+| Future real-time | Polling first; WebSockets where justified |
+| Future AI | Trained/evaluated ML waiting-time forecasting |
 
 ---
 
@@ -528,85 +442,31 @@ python manage.py migrate
 python manage.py runserver
 ```
 
-Project verification:
+Verify the project:
 
 ```powershell
+python manage.py makemigrations --check --dry-run
 python manage.py check
 python manage.py test
 ```
 
 ---
 
-## Development Workflow
-
-Smart Q uses feature branches and pull requests rather than experimental work directly on `main`.
-
-```text
-main
- ↓
-feature branch
- ↓
-implement coherent slice
- ↓
-comment + document important logic
- ↓
-checks + automated tests
- ↓
-push
- ↓
-pull request
- ↓
-CI verification
- ↓
-review
- ↓
-squash merge
-```
-
-The Day 28 branch also introduces `.github/workflows/django-tests.yml` so future relevant pushes/PRs can be verified automatically.
-
----
-
-## Documentation Standard
-
-Major development slices should document:
-
-- aim and business problem
-- architecture and data flow
-- code responsibilities
-- state transitions
-- security decisions
-- API contract
-- tests and expected behaviour
-- bugs fixed
-- known limitations
-- future improvements
-
-Day 28 detailed documentation:
-
-```text
-docs/DAY28_OPERATIONAL_CORE.md
-```
-
----
-
 ## Product Maturity
 
-| Stage | Meaning | Current Position |
+| Stage | Meaning | Current position |
 |---|---|---|
-| Pitch prototype | Complete product story can be demonstrated | Strong foundation |
-| Pilot operational MVP | Real customers/staff can safely operate one branch | In progress |
-| Production platform | Secure, monitored, scalable, tested and enterprise-ready | Future work |
+| Pitch prototype | Product journey can be demonstrated | Strong foundation |
+| Pilot operational MVP | Safe real customer/staff workflow at one branch | In progress |
+| Production platform | Secure, monitored, scalable, enterprise-ready | Future work |
 
 ---
 
 ## Final Project Statement
 
-Smart Q is being built to give people greater control over time normally lost in uncertain physical queues.
+Smart Q is being built to give customers greater control over time normally lost in uncertain physical queues while giving service organisations safer and clearer operational control.
 
-The backend now combines booking management, automatic priority decisions, queue ticket generation, queue movement, live queue read APIs, rule-based waiting-time estimation, disruption impact analysis, rescheduling workflows, notifications and automated regression verification.
-
-The next objective is to connect these foundations into a complete operational MVP through authentication/roles, check-in, walk-ins, capacity-aware booking, counter lifecycle management and manager-facing APIs before moving into production infrastructure and genuine ML forecasting.
+The backend now combines booking management, priority decisions, queue tickets, queue movement, waiting-time estimation, disruption/rescheduling logic, notifications, live queue APIs, authentication, and a real role/branch authorization foundation.
 
 ```text
 Make queues fairer, smarter, more transparent,
