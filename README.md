@@ -6,7 +6,7 @@ Smart Q is a Django + Django REST Framework **Queue Intelligence Platform** desi
 
 The system is being built around the full service journey: account creation, booking, arrival/check-in, live queue tracking, counter service, disruptions, rescheduling, notifications, management visibility, and eventually data-driven waiting-time prediction.
 
-> **Current development state:** Day 30 customer arrival/check-in is implemented on `feature/day30-check-in` and is under automated GitHub Actions verification. Day 30 builds on the verified Day 29 authentication and role/branch authorization foundation.
+> **Current development state:** Day 30 customer arrival/check-in is implemented and verified on `feature/day30-check-in`. GitHub Actions passes the migration-drift check, Django system check, accounts tests, queue regression tests, booking/check-in tests, and the complete project test suite.
 
 ---
 
@@ -170,9 +170,7 @@ PATCH /api/v1/bookings/<id>/cancel/
 PATCH /api/v1/bookings/<id>/reschedule/
 ```
 
-Customer self check-in is ownership-scoped.
-
-Staff check-in reuses Day 29 role and branch object permissions.
+Customer self check-in is ownership-scoped. Staff check-in reuses Day 29 role and branch object permissions.
 
 ---
 
@@ -209,8 +207,6 @@ POST /api/v1/queues/counters/<counter_id>/no-show/
 
 Live queue order now uses **check-in time**, not ticket creation time.
 
-Conceptually:
-
 ```text
 Customer A books 5 days early, checks in at 09:10
 Customer B books today, checks in at 09:00
@@ -221,20 +217,20 @@ B before A
 
 Queue position and people-ahead calculations use checked-in `WAITING` tickets only.
 
-The current wait estimator remains rule-based:
+The current estimator remains rule-based:
 
 ```text
 Estimated Wait ≈
 (People Ahead × Average Service Time) ÷ Active Counters
 ```
 
-A trained ML model is future work.
+A trained ML model remains future work.
 
 ---
 
 ## Queue Statistics
 
-Daily queue statistics now distinguish:
+Daily queue statistics distinguish:
 
 ```text
 scheduled
@@ -245,7 +241,7 @@ no_show
 cancelled
 ```
 
-This prevents scheduled appointments from inflating the number of customers physically waiting at a branch.
+Scheduled appointments are expected customers but are not counted as customers physically waiting at the branch.
 
 ---
 
@@ -274,19 +270,21 @@ python manage.py test bookings
 python manage.py test
 ```
 
-Day 30 tests include:
+**Day 30 final result: all stages PASS.**
+
+Day 30 regression coverage includes:
 
 - successful customer self check-in;
 - wrong-date rejection;
 - cross-customer ownership protection;
 - duplicate check-in conflict;
 - final-state rejection;
-- reception check-in in assigned branch;
+- reception check-in at assigned branch;
 - wrong-branch staff denial;
 - reschedule resets check-in;
-- booking creation produces `SCHEDULED` rather than `WAITING`;
-- Call Next ignores customers who have not checked in;
-- all Day 28/29 authorization and queue regressions.
+- booking creation creates `SCHEDULED`, not `WAITING`;
+- Call Next ignores un-checked-in appointments;
+- Day 28/29 queue and authorization regressions.
 
 ---
 
@@ -300,7 +298,7 @@ docs/DAY29_AUTH_ROLES.md
 docs/DAY30_CHECK_IN.md
 ```
 
-Formal daily PDF/Word documentation is produced after the day's final verification.
+Smart Q daily documentation records the objective, architecture, code, API contract, security decisions, test commands, bugs/fixes, CI results, limitations, and next step.
 
 ---
 
@@ -317,12 +315,12 @@ PR #17 - Day 29 (verified; Draft)
   ↑
 feature/day29-auth-roles
   ↑
-PR #18 - Day 30 (Draft)
+PR #18 - Day 30 (verified; Draft)
   ↑
 feature/day30-check-in
 ```
 
-The chained branches preserve verified work while the GitHub connector cannot change PR #16's Draft flag. After PR #16 is manually marked Ready and merged, later PRs can be retargeted toward `main` in order.
+The chained branches preserve verified work while the connected GitHub action cannot change PR #16's Draft flag. After PR #16 is manually marked Ready and merged, later PRs can be retargeted toward `main` in order.
 
 ---
 
@@ -333,7 +331,7 @@ Smart Q now includes:
 - customer accounts and login/logout;
 - Smart Q roles and branch authorization;
 - branches and services;
-- booking creation/list/detail/cancel/reschedule;
+- booking create/list/detail/cancel/reschedule;
 - automatic General/Priority classification;
 - digital queue numbers;
 - explicit scheduled vs checked-in lifecycle;
@@ -364,7 +362,7 @@ The next major work includes:
 8. Historical QueueEvent timestamps for analytics and ML.
 9. External notifications.
 10. Password reset/account verification and throttling.
-11. Production PostgreSQL and queue-number concurrency hardening.
+11. PostgreSQL and queue-number concurrency hardening.
 12. Production secrets, HTTPS, logs, monitoring, and backups.
 13. Real-time delivery strategy.
 14. Genuine trained/evaluated ML waiting-time forecasting.
@@ -489,7 +487,7 @@ python manage.py test
 
 Smart Q is being built to give people greater control over time normally lost in uncertain physical queues while giving service organisations safer, clearer operational control.
 
-The backend now distinguishes an appointment from a customer who has actually arrived, which is a critical requirement for a trustworthy live queue.
+Day 30 makes the live queue materially more truthful: **an appointment is no longer the same thing as a customer who has actually arrived.**
 
 ```text
 Make queues fairer, smarter, more transparent,
