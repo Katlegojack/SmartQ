@@ -1,37 +1,24 @@
 """
-URL configuration for smartq project.
+URL configuration for Smart Q.
 
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/6.0/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
+API routes are grouped by Django app so each domain owns its own endpoint paths.
 """
+
 from django.contrib import admin
-from django.urls import path,include
+from django.urls import include, path
+
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('',include('queues.urls')),
+    path("admin/", admin.site.urls),
+    path("", include("queues.urls")),
 
-    #API route for notification endpoints, this connects api/v1/not.. to notifications/api_urls.py
-    path('api/v1/notifications/',include('notifications.api_urls')),
+    # Authentication and current-account endpoints.
+    path("api/v1/accounts/", include("accounts.api_urls")),
 
-    #API route for services endpoints, this connects /api/v1/services to services/api_urls.py
-    path('api/v1/services/',include('services.api_urls')),
-
-    #API route for branches endpoints, this connects /api/v1/branches to branches/api_urls.py
-    path('api/v1/branches/',include('branches.api_urls')),
-
-    #API route for booking endpoints, this connects /api/v1/bookings to bookings/api_urls.py
-    path('api/v1/bookings/',include('bookings.api_urls')),
-
-    path('api/v1/queues/',include('queues.api_urls')),
+    # Domain APIs.
+    path("api/v1/notifications/", include("notifications.api_urls")),
+    path("api/v1/services/", include("services.api_urls")),
+    path("api/v1/branches/", include("branches.api_urls")),
+    path("api/v1/bookings/", include("bookings.api_urls")),
+    path("api/v1/queues/", include("queues.api_urls")),
 ]

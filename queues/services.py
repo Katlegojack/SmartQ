@@ -10,10 +10,9 @@ from .models import QueueTicket
 
 # Business logic: calculate a user's age from their date of birth.
 def calculate_age(date_of_birth):
-    today = timezone.now().date()
+    today = timezone.localdate()
     age = today.year - date_of_birth.year
 
-    # If the user's birthday has not happened yet this year, subtract one year.
     if (today.month, today.day) < (date_of_birth.month, date_of_birth.day):
         age -= 1
 
@@ -31,8 +30,6 @@ def determine_queue_type(booking):
     if profile.disability_status:
         return QueueTicket.PRIORITY
 
-    # Pregnancy priority only applies when the profile is female and the booking
-    # explicitly indicates pregnancy.
     if profile.gender == Profile.FEMALE and booking.is_pregnant:
         return QueueTicket.PRIORITY
 
@@ -58,7 +55,8 @@ def generate_queue_number(booking, queue_type):
     return f"{prefix}{new_number:03d}"
 
 
-# Business logic: create a QueueTicket automatically from a Booking.
+# A booking gets a digital ticket immediately, but it does not join the live
+# waiting queue until check-in. SCHEDULED is therefore the safe initial state.
 def create_queue_ticket_for_booking(booking):
     queue_type = determine_queue_type(booking)
     queue_number = generate_queue_number(booking, queue_type)
@@ -67,8 +65,72 @@ def create_queue_ticket_for_booking(booking):
         booking=booking,
         queue_type=queue_type,
         queue_number=queue_number,
-        status=QueueTicket.WAITING,
+        status=QueueTicket.SCHEDULED,
     )
+
+
+@transaction.atomic
+def check_in_booking(booking):
+    """
+    Move today's eligible booking from scheduled appointment to live queue.
+
+    Returns a tuple of (ticket, error_code). error_code is None on success and
+    is intentionally simple so both customer and reception API views can reuse
+    exactly the same business rules.
+    """
+    booking = Booking.objects.select_for_update().select_related(
+        "branch", "service", "user", "user__profile"
+    ).get(pk=booking.pk)
+
+    if booking.booking_date != timezone.localdate():
+        return None, "wrong_date"
+
+    if booking.status in [Booking.CANCELLED, Booking.COMPLETED, Booking.NO_SHOW]:
+        return None, "final_state"
+
+    if booking.checked_in_at is not None:
+        try:
+            return booking.queueticket, "already_checked_in"
+        except QueueTicket.DoesNotExist:
+            return None, "already_checked_in"
+
+    try:
+        ticket = QueueTicket.objects.select_for_update().get(booking=booking)
+    except QueueTicket.DoesNotExist:
+        ticket = create_queue_ticket_for_booking(booking)
+
+    if ticket.status in [
+        QueueTicket.CANCELLED,
+        QueueTicket.COMPLETED,
+        QueueTicket.NO_SHOW,
+    ]:
+        return None, "final_state"
+
+    # Recalculate priority at arrival because profile information may have
+    # changed since booking creation. If the queue class changes, regenerate
+    # the visible queue number so an A-number never represents Priority (or
+    # a P-number General).
+    new_queue_type = determine_queue_type(booking)
+    if new_queue_type != ticket.queue_type:
+        ticket.queue_type = new_queue_type
+        ticket.queue_number = generate_queue_number(booking, new_queue_type)
+
+    ticket.status = QueueTicket.WAITING
+    ticket.assigned_counter = None
+    ticket.save(
+        update_fields=[
+            "queue_type",
+            "queue_number",
+            "status",
+            "assigned_counter",
+        ]
+    )
+
+    booking.checked_in_at = timezone.now()
+    booking.status = Booking.PENDING
+    booking.save(update_fields=["checked_in_at", "status"])
+
+    return ticket, None
 
 
 def get_current_ticket(counter):
@@ -80,19 +142,14 @@ def get_current_ticket(counter):
 
 
 def get_waiting_tickets(branch, booking_date=None, queue_type=None):
-    """
-    Return the live waiting queue for a branch.
-
-    The optional queue_type filter allows staff displays to request only the
-    General or Priority queue. By default the function uses today's date so a
-    future booking is never accidentally called early.
-    """
+    """Return checked-in customers who are actively waiting at a branch."""
     if booking_date is None:
         booking_date = timezone.localdate()
 
     tickets = QueueTicket.objects.filter(
         booking__branch=branch,
         booking__booking_date=booking_date,
+        booking__checked_in_at__isnull=False,
         status=QueueTicket.WAITING,
         assigned_counter__isnull=True,
         booking__status__in=[Booking.PENDING, Booking.CONFIRMED],
@@ -100,11 +157,8 @@ def get_waiting_tickets(branch, booking_date=None, queue_type=None):
 
     if queue_type:
         tickets = tickets.filter(queue_type=queue_type)
-        return tickets.order_by("created_at", "id")
+        return tickets.order_by("booking__checked_in_at", "id")
 
-    # For the combined waiting-room view, Priority must appear before General.
-    # An explicit sort rank is used instead of relying on alphabetical strings,
-    # because alphabetical ordering would incorrectly place "general" first.
     queue_type_rank = Case(
         When(queue_type=QueueTicket.PRIORITY, then=Value(0)),
         When(queue_type=QueueTicket.GENERAL, then=Value(1)),
@@ -114,26 +168,18 @@ def get_waiting_tickets(branch, booking_date=None, queue_type=None):
 
     return tickets.annotate(
         queue_type_rank=queue_type_rank
-    ).order_by("queue_type_rank", "created_at", "id")
+    ).order_by("queue_type_rank", "booking__checked_in_at", "id")
 
 
 @transaction.atomic
 def call_next_ticket(counter, booking_date=None):
-    """
-    Assign the next waiting customer to an OPEN counter.
-
-    The database transaction prevents queue-state changes from being split
-    across multiple operations. select_for_update() also prepares this flow for
-    production databases such as PostgreSQL where multiple staff members may
-    press "Call Next" at nearly the same time.
-    """
+    """Assign the next checked-in waiting customer to an OPEN counter."""
     if counter.status != Counter.OPEN:
         return None
 
     if booking_date is None:
         booking_date = timezone.localdate()
 
-    # Do not allow a counter to serve two customers at once.
     current_ticket = QueueTicket.objects.select_for_update().filter(
         assigned_counter=counter,
         status=QueueTicket.SERVING,
@@ -145,10 +191,11 @@ def call_next_ticket(counter, booking_date=None):
         queue_type=counter.queue_type,
         booking__branch=counter.branch,
         booking__booking_date=booking_date,
+        booking__checked_in_at__isnull=False,
         booking__status__in=[Booking.PENDING, Booking.CONFIRMED],
         status=QueueTicket.WAITING,
         assigned_counter__isnull=True,
-    ).order_by("created_at", "id").first()
+    ).order_by("booking__checked_in_at", "id").first()
 
     if ticket is None:
         return None
@@ -157,7 +204,6 @@ def call_next_ticket(counter, booking_date=None):
     ticket.status = QueueTicket.SERVING
     ticket.save(update_fields=["assigned_counter", "status"])
 
-    # Keep the booking lifecycle aligned with the queue lifecycle.
     if ticket.booking.status == Booking.PENDING:
         ticket.booking.status = Booking.CONFIRMED
         ticket.booking.save(update_fields=["status"])
@@ -180,7 +226,6 @@ def complete_current_ticket(counter):
     ticket.assigned_counter = None
     ticket.save(update_fields=["status", "assigned_counter"])
 
-    # A completed queue interaction must also appear completed in booking history.
     ticket.booking.status = Booking.COMPLETED
     ticket.booking.save(update_fields=["status"])
 
@@ -202,7 +247,6 @@ def mark_current_ticket_no_show(counter):
     ticket.assigned_counter = None
     ticket.save(update_fields=["status", "assigned_counter"])
 
-    # Keep booking history and queue history consistent.
     ticket.booking.status = Booking.NO_SHOW
     ticket.booking.save(update_fields=["status"])
 

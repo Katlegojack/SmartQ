@@ -5,10 +5,10 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.permissions import IsQueueOperator, IsQueueViewer
 from branches.models import Branch
 from counters.models import Counter
 from .models import QueueTicket
-from .permissions import IsQueueStaff
 from .serializers import QueueTicketSerializer
 from .services import (
     call_next_ticket,
@@ -21,13 +21,16 @@ from .waiting_time import get_ticket_prediction
 
 
 class CallNextTicketAPIView(APIView):
-    """Call the next waiting customer for a specific counter."""
+    """Call the next waiting customer for a counter in the operator's branch."""
 
-    # Counter operation is a staff action, not a normal customer action.
-    permission_classes = [IsQueueStaff]
+    permission_classes = [IsQueueOperator]
 
     def post(self, request, counter_id):
         counter = get_object_or_404(Counter, pk=counter_id)
+
+        # Role permission alone is not enough: branch staff may operate only the
+        # branch assigned to their Smart Q profile. SYSTEM_ADMIN is global.
+        self.check_object_permissions(request, counter)
 
         if counter.status != Counter.OPEN:
             return Response(
@@ -55,12 +58,14 @@ class CallNextTicketAPIView(APIView):
 
 
 class CompleteCurrentTicketAPIView(APIView):
-    """Complete the customer currently being served at a counter."""
+    """Complete the customer currently being served at an authorised counter."""
 
-    permission_classes = [IsQueueStaff]
+    permission_classes = [IsQueueOperator]
 
     def post(self, request, counter_id):
         counter = get_object_or_404(Counter, pk=counter_id)
+        self.check_object_permissions(request, counter)
+
         ticket = complete_current_ticket(counter)
 
         if ticket is None:
@@ -76,12 +81,14 @@ class CompleteCurrentTicketAPIView(APIView):
 
 
 class NoShowCurrentTicketAPIView(APIView):
-    """Mark the customer currently being served as a no-show."""
+    """Mark the current customer as a no-show at an authorised counter."""
 
-    permission_classes = [IsQueueStaff]
+    permission_classes = [IsQueueOperator]
 
     def post(self, request, counter_id):
         counter = get_object_or_404(Counter, pk=counter_id)
+        self.check_object_permissions(request, counter)
+
         ticket = mark_current_ticket_no_show(counter)
 
         if ticket is None:
@@ -97,12 +104,14 @@ class NoShowCurrentTicketAPIView(APIView):
 
 
 class CurrentCounterTicketAPIView(APIView):
-    """Return the customer currently being served at a counter."""
+    """Return the ticket currently served at a counter visible to this staff user."""
 
-    permission_classes = [IsQueueStaff]
+    permission_classes = [IsQueueViewer]
 
     def get(self, request, counter_id):
         counter = get_object_or_404(Counter, pk=counter_id)
+        self.check_object_permissions(request, counter)
+
         ticket = get_current_ticket(counter)
 
         if ticket is None:
@@ -115,12 +124,14 @@ class CurrentCounterTicketAPIView(APIView):
 
 
 class BranchWaitingQueueAPIView(APIView):
-    """Return today's waiting queue for a branch for staff dashboards."""
+    """Return today's waiting queue when the staff user may view this branch."""
 
-    permission_classes = [IsQueueStaff]
+    permission_classes = [IsQueueViewer]
 
     def get(self, request, branch_id):
         branch = get_object_or_404(Branch, pk=branch_id, is_active=True)
+        self.check_object_permissions(request, branch)
+
         queue_type = request.query_params.get("queue_type")
 
         if queue_type and queue_type not in [QueueTicket.GENERAL, QueueTicket.PRIORITY]:
@@ -142,7 +153,8 @@ class MyCurrentQueueTicketAPIView(APIView):
     """
     Return the logged-in customer's active ticket and current queue prediction.
 
-    This is the API the customer queue-tracker screen can poll while waiting.
+    This API remains user-owned rather than staff-role based. It is the endpoint
+    the customer queue-tracker screen can poll while the customer is waiting.
     """
 
     permission_classes = [IsAuthenticated]
@@ -167,7 +179,7 @@ class MyCurrentQueueTicketAPIView(APIView):
 
         prediction = get_ticket_prediction(ticket)
 
-        # Once the customer is already being served, there is no remaining wait.
+        # Once service starts, remaining wait is zero.
         if ticket.status == QueueTicket.SERVING:
             prediction["people_ahead"] = 0
             prediction["queue_position"] = 0
