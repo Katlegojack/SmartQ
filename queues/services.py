@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import Case, IntegerField, Value, When
 from django.utils import timezone
 
 from accounts.models import Profile
@@ -99,10 +100,21 @@ def get_waiting_tickets(branch, booking_date=None, queue_type=None):
 
     if queue_type:
         tickets = tickets.filter(queue_type=queue_type)
+        return tickets.order_by("created_at", "id")
 
-    # Priority tickets are intentionally returned before general tickets for a
-    # combined operational view. Inside each queue type we keep FIFO ordering.
-    return tickets.order_by("queue_type", "created_at", "id")
+    # For the combined waiting-room view, Priority must appear before General.
+    # An explicit sort rank is used instead of relying on alphabetical strings,
+    # because alphabetical ordering would incorrectly place "general" first.
+    queue_type_rank = Case(
+        When(queue_type=QueueTicket.PRIORITY, then=Value(0)),
+        When(queue_type=QueueTicket.GENERAL, then=Value(1)),
+        default=Value(2),
+        output_field=IntegerField(),
+    )
+
+    return tickets.annotate(
+        queue_type_rank=queue_type_rank
+    ).order_by("queue_type_rank", "created_at", "id")
 
 
 @transaction.atomic
