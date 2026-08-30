@@ -62,7 +62,13 @@ def generate_slot_times(branch, service, booking_date):
     return slots
 
 
-def get_reserved_booking_count(branch, service, booking_date, booking_time, exclude_booking=None):
+def get_reserved_booking_count(
+    branch,
+    service,
+    booking_date,
+    booking_time,
+    exclude_booking=None,
+):
     """Count online appointments that currently reserve capacity in one slot."""
     queryset = Booking.objects.filter(
         branch=branch,
@@ -79,7 +85,14 @@ def get_reserved_booking_count(branch, service, booking_date, booking_time, excl
     return queryset.count()
 
 
-def get_slot_availability(branch, service, booking_date, *, now=None, exclude_booking=None):
+def get_slot_availability(
+    branch,
+    service,
+    booking_date,
+    *,
+    now=None,
+    exclude_booking=None,
+):
     """Return backend-generated slots and remaining capacity for a date."""
     mapping = get_branch_service(branch, service)
     if mapping is None:
@@ -121,15 +134,23 @@ def get_slot_availability(branch, service, booking_date, *, now=None, exclude_bo
     return results
 
 
-def validate_booking_slot(branch, service, booking_date, booking_time, *, exclude_booking=None):
+def validate_booking_slot(
+    branch,
+    service,
+    booking_date,
+    booking_time,
+    *,
+    exclude_booking=None,
+    lock=False,
+):
     """
     Validate branch-service support, slot alignment and remaining capacity.
 
-    Returns (mapping, error_code). Callers that create/update a Booking inside a
-    transaction should re-run this with the mapping row locked to avoid two
-    concurrent requests both consuming the final slot.
+    Use lock=True only inside transaction.atomic(). It locks the BranchService
+    row before the final capacity count so concurrent PostgreSQL writes for the
+    same branch/service are serialized before consuming the last slot.
     """
-    mapping = get_branch_service(branch, service)
+    mapping = get_branch_service(branch, service, lock=lock)
     if mapping is None:
         return None, "service_not_offered"
 
