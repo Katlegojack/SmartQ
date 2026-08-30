@@ -1,86 +1,181 @@
-#APIView gives us full control over the business flow
-from rest_framework.views import APIView
-#Response is used to return JSON responses
-from rest_framework.response import Response
-#HTTP status codes
-from rest_framework import status
-#Only authenticated users should call the next customers
-from rest_framework.permissions import IsAuthenticated
-#Retrieve objects safely
 from django.shortcuts import get_object_or_404
-#Counter models
+from django.utils import timezone
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from branches.models import Branch
 from counters.models import Counter
-#QUeue business logic
-from .services import call_next_ticket,complete_current_ticket,mark_current_ticket_no_show
+from .models import QueueTicket
+from .permissions import IsQueueStaff
 from .serializers import QueueTicketSerializer
+from .services import (
+    call_next_ticket,
+    complete_current_ticket,
+    get_current_ticket,
+    get_waiting_tickets,
+    mark_current_ticket_no_show,
+)
+from .waiting_time import get_ticket_prediction
+
 
 class CallNextTicketAPIView(APIView):
-    #Calls the next customer for a specific counter
-    #Only authenticated users can access this endpoint
-    permission_classes = [IsAuthenticated]
+    """Call the next waiting customer for a specific counter."""
 
-    def post(self,request,counter_id):
-        #Retrieve the requested counter
-        counter = get_object_or_404(Counter,pk=counter_id)
+    # Counter operation is a staff action, not a normal customer action.
+    permission_classes = [IsQueueStaff]
 
-        #Ask the service layer to find the next customer
+    def post(self, request, counter_id):
+        counter = get_object_or_404(Counter, pk=counter_id)
+
+        if counter.status != Counter.OPEN:
+            return Response(
+                {"detail": "This counter must be open before calling customers."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
         ticket = call_next_ticket(counter)
-        #No customers waiting.
+
         if ticket is None:
             return Response(
-                {'detail':'No waiting customers found'},
-                status= status.HTTP_404_NOT_FOUND
+                {
+                    "detail": (
+                        "No customer can be called. The counter may already be serving "
+                        "someone or no matching customers are waiting today."
+                    )
+                },
+                status=status.HTTP_404_NOT_FOUND,
             )
-        
-        #Convert QueueTicket into JSON
-        serializer = QueueTicketSerializer(ticket)
-        #Return queue information
+
         return Response(
-            serializer.data,
-            status = status.HTTP_200_OK
+            QueueTicketSerializer(ticket).data,
+            status=status.HTTP_200_OK,
         )
-    
+
+
 class CompleteCurrentTicketAPIView(APIView):
-    #Marks the customer currently being served at a counter as complete
-    #Only authenticated users may complete this ticket
-    permission_classes = [IsAuthenticated]
-    def post(self,request,counter_id):
-        #Retrieve the requested counter
-        counter = get_object_or_404(Counter,pk=counter_id)
-        #Complete the ticket currenlty assigned to this counter
+    """Complete the customer currently being served at a counter."""
+
+    permission_classes = [IsQueueStaff]
+
+    def post(self, request, counter_id):
+        counter = get_object_or_404(Counter, pk=counter_id)
         ticket = complete_current_ticket(counter)
-        
-        #if the counter is not serving anyone anymore
+
         if ticket is None:
             return Response(
-                {'detail':'This counter is not serving any customer'},
-                status=status.HTTP_404_NOT_FOUND
+                {"detail": "This counter is not serving any customer."},
+                status=status.HTTP_404_NOT_FOUND,
             )
-        #Convert the updated ticket into JSON
-        serializer =QueueTicketSerializer(ticket)
 
-        #Return the completed ticket
-        return Response(serializer.data,status=status.HTTP_200_OK)
-    
+        return Response(
+            QueueTicketSerializer(ticket).data,
+            status=status.HTTP_200_OK,
+        )
+
+
 class NoShowCurrentTicketAPIView(APIView):
-    #Marks customer currently being served at a certain counter as no show
-    #Only authenticated users
+    """Mark the customer currently being served as a no-show."""
+
+    permission_classes = [IsQueueStaff]
+
+    def post(self, request, counter_id):
+        counter = get_object_or_404(Counter, pk=counter_id)
+        ticket = mark_current_ticket_no_show(counter)
+
+        if ticket is None:
+            return Response(
+                {"detail": "This counter is not serving any customer."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        return Response(
+            QueueTicketSerializer(ticket).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class CurrentCounterTicketAPIView(APIView):
+    """Return the customer currently being served at a counter."""
+
+    permission_classes = [IsQueueStaff]
+
+    def get(self, request, counter_id):
+        counter = get_object_or_404(Counter, pk=counter_id)
+        ticket = get_current_ticket(counter)
+
+        if ticket is None:
+            return Response(
+                {"detail": "This counter is currently free."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        return Response(QueueTicketSerializer(ticket).data)
+
+
+class BranchWaitingQueueAPIView(APIView):
+    """Return today's waiting queue for a branch for staff dashboards."""
+
+    permission_classes = [IsQueueStaff]
+
+    def get(self, request, branch_id):
+        branch = get_object_or_404(Branch, pk=branch_id, is_active=True)
+        queue_type = request.query_params.get("queue_type")
+
+        if queue_type and queue_type not in [QueueTicket.GENERAL, QueueTicket.PRIORITY]:
+            return Response(
+                {"detail": "queue_type must be either 'general' or 'priority'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        tickets = get_waiting_tickets(
+            branch=branch,
+            booking_date=timezone.localdate(),
+            queue_type=queue_type,
+        )
+
+        return Response(QueueTicketSerializer(tickets, many=True).data)
+
+
+class MyCurrentQueueTicketAPIView(APIView):
+    """
+    Return the logged-in customer's active ticket and current queue prediction.
+
+    This is the API the customer queue-tracker screen can poll while waiting.
+    """
+
     permission_classes = [IsAuthenticated]
 
-    def post(self,request,counter_id):
-        #Retrieve the requested counter
-        counter = get_object_or_404(Counter,pk=counter_id)
-        #Mark current ticket as no show
-        ticket = mark_current_ticket_no_show(counter)
-        #If the ticket is serving no one
+    def get(self, request):
+        ticket = QueueTicket.objects.filter(
+            booking__user=request.user,
+            booking__booking_date=timezone.localdate(),
+            status__in=[QueueTicket.WAITING, QueueTicket.SERVING],
+        ).select_related(
+            "booking",
+            "booking__branch",
+            "booking__service",
+            "booking__user",
+        ).order_by("-created_at").first()
+
         if ticket is None:
             return Response(
-                {'detail':'This counter is not serving any customer'},
-                status=status.HTTP_404_NOT_FOUND
+                {"detail": "You do not have an active queue ticket for today."},
+                status=status.HTTP_404_NOT_FOUND,
             )
-        #Convert the updated ticket into a JSON
-        serializer = QueueTicketSerializer(ticket)
-        #Return the updated ticket
-        return Response(serializer.data,status=status.HTTP_200_OK)
-    
-        
+
+        prediction = get_ticket_prediction(ticket)
+
+        # Once the customer is already being served, there is no remaining wait.
+        if ticket.status == QueueTicket.SERVING:
+            prediction["people_ahead"] = 0
+            prediction["queue_position"] = 0
+            prediction["estimated_wait_time"] = 0
+
+        return Response(
+            {
+                "ticket": QueueTicketSerializer(ticket).data,
+                "prediction": prediction,
+            }
+        )
