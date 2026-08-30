@@ -35,13 +35,17 @@ class Profile(models.Model):
         (SYSTEM_ADMIN, "System Administrator"),
     ]
 
-    # These roles belong to the operational side of Smart Q rather than the
-    # customer application. SYSTEM_ADMIN is included even though it is global.
     STAFF_ROLES = {
         RECEPTIONIST,
         COUNTER_STAFF,
         BRANCH_MANAGER,
         SYSTEM_ADMIN,
+    }
+
+    BRANCH_SCOPED_ROLES = {
+        RECEPTIONIST,
+        COUNTER_STAFF,
+        BRANCH_MANAGER,
     }
 
     user = models.OneToOneField(User, on_delete=models.CASCADE)
@@ -57,9 +61,8 @@ class Profile(models.Model):
         default=CUSTOMER,
     )
 
-    # Branch staff are scoped to one branch for the current MVP. Customers and
-    # SYSTEM_ADMIN users normally leave this field empty. A future enterprise
-    # design can introduce multi-branch staff assignments without changing User.
+    # Receptionist, Counter Staff, and Branch Manager are scoped to one branch.
+    # Customers and SYSTEM_ADMIN remain branchless in the current MVP.
     branch = models.ForeignKey(
         "branches.Branch",
         on_delete=models.PROTECT,
@@ -69,6 +72,23 @@ class Profile(models.Model):
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        role__in=["receptionist", "counter_staff", "branch_manager"],
+                        branch__isnull=False,
+                    )
+                    | models.Q(
+                        role__in=["customer", "system_admin"],
+                        branch__isnull=True,
+                    )
+                ),
+                name="profile_role_has_valid_branch_scope",
+            )
+        ]
 
     @property
     def is_smartq_staff(self):
