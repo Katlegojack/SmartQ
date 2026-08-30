@@ -7,6 +7,8 @@ from .api_views import (
     BookingDetailAPIView,
     BookingRescheduleAPIView,
     MyBookingListAPIView,
+    ReceptionBookingSearchAPIView,
+    ReceptionGuestWalkInAPIView,
     StaffBookingCheckInAPIView,
 )
 
@@ -14,18 +16,31 @@ from .api_views import (
 urlpatterns = [
     path("", BookingCreateAPIView.as_view(), name="api_booking_create"),
     path("my/", MyBookingListAPIView.as_view(), name="api_my_booking_list"),
+
+    # Reception workflows are placed before the integer booking routes so their
+    # paths remain clear and unambiguous.
+    path(
+        "reception/search/",
+        ReceptionBookingSearchAPIView.as_view(),
+        name="api_reception_booking_search",
+    ),
+    path(
+        "reception/walk-ins/",
+        ReceptionGuestWalkInAPIView.as_view(),
+        name="api_reception_guest_walk_in",
+    ),
+
     path("<int:pk>/", BookingDetailAPIView.as_view(), name="api_booking_detail"),
-
-    # Customer self check-in on the scheduled booking date.
-    path("<int:pk>/check-in/", BookingCheckInAPIView.as_view(), name="api_booking_check_in"),
-
-    # Reception/staff check-in uses the Day 29 role + branch permission system.
+    path(
+        "<int:pk>/check-in/",
+        BookingCheckInAPIView.as_view(),
+        name="api_booking_check_in",
+    ),
     path(
         "<int:pk>/staff-check-in/",
         StaffBookingCheckInAPIView.as_view(),
         name="api_staff_booking_check_in",
     ),
-
     path("<int:pk>/cancel/", BookingCancelAPIView.as_view(), name="api_booking_cancel"),
     path(
         "<int:pk>/reschedule/",
