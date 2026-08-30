@@ -1,4 +1,5 @@
 from django.core.exceptions import ObjectDoesNotExist
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -79,6 +80,19 @@ class BookingCreateSerializer(serializers.ModelSerializer):
 
         return attrs
 
+    @transaction.atomic
+    def create(self, validated_data):
+        """Re-check capacity under a BranchService row lock before inserting."""
+        _, error_code = validate_booking_slot(
+            validated_data["branch"],
+            validated_data["service"],
+            validated_data["booking_date"],
+            validated_data["booking_time"],
+            lock=True,
+        )
+        raise_slot_validation_error(error_code)
+        return Booking.objects.create(**validated_data)
+
 
 class BookingListSerializer(serializers.ModelSerializer):
     """Read-only booking representation for customer and staff workflows."""
@@ -154,6 +168,23 @@ class BookingRescheduleSerializer(serializers.ModelSerializer):
         )
         raise_slot_validation_error(error_code)
         return attrs
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        """Lock and re-check the destination slot before moving the booking."""
+        booking_date = validated_data.get("booking_date", instance.booking_date)
+        booking_time = validated_data.get("booking_time", instance.booking_time)
+
+        _, error_code = validate_booking_slot(
+            instance.branch,
+            instance.service,
+            booking_date,
+            booking_time,
+            exclude_booking=instance,
+            lock=True,
+        )
+        raise_slot_validation_error(error_code)
+        return super().update(instance, validated_data)
 
 
 class GuestWalkInSerializer(serializers.Serializer):
