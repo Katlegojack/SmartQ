@@ -1,81 +1,132 @@
-#Import DRF serializer tools
-from rest_framework import serializers
-#import timezone so we can validate booking dates.
+from django.core.exceptions import ObjectDoesNotExist
 from django.utils import timezone
-#Import booking & services models
-from .models import Booking
+from rest_framework import serializers
+
 from branches.models import Branch
 from services.models import Service
+from .models import Booking
+
 
 class BookingCreateSerializer(serializers.ModelSerializer):
-    #only allow users to choose active branches
-    branch = serializers.PrimaryKeyRelatedField(queryset = Branch.objects.filter(is_active=True))
-    #only allow users to choose active services
-    service = serializers.PrimaryKeyRelatedField(queryset =Service.objects.filter(is_active=True))
+    """Validate customer input when a new booking is created."""
+
+    # Customers may only choose active catalogue records.
+    branch = serializers.PrimaryKeyRelatedField(
+        queryset=Branch.objects.filter(is_active=True)
+    )
+    service = serializers.PrimaryKeyRelatedField(
+        queryset=Service.objects.filter(is_active=True)
+    )
 
     class Meta:
         model = Booking
-        #These are the fields an api returns/accepts
-        fields = ['id','branch','service','booking_date','booking_time','is_pregnant','status','created_at']
-        #The api should not let users manually set these
-        read_only_fields = ['id','status','created_at']
+        fields = [
+            "id",
+            "branch",
+            "service",
+            "booking_date",
+            "booking_time",
+            "is_pregnant",
+            "status",
+            "created_at",
+        ]
+        read_only_fields = ["id", "status", "created_at"]
 
-        def validate_booking_date(self,value):
-            #prevent customers from booking dates in the past
-            if value <timezone.now().date():
-                raise serializers.ValidationError('Booking cannot be in the past date')
-            
+    def validate_booking_date(self, value):
+        """Prevent customers from creating bookings in the past."""
+        if value < timezone.localdate():
+            raise serializers.ValidationError("Booking date cannot be in the past.")
+        return value
 
-#This serializer is used when the customer wants to view their own booking
-#It gives more readable booking information than the create serializer
+    def validate(self, attrs):
+        """Keep booking times inside the selected branch's operating hours."""
+        attrs = super().validate(attrs)
+        branch = attrs.get("branch")
+        booking_time = attrs.get("booking_time")
+
+        if branch and booking_time:
+            if booking_time < branch.opening_time or booking_time > branch.closing_time:
+                raise serializers.ValidationError(
+                    {
+                        "booking_time": (
+                            "Booking time must be within the selected branch's operating hours."
+                        )
+                    }
+                )
+
+        return attrs
+
+
 class BookingListSerializer(serializers.ModelSerializer):
-    #Show the branch name instead of only the branch ID
-    branch_name = serializers.CharField(source='branch.name',read_only=True)
-    #SHow the service name instead of only the service ID
-    service_name = serializers.CharField(source='service.name',read_only=True)
+    """Read-only customer booking representation."""
 
-    #Show queue ticket information connected to this booking
+    branch_name = serializers.CharField(source="branch.name", read_only=True)
+    service_name = serializers.CharField(source="service.name", read_only=True)
     queue_ticket = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
-        #These are the fields returned when listing the customer's bookings
-        fields = ['id','branch','branch_name','service','service_name','booking_date','booking_time','is_pregnant','status','created_at','queue_ticket']
-
-        #This serializer is for reading booking data
+        fields = [
+            "id",
+            "branch",
+            "branch_name",
+            "service",
+            "service_name",
+            "booking_date",
+            "booking_time",
+            "is_pregnant",
+            "status",
+            "created_at",
+            "queue_ticket",
+        ]
         read_only_fields = fields
 
-    def get_queue_ticket(self,obj):
-         #SOme bookings may not have queue ticket if something failed earlier, so we handle that safely instead of crashing
+    def get_queue_ticket(self, obj):
+        # Only the expected "no related queue ticket" case is swallowed. Other
+        # exceptions should surface during development instead of being hidden.
         try:
             ticket = obj.queueticket
-        except Exception:
+        except ObjectDoesNotExist:
             return None
-            
-        #Return useful queue ticket data to the frontend
-        return {
-                'id':ticket.id,
-                'queue_number':ticket.queue_number,
-                'queue_type': ticket.queue_type,
-                'status':ticket.status,
 
-            }
+        return {
+            "id": ticket.id,
+            "queue_number": ticket.queue_number,
+            "queue_type": ticket.queue_type,
+            "status": ticket.status,
+        }
 
 
 class BookingRescheduleSerializer(serializers.ModelSerializer):
+    """Allow customers to change only the date and time of a booking."""
+
     class Meta:
         model = Booking
-        #Only these fields can be updated during rescheduling
-        fields = ['booking_date','booking_time']
+        fields = ["booking_date", "booking_time"]
 
-        #Validate that the customer is not choosing a past date
-    def validate_booking_date(self,value):
-        #Get today's date
-        today = timezone.now().date()
-        #Prevent customers from selecting a date in the past
-        if value <today :
-            raise serializers.ValidationError("Booking date cannot be in the past")
-            
+    def validate_booking_date(self, value):
+        if value < timezone.localdate():
+            raise serializers.ValidationError("Booking date cannot be in the past.")
         return value
-        
 
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+
+        # During PATCH requests, unchanged values come from the current booking.
+        branch = self.instance.branch if self.instance else None
+        booking_time = attrs.get(
+            "booking_time",
+            self.instance.booking_time if self.instance else None,
+        )
+
+        if branch and booking_time:
+            if booking_time < branch.opening_time or booking_time > branch.closing_time:
+                raise serializers.ValidationError(
+                    {
+                        "booking_time": (
+                            "Booking time must be within the branch's operating hours."
+                        )
+                    }
+                )
+
+        return attrs

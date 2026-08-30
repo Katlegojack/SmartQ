@@ -1,168 +1,176 @@
-#transaction keeps both -booking +queue ticket creation safe as 1 operation
 from django.db import transaction
-
-#get_object_or_404 helps us safely fetch 1 object or return 404
 from django.shortcuts import get_object_or_404
-
-#Response lets return custom API responses, status give us HTTP status codes like 400 or 200
-from rest_framework.response import Response
 from rest_framework import status
-
-# RetrieveAPIView is used when an API returns one specific model object.
-#CreateAPIView  is used when an api creates 1 model object,ListAPIView is used when an API returns a list of model objects.
-from rest_framework.generics import CreateAPIView,ListAPIView,RetrieveAPIView
-
-#Only logged in users can create a booking
+from rest_framework.generics import CreateAPIView, ListAPIView, RetrieveAPIView
 from rest_framework.permissions import IsAuthenticated
-
-#Import the bookingSerializer,# BookingListSerializer is for showing bookings to the customer.
-from .serializers  import BookingCreateSerializer,BookingListSerializer,BookingRescheduleSerializer
-
-#Import QueueTicket so we can check duplicate tickets
-from queues.models import QueueTicket
-
-#Import existing queue-ticket creation logic
-from queues.services import create_queue_ticket_for_booking,determine_queue_type,generate_queue_number
-
-# Import the Booking model so we can query booking records.
-from .models import Booking
-
-#API view let us write custom PATCH endpoint
+from rest_framework.response import Response
 from rest_framework.views import APIView
 
-class BookingCreateAPIView(CreateAPIView):
-    #This serializer validates and creates booking objects
-    serializer_class =BookingCreateSerializer
+from queues.models import QueueTicket
+from queues.services import (
+    create_queue_ticket_for_booking,
+    determine_queue_type,
+    generate_queue_number,
+)
+from .models import Booking
+from .serializers import (
+    BookingCreateSerializer,
+    BookingListSerializer,
+    BookingRescheduleSerializer,
+)
 
-    #Only logged in users can create booking
+
+class BookingCreateAPIView(CreateAPIView):
+    """Create a booking for the logged-in customer and generate its queue ticket."""
+
+    serializer_class = BookingCreateSerializer
     permission_classes = [IsAuthenticated]
 
     def perform_create(self, serializer):
-        #SAVE booking and create a queueticket as one safe database operation
+        # Booking + ticket creation must either both succeed or both roll back.
         with transaction.atomic():
-
-            #The logged in user becomes the ticket owner
             booking = serializer.save(user=self.request.user)
-
-            #Create a queueticket only if 1 does not exist
             if not QueueTicket.objects.filter(booking=booking).exists():
                 create_queue_ticket_for_booking(booking)
 
+
 class MyBookingListAPIView(ListAPIView):
-    #This serializers controls how bookings are shown on the api responses
-    serializer_class = BookingListSerializer
+    """Return only bookings owned by the logged-in customer."""
 
-    #ONly logged in users can view their bookings
+    serializer_class = BookingListSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        #Returns bookings that belongs to the logged in user, this prevents users from seeing other customer's users
-        return Booking.objects.filter(user=self.request.user).select_related('branch','service').order_by('-created_at')
-    
+        return Booking.objects.filter(user=self.request.user).select_related(
+            "branch", "service"
+        ).order_by("-created_at")
+
+
 class BookingDetailAPIView(RetrieveAPIView):
-    #We can reuse branchListSerializer bcz it already shows: branch & service name & queue ticket data
-    serializer_class = BookingListSerializer
+    """Return one booking only when it belongs to the logged-in customer."""
 
-    #Only logged in user can view booking details
+    serializer_class = BookingListSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        #Return only booking that belongs to the logged-in user. This is the security layer
-        #If the user requests /api/v1/bookings/5/ Django will only search inside the user's booking
-        #So if booking 5 belongs to someone else, the API will return 404
-        return Booking.objects.filter(user=self.request.user).select_related('branch','service')
-    
+        # Restricting the queryset prevents one customer from reading another
+        # customer's booking simply by guessing its database ID.
+        return Booking.objects.filter(user=self.request.user).select_related(
+            "branch", "service"
+        )
+
 
 class BookingCancelAPIView(APIView):
-    #Only logged-in users
-    permission_classes = [IsAuthenticated]
-    
-    def patch(self,request,pk):
-        #find the boooking but only inside the logged in user's bookings
-        #This prevents 1 customer from cancelling another customer's bookings
-        booking = get_object_or_404(Booking,pk=pk, user=request.user)
+    """Cancel an eligible booking and its connected queue ticket together."""
 
-        #A completed ticket should not be cancelled,once service is completed, the booking history must stay accurate
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def patch(self, request, pk):
+        booking = get_object_or_404(Booking, pk=pk, user=request.user)
+
         if booking.status == Booking.COMPLETED:
             return Response(
-                {'detail':'Completed bookings should not be cancelled'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"detail": "Completed bookings cannot be cancelled."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-        #A no show booking should not be cancelled by the customer afterwards, A no show means missed booking
+
         if booking.status == Booking.NO_SHOW:
             return Response(
-                {'detail':'No-show bookings cannot be cancelled'},
-                status= status.HTTP_400_BAD_REQUEST
+                {"detail": "No-show bookings cannot be cancelled."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-        
-        #If the booking is already cancelled, return it as it is.
-        #This makes the endpoint safe if it is twice
+
+        # Cancellation is idempotent: repeating the request is safe.
         if booking.status == Booking.CANCELLED:
-            serializer = BookingListSerializer(booking)
-            return Response(serializer.data,status=status.HTTP_200_OK)
-        
-        #Cancel the booking
+            return Response(
+                BookingListSerializer(booking).data,
+                status=status.HTTP_200_OK,
+            )
+
         booking.status = Booking.CANCELLED
-        booking.save(update_fields=['status'])
+        booking.save(update_fields=["status"])
 
-        #Cancel the connected queue ticket if it exists
-        try:
-            ticket =booking.queueticket
-            ticket.status = Booking.CANCELLED
-            ticket.save(update_fields=['status'])
-        except Exception:
-            pass
-
-        #Return the updated booking data
-        serializer = BookingListSerializer(booking)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-            
-
-class BookingRescheduleAPIView(APIView):
-    permission_classes = [IsAuthenticated] #Only logged in users
-    def patch(self,request,pk):
-        #Find the booking only if it belongs to a logged in user
-        #This prevents 1 customer from rescheduling another customer's booking
-        booking = get_object_or_404(Booking,pk=pk,user=request.user)
-        #Completed bookings are part of history and cannot be changed
-        if booking.status == Booking.COMPLETED:
-            return Response(
-                {'detail':'Completed booking cannot be rescheduled'},
-                status = status.HTTP_400_BAD_REQUEST
-            )
-        #CANCELLED BOOKINGS ARE finalised and cannot be reopened
-        if booking.status == Booking.CANCELLED:
-            return Response(
-                {'detail':'Cancelled ticket cannot be rescheduled'},
-                status = status.HTTP_400_BAD_REQUEST
-            )
-        #Validate new booking date and time
-        serializer = BookingRescheduleSerializer(booking,data=request.data,partial=True)
-        #Stop immediately if validation fails
-        serializer.is_valid(raise_exception=True)
-        #Save the validated booking changes
-        booking = serializer.save()
-
-        #Try to update the connected queue ticket
-        #Every booking should have one queueticket because of the 1to1 relationship
         try:
             ticket = booking.queueticket
-            #Recalculate the queue type
-            #The customer's cisrcumstances may have changed since the original booking
+        except QueueTicket.DoesNotExist:
+            ticket = None
+
+        if ticket:
+            ticket.status = QueueTicket.CANCELLED
+            ticket.assigned_counter = None
+            ticket.save(update_fields=["status", "assigned_counter"])
+
+        return Response(
+            BookingListSerializer(booking).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class BookingRescheduleAPIView(APIView):
+    """Move an eligible booking to a new date/time and reset its queue ticket."""
+
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def patch(self, request, pk):
+        booking = get_object_or_404(Booking, pk=pk, user=request.user)
+
+        if booking.status == Booking.COMPLETED:
+            return Response(
+                {"detail": "Completed bookings cannot be rescheduled."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if booking.status == Booking.CANCELLED:
+            return Response(
+                {"detail": "Cancelled bookings cannot be rescheduled."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if booking.status == Booking.NO_SHOW:
+            return Response(
+                {"detail": "No-show bookings cannot be rescheduled."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = BookingRescheduleSerializer(
+            booking,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        booking = serializer.save()
+
+        try:
+            ticket = booking.queueticket
+        except QueueTicket.DoesNotExist:
+            ticket = None
+
+        if ticket:
+            # A new date changes the customer's place in that day's queue, so
+            # queue type/number are recalculated and the ticket returns to WAITING.
             ticket.queue_type = determine_queue_type(booking)
-            #Generate a new queue number for the new booking date.
-            ticket.queue_number =generate_queue_number(booking,ticket.queue_type)
-            
-            #A rescheduled ticket should go back to the waiting queue
+            ticket.queue_number = generate_queue_number(booking, ticket.queue_type)
             ticket.status = QueueTicket.WAITING
-            #Save all the queue ticket changes
-            ticket.save(update_fields=['queue_type','queue_number','status'])
-        except Exception:
-            #If a queueticket somehow doesnt exist, create 1 using the existig business logic
+            ticket.assigned_counter = None
+            ticket.save(
+                update_fields=[
+                    "queue_type",
+                    "queue_number",
+                    "status",
+                    "assigned_counter",
+                ]
+            )
+        else:
             create_queue_ticket_for_booking(booking)
 
-        #Return the updated booking
-        response_serializer = BookingListSerializer(booking)
-        return Response(response_serializer.data,status=status.HTTP_200_OK)
-    
-        
+        # A rescheduled booking is active again but has not yet been served.
+        if booking.status != Booking.PENDING:
+            booking.status = Booking.PENDING
+            booking.save(update_fields=["status"])
+
+        return Response(
+            BookingListSerializer(booking).data,
+            status=status.HTTP_200_OK,
+        )
