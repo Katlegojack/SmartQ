@@ -22,4 +22,7 @@ urlpatterns = [
     path("api/v1/bookings/", include("bookings.api_urls")),
     path("api/v1/queues/", include("queues.api_urls")),
     path("api/v1/counters/", include("counters.api_urls")),
+
+    # Day 34 manager read-model APIs.
+    path("api/v1/dashboard/", include("dashboard.api_urls")),
 ]

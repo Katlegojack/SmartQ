@@ -9,6 +9,7 @@ on:
       - feature/day31-reception-walkins
       - feature/day32-branch-service-capacity
       - feature/day33-counter-lifecycle
+      - feature/day34-manager-dashboard
   pull_request:
     branches:
       - main
@@ -57,6 +58,9 @@ jobs:
 
       - name: Run notification reminder tests
         run: python manage.py test notifications
+
+      - name: Run manager dashboard tests
+        run: python manage.py test dashboard
 
       - name: Run full test suite
         run: python manage.py test
