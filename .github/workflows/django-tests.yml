@@ -10,6 +10,7 @@ on:
       - feature/day32-branch-service-capacity
       - feature/day33-counter-lifecycle
       - feature/day34-manager-dashboard
+      - feature/day35-disruption-rescheduling
   pull_request:
     branches:
       - main
@@ -61,6 +62,9 @@ jobs:
 
       - name: Run manager dashboard tests
         run: python manage.py test dashboard
+
+      - name: Run disruption and rescheduling tests
+        run: python manage.py test rescheduling
 
       - name: Run full test suite
         run: python manage.py test
