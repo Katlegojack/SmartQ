@@ -68,7 +68,7 @@ jobs:
         run: python manage.py test rescheduling
 
       - name: Run queue event audit tests
-        run: python manage.py test queues.test_day36_events
+        run: python manage.py test queues.test_day36_events queues.test_day36_audit_api
 
       - name: Run full test suite
         run: python manage.py test
