@@ -1,18 +1,48 @@
-#Import DRF serializer tool
-#Serializers convert django model objects into JSON-friendly data
 from rest_framework import serializers
 
-#Import the service model that we want to expose through the API
-from .models import Service
+from .models import BranchService, Service
+
 
 class ServiceSerializer(serializers.ModelSerializer):
-    #Meta tells DRF which model this serializer uses and which api fields should be shown in the API responses
-    class Meta:
-        #This serializer is based on the service model
-        model = Service
+    """Public read-only service catalogue representation."""
 
-        #These are the service fields that the API is allowed to return
-        fields = ['id','service_code','name','description','average_service_time','is_active','created_at']
-        #For now this API is read only, USERS are not allowed to creat/edit services
-        read_only_fields =['id','service_code','name','description','average_service_time','is_active','created_at']
-        
+    class Meta:
+        model = Service
+        fields = [
+            "id",
+            "service_code",
+            "name",
+            "description",
+            "average_service_time",
+            "is_active",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
+class BranchServiceSerializer(serializers.ModelSerializer):
+    """Public branch-specific service offering and appointment capacity."""
+
+    service_id = serializers.IntegerField(source="service.id", read_only=True)
+    service_code = serializers.CharField(source="service.service_code", read_only=True)
+    service_name = serializers.CharField(source="service.name", read_only=True)
+    description = serializers.CharField(source="service.description", read_only=True)
+    average_service_time = serializers.IntegerField(
+        source="service.average_service_time",
+        read_only=True,
+    )
+
+    class Meta:
+        model = BranchService
+        fields = [
+            "id",
+            "branch",
+            "service_id",
+            "service_code",
+            "service_name",
+            "description",
+            "average_service_time",
+            "max_bookings_per_slot",
+            "is_active",
+        ]
+        read_only_fields = fields

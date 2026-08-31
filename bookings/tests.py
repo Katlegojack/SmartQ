@@ -10,7 +10,7 @@ from rest_framework.test import APIClient, APITestCase
 from accounts.models import Profile
 from branches.models import Branch
 from queues.models import QueueTicket
-from services.models import Service
+from services.models import BranchService, Service
 from .models import Booking, GuestCustomer
 
 
@@ -42,6 +42,11 @@ class BookingCheckInAPITests(APITestCase):
             description="Identity document service",
             average_service_time=10,
             is_active=True,
+        )
+        self.branch_service = BranchService.objects.create(
+            branch=self.branch,
+            service=self.service,
+            max_bookings_per_slot=2,
         )
 
         self.customer = User.objects.create_user(username="customer", password="pw")
@@ -270,6 +275,11 @@ class ReceptionWorkflowAPITests(APITestCase):
             description="Identity document service",
             average_service_time=10,
             is_active=True,
+        )
+        self.branch_service = BranchService.objects.create(
+            branch=self.branch,
+            service=self.service,
+            max_bookings_per_slot=2,
         )
         self.receptionist = User.objects.create_user(username="reception", password="pw")
         Profile.objects.create(
