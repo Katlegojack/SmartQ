@@ -22,11 +22,7 @@ from .waiting_time import get_ticket_prediction
 
 
 def counter_staff_assignment_error(request, counter):
-    """
-    Protect counter mutations from same-branch but unassigned Counter Staff.
-
-    Branch Managers and System Admins keep their approved operational override.
-    """
+    """Protect counter mutations from same-branch but unassigned Counter Staff."""
     profile = get_user_profile(request.user)
     if (
         profile is not None
@@ -42,7 +38,6 @@ def counter_staff_assignment_error(request, counter):
 
 class CallNextTicketAPIView(APIView):
     """Call the next waiting customer for a staffed OPEN counter."""
-
     permission_classes = [IsQueueOperator]
 
     def post(self, request, counter_id):
@@ -64,8 +59,7 @@ class CallNextTicketAPIView(APIView):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        ticket = call_next_ticket(counter)
-
+        ticket = call_next_ticket(counter, actor=request.user)
         if ticket is None:
             return Response(
                 {
@@ -76,16 +70,11 @@ class CallNextTicketAPIView(APIView):
                 },
                 status=status.HTTP_404_NOT_FOUND,
             )
-
-        return Response(
-            QueueTicketSerializer(ticket).data,
-            status=status.HTTP_200_OK,
-        )
+        return Response(QueueTicketSerializer(ticket).data, status=status.HTTP_200_OK)
 
 
 class CompleteCurrentTicketAPIView(APIView):
     """Complete the customer currently being served at an authorised counter."""
-
     permission_classes = [IsQueueOperator]
 
     def post(self, request, counter_id):
@@ -96,23 +85,17 @@ class CompleteCurrentTicketAPIView(APIView):
         if assignment_error:
             return assignment_error
 
-        ticket = complete_current_ticket(counter)
-
+        ticket = complete_current_ticket(counter, actor=request.user)
         if ticket is None:
             return Response(
                 {"detail": "This counter is not serving any customer."},
                 status=status.HTTP_404_NOT_FOUND,
             )
-
-        return Response(
-            QueueTicketSerializer(ticket).data,
-            status=status.HTTP_200_OK,
-        )
+        return Response(QueueTicketSerializer(ticket).data, status=status.HTTP_200_OK)
 
 
 class NoShowCurrentTicketAPIView(APIView):
     """Mark the current customer as a no-show at an authorised counter."""
-
     permission_classes = [IsQueueOperator]
 
     def post(self, request, counter_id):
@@ -123,49 +106,38 @@ class NoShowCurrentTicketAPIView(APIView):
         if assignment_error:
             return assignment_error
 
-        ticket = mark_current_ticket_no_show(counter)
-
+        ticket = mark_current_ticket_no_show(counter, actor=request.user)
         if ticket is None:
             return Response(
                 {"detail": "This counter is not serving any customer."},
                 status=status.HTTP_404_NOT_FOUND,
             )
-
-        return Response(
-            QueueTicketSerializer(ticket).data,
-            status=status.HTTP_200_OK,
-        )
+        return Response(QueueTicketSerializer(ticket).data, status=status.HTTP_200_OK)
 
 
 class CurrentCounterTicketAPIView(APIView):
     """Return the ticket currently served at a counter visible to this staff user."""
-
     permission_classes = [IsQueueViewer]
 
     def get(self, request, counter_id):
         counter = get_object_or_404(Counter, pk=counter_id)
         self.check_object_permissions(request, counter)
-
         ticket = get_current_ticket(counter)
-
         if ticket is None:
             return Response(
                 {"detail": "This counter is currently free."},
                 status=status.HTTP_404_NOT_FOUND,
             )
-
         return Response(QueueTicketSerializer(ticket).data)
 
 
 class BranchWaitingQueueAPIView(APIView):
     """Return today's waiting queue when the staff user may view this branch."""
-
     permission_classes = [IsQueueViewer]
 
     def get(self, request, branch_id):
         branch = get_object_or_404(Branch, pk=branch_id, is_active=True)
         self.check_object_permissions(request, branch)
-
         queue_type = request.query_params.get("queue_type")
 
         if queue_type and queue_type not in [QueueTicket.GENERAL, QueueTicket.PRIORITY]:
@@ -179,18 +151,11 @@ class BranchWaitingQueueAPIView(APIView):
             booking_date=timezone.localdate(),
             queue_type=queue_type,
         )
-
         return Response(QueueTicketSerializer(tickets, many=True).data)
 
 
 class MyCurrentQueueTicketAPIView(APIView):
-    """
-    Return the logged-in customer's active ticket and current queue prediction.
-
-    This API remains user-owned rather than staff-role based. It is the endpoint
-    the customer queue-tracker screen can poll while the customer is waiting.
-    """
-
+    """Return the logged-in customer's active ticket and current queue prediction."""
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -212,8 +177,6 @@ class MyCurrentQueueTicketAPIView(APIView):
             )
 
         prediction = get_ticket_prediction(ticket)
-
-        # Once service starts, remaining wait is zero.
         if ticket.status == QueueTicket.SERVING:
             prediction["people_ahead"] = 0
             prediction["queue_position"] = 0
