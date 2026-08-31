@@ -1,7 +1,8 @@
 from django.db import transaction
 from django.utils import timezone
 
-from queues.models import QueueTicket
+from queues.events import record_queue_event
+from queues.models import QueueEvent, QueueTicket
 from queues.services import create_queue_ticket_for_booking
 from .models import Booking, GuestCustomer
 
@@ -17,13 +18,9 @@ def create_guest_walk_in(
     gender,
     disability_status=False,
     is_pregnant=False,
+    actor=None,
 ):
-    """
-    Create a no-account guest walk-in and immediately activate the live ticket.
-
-    Walk-ins are already at reception, so unlike an advance online appointment
-    they do not pass through SCHEDULED. They enter WAITING immediately.
-    """
+    """Create a no-account guest walk-in and immediately activate the live ticket."""
     guest = GuestCustomer.objects.create(
         full_name=full_name,
         phone_number=phone_number,
@@ -34,7 +31,6 @@ def create_guest_walk_in(
 
     now = timezone.now()
     local_now = timezone.localtime(now)
-
     booking = Booking.objects.create(
         user=None,
         guest_customer=guest,
@@ -48,8 +44,25 @@ def create_guest_walk_in(
         checked_in_at=now,
     )
 
-    ticket = create_queue_ticket_for_booking(booking)
+    # Walk-ins do not pass through a meaningful future SCHEDULED lifecycle, so
+    # suppress that event and record their actual immediate live-queue activation.
+    ticket = create_queue_ticket_for_booking(
+        booking,
+        actor=actor,
+        record_event=False,
+    )
     ticket.status = QueueTicket.WAITING
     ticket.save(update_fields=["status"])
 
+    record_queue_event(
+        QueueEvent.CHECKED_IN,
+        ticket=ticket,
+        booking=booking,
+        actor=actor,
+        from_ticket_status=QueueTicket.SCHEDULED,
+        to_ticket_status=QueueTicket.WAITING,
+        to_booking_status=Booking.PENDING,
+        occurred_at=now,
+        metadata={"check_in_mode": "walk_in_reception"},
+    )
     return booking
