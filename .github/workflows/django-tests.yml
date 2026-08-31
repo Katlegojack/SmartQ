@@ -8,6 +8,7 @@ on:
       - feature/day30-check-in
       - feature/day31-reception-walkins
       - feature/day32-branch-service-capacity
+      - feature/day33-counter-lifecycle
   pull_request:
     branches:
       - main
@@ -44,6 +45,9 @@ jobs:
 
       - name: Run service and capacity tests
         run: python manage.py test services
+
+      - name: Run counter lifecycle tests
+        run: python manage.py test counters
 
       - name: Run queue regression tests
         run: python manage.py test queues
