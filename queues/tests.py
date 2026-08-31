@@ -83,6 +83,7 @@ class QueueOperationalAPITests(APITestCase):
             counter_number="1",
             queue_type=QueueTicket.GENERAL,
             status=Counter.OPEN,
+            assigned_staff=self.staff,
         )
         self.client = APIClient()
 
