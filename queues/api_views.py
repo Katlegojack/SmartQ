@@ -6,10 +6,17 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import Profile
-from accounts.permissions import IsQueueOperator, IsQueueViewer, get_user_profile
+from accounts.permissions import (
+    IsBranchManager,
+    IsQueueOperator,
+    IsQueueViewer,
+    get_user_profile,
+)
+from bookings.models import Booking
 from branches.models import Branch
 from counters.models import Counter
-from .models import QueueTicket
+from .events import get_booking_event_timeline
+from .models import QueueEvent, QueueTicket
 from .serializers import QueueTicketSerializer
 from .services import (
     call_next_ticket,
@@ -34,6 +41,47 @@ def counter_staff_assignment_error(request, counter):
             status=status.HTTP_403_FORBIDDEN,
         )
     return None
+
+
+def customer_event_response(event):
+    """Return only customer-relevant lifecycle facts for one owned booking."""
+    return {
+        "id": event.id,
+        "event_type": event.event_type,
+        "queue_number": event.queue_number,
+        "queue_type": event.queue_type,
+        "from_ticket_status": event.from_ticket_status,
+        "to_ticket_status": event.to_ticket_status,
+        "from_booking_status": event.from_booking_status,
+        "to_booking_status": event.to_booking_status,
+        "counter_id": event.counter_id,
+        "occurred_at": event.occurred_at,
+    }
+
+
+def manager_event_response(event):
+    """Return an operational audit representation for authorised management."""
+    return {
+        "id": event.id,
+        "event_type": event.event_type,
+        "source": event.source,
+        "actor_user_id": event.actor_id,
+        "actor_username": event.actor_username,
+        "actor_role": event.actor_role,
+        "booking_id": event.booking_id,
+        "ticket_id": event.ticket_id,
+        "counter_id": event.counter_id,
+        "branch_id": event.branch_id,
+        "service_id": event.service_id,
+        "queue_number": event.queue_number,
+        "queue_type": event.queue_type,
+        "from_ticket_status": event.from_ticket_status,
+        "to_ticket_status": event.to_ticket_status,
+        "from_booking_status": event.from_booking_status,
+        "to_booking_status": event.to_booking_status,
+        "metadata": event.metadata,
+        "occurred_at": event.occurred_at,
+    }
 
 
 class CallNextTicketAPIView(APIView):
@@ -187,4 +235,49 @@ class MyCurrentQueueTicketAPIView(APIView):
                 "ticket": QueueTicketSerializer(ticket).data,
                 "prediction": prediction,
             }
+        )
+
+
+class CustomerBookingTimelineAPIView(APIView):
+    """Return lifecycle history only for a booking owned by the logged-in customer."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, booking_id):
+        booking = get_object_or_404(
+            Booking.objects.select_related("branch", "service"),
+            pk=booking_id,
+            user=request.user,
+        )
+        events = get_booking_event_timeline(booking)
+        return Response(
+            {
+                "booking_id": booking.id,
+                "events": [customer_event_response(event) for event in events],
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class BranchQueueEventAuditAPIView(APIView):
+    """Return branch audit history to own-branch Managers and global System Admins."""
+    permission_classes = [IsBranchManager]
+
+    def get(self, request, branch_id):
+        branch = get_object_or_404(Branch, pk=branch_id, is_active=True)
+        self.check_object_permissions(request, branch)
+
+        events = QueueEvent.objects.filter(branch=branch).select_related(
+            "booking",
+            "ticket",
+            "counter",
+            "service",
+            "actor",
+        ).order_by("-occurred_at", "-id")
+
+        return Response(
+            {
+                "branch_id": branch.id,
+                "events": [manager_event_response(event) for event in events],
+            },
+            status=status.HTTP_200_OK,
         )
