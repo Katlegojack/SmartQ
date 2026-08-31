@@ -11,6 +11,7 @@ from branches.models import Branch
 from counters.models import Counter
 from queues.models import QueueTicket
 from services.models import Service
+from .services import get_counter_dashboard
 
 
 class ManagerDashboardAPITests(APITestCase):
@@ -207,7 +208,9 @@ class ManagerDashboardAPITests(APITestCase):
         self.assertEqual(service_counts["ID01"], 2)
         self.assertEqual(service_counts["PASS01"], 1)
 
-        counter_summary = response.data["counters"]["summary"]
+        counter_data = response.data["counters"]
+        self.assertEqual(counter_data["scope"], "live_current_state")
+        counter_summary = counter_data["summary"]
         self.assertEqual(counter_summary["total"], 2)
         self.assertEqual(counter_summary["open"], 1)
         self.assertEqual(counter_summary["closed"], 1)
@@ -216,13 +219,33 @@ class ManagerDashboardAPITests(APITestCase):
         self.assertEqual(counter_summary["busy"], 1)
         self.assertEqual(counter_summary["free"], 0)
 
-        first_counter = response.data["counters"]["counters"][0]
+        first_counter = counter_data["counters"][0]
         self.assertEqual(first_counter["assigned_staff_username"], "staff")
         self.assertTrue(first_counter["is_busy"])
         self.assertEqual(
             first_counter["current_customer"]["queue_number"],
             "A002",
         )
+
+    def test_counter_dashboard_uses_two_bulk_queries_not_one_query_per_counter(self):
+        """Protect the bulk-fetch/index/compose design from N+1 regressions."""
+        Counter.objects.create(
+            branch=self.branch,
+            counter_number="3",
+            queue_type=QueueTicket.GENERAL,
+            status=Counter.CLOSED,
+        )
+        Counter.objects.create(
+            branch=self.branch,
+            counter_number="4",
+            queue_type=QueueTicket.PRIORITY,
+            status=Counter.CLOSED,
+        )
+
+        with self.assertNumQueries(2):
+            data = get_counter_dashboard(self.branch)
+
+        self.assertEqual(data["summary"]["total"], 4)
 
     def test_branch_manager_cannot_read_another_branch_dashboard(self):
         self.client.force_authenticate(user=self.manager)
