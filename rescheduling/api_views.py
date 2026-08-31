@@ -28,7 +28,6 @@ from .services import (
 
 
 def parse_iso_date(raw_value):
-    """Parse YYYY-MM-DD input without leaking Python parsing exceptions."""
     if not raw_value:
         return None, "booking_date is required and must use YYYY-MM-DD format."
     try:
@@ -38,12 +37,10 @@ def parse_iso_date(raw_value):
 
 
 def queue_pause_response(queue_pause):
-    """Return the live disruption report plus stable pause identity."""
     return get_disruption_report(queue_pause)
 
 
 def recommendation_response(recommendation):
-    """Return the customer-safe disruption reschedule representation."""
     options = recommendation.option.order_by("option_date", "option_time", "id")
     return {
         "id": recommendation.id,
@@ -73,7 +70,6 @@ def recommendation_response(recommendation):
 
 
 def reschedule_error_response(error_code):
-    """Translate stable workflow outcomes into customer-facing HTTP responses."""
     if error_code in {"slot_full", "past_slot", "past_date", "invalid_slot"}:
         messages = {
             "slot_full": "That replacement slot is no longer available. Choose another option.",
@@ -85,13 +81,11 @@ def reschedule_error_response(error_code):
             {"detail": messages[error_code], "code": error_code},
             status=status.HTTP_409_CONFLICT,
         )
-
     if error_code == "service_not_offered":
         return Response(
             {"detail": "The service is no longer offered at this branch.", "code": error_code},
             status=status.HTTP_409_CONFLICT,
         )
-
     return Response(
         {"detail": "This reschedule option can no longer be applied.", "code": error_code},
         status=status.HTTP_409_CONFLICT,
@@ -99,14 +93,11 @@ def reschedule_error_response(error_code):
 
 
 class BranchQueuePauseCreateAPIView(APIView):
-    """Allow a Branch Manager/Admin to pause one offered service in a branch."""
-
     permission_classes = [IsBranchManager]
 
     def post(self, request, branch_id):
         branch = get_object_or_404(Branch, pk=branch_id, is_active=True)
         self.check_object_permissions(request, branch)
-
         service_id = request.data.get("service_id")
         service = get_object_or_404(Service, pk=service_id, is_active=True)
         if get_branch_service(branch, service) is None:
@@ -114,26 +105,19 @@ class BranchQueuePauseCreateAPIView(APIView):
                 {"detail": "This service is not currently offered by the branch."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
         booking_date, error = parse_iso_date(request.data.get("booking_date"))
         if error:
             return Response({"detail": error}, status=status.HTTP_400_BAD_REQUEST)
-
         queue_pause = pause_queue(
             branch,
             service,
             booking_date,
             reason=request.data.get("reason", "").strip(),
         )
-        return Response(
-            queue_pause_response(queue_pause),
-            status=status.HTTP_201_CREATED,
-        )
+        return Response(queue_pause_response(queue_pause), status=status.HTTP_201_CREATED)
 
 
 class QueuePauseDetailAPIView(APIView):
-    """Return a live impact preview for one authorised queue pause."""
-
     permission_classes = [IsBranchManager]
 
     def get(self, request, pause_id):
@@ -146,13 +130,6 @@ class QueuePauseDetailAPIView(APIView):
 
 
 class QueuePauseResumeAPIView(APIView):
-    """
-    End a disruption and finalize its impact/recommendation snapshot.
-
-    Risk is persisted only after resume so lost service capacity is based on the
-    finished pause duration rather than a moving active-pause estimate.
-    """
-
     permission_classes = [IsBranchManager]
 
     def post(self, request, pause_id):
@@ -161,14 +138,10 @@ class QueuePauseResumeAPIView(APIView):
             pk=pause_id,
         )
         self.check_object_permissions(request, queue_pause)
-
         resume_queue(queue_pause)
         impact_result = create_disruption_impact_records(queue_pause)
         notification_result = create_notification_for_unnotified_impacts(queue_pause)
-        recommendation_result = create_reschedule_recommendations_for_risk_impacts(
-            queue_pause
-        )
-
+        recommendation_result = create_reschedule_recommendations_for_risk_impacts(queue_pause)
         queue_pause.refresh_from_db()
         return Response(
             {
@@ -182,8 +155,6 @@ class QueuePauseResumeAPIView(APIView):
 
 
 class MyRescheduleRecommendationListAPIView(APIView):
-    """Return disruption recommendations only for the authenticated customer's bookings."""
-
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -200,13 +171,6 @@ class MyRescheduleRecommendationListAPIView(APIView):
 
 
 class CustomerRescheduleOptionSelectAPIView(APIView):
-    """
-    Let the affected customer choose and immediately apply one replacement slot.
-
-    Ownership is resolved through recommendation -> booking -> user, so changing
-    an option ID cannot be used to alter another customer's appointment.
-    """
-
     permission_classes = [IsAuthenticated]
 
     def post(self, request, option_id):
@@ -218,9 +182,11 @@ class CustomerRescheduleOptionSelectAPIView(APIView):
             pk=option_id,
             recommendation__booking__user=request.user,
         )
-
         try:
-            recommendation = select_and_apply_reschedule_option(option)
+            recommendation = select_and_apply_reschedule_option(
+                option,
+                actor=request.user,
+            )
         except RescheduleWorkflowError as exc:
             return reschedule_error_response(exc.code)
 
