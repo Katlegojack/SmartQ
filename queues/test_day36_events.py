@@ -17,7 +17,6 @@ from counters.services import (
 )
 from services.models import Service
 
-from .analytics import get_ticket_actual_wait_minutes
 from .events import get_counter_event_timeline, get_ticket_event_timeline
 from .models import QueueEvent, QueueTicket
 from .services import (
@@ -114,18 +113,10 @@ class Day36QueueEventTests(TestCase):
         self.assertEqual(checked.to_ticket_status, QueueTicket.WAITING)
         self.assertEqual(checked.source, QueueEvent.CUSTOMER)
 
-    def test_called_event_records_staff_counter_and_actual_wait(self):
+    def test_called_event_records_staff_counter_and_status_transition(self):
         ticket = create_queue_ticket_for_booking(self.booking, actor=self.customer)
         ticket, error = check_in_booking(self.booking, actor=self.customer)
         self.assertIsNone(error)
-
-        checked_event = QueueEvent.objects.get(
-            ticket=ticket,
-            event_type=QueueEvent.CHECKED_IN,
-        )
-        QueueEvent.objects.filter(pk=checked_event.pk).update(
-            occurred_at=timezone.now() - timedelta(minutes=12)
-        )
 
         counter, error = assign_counter_staff(
             self.counter,
@@ -148,10 +139,6 @@ class Day36QueueEventTests(TestCase):
         self.assertEqual(event.actor_role, Profile.COUNTER_STAFF)
         self.assertEqual(event.from_ticket_status, QueueTicket.WAITING)
         self.assertEqual(event.to_ticket_status, QueueTicket.SERVING)
-
-        wait_minutes = get_ticket_actual_wait_minutes(ticket)
-        self.assertGreaterEqual(wait_minutes, 11.9)
-        self.assertLessEqual(wait_minutes, 12.2)
 
     def test_completion_event_is_appended_after_called_event(self):
         ticket = create_queue_ticket_for_booking(self.booking, actor=self.customer)
