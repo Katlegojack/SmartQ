@@ -1,6 +1,7 @@
 from collections import Counter as PythonCounter
 
 from django.db.models import Count
+from django.utils import timezone
 
 from bookings.models import Booking
 from counters.models import Counter
@@ -54,7 +55,10 @@ def get_service_distribution(branch, booking_date):
 
 def get_counter_dashboard(branch):
     """
-    Return branch counter totals plus per-counter live operational state.
+    Return the branch's current counter totals and per-counter operational state.
+
+    Counter lifecycle history is not persisted yet, so this section is explicitly
+    live/current even when the requested dashboard date is historical.
 
     Counters and currently-serving tickets are bulk-fetched. A ticket lookup map
     avoids executing one database query per counter (the classic N+1 problem).
@@ -123,6 +127,8 @@ def get_counter_dashboard(branch):
         )
 
     return {
+        "scope": "live_current_state",
+        "generated_at": timezone.now(),
         "summary": {
             "total": len(counters),
             "open": status_counts.get(Counter.OPEN, 0),
@@ -141,8 +147,9 @@ def get_manager_dashboard(branch, booking_date):
     """
     Build Smart Q's manager dashboard read model from authoritative domain data.
 
-    No dashboard state is persisted. Every value is derived from Booking,
-    QueueTicket, Counter, and related source-of-truth records at request time.
+    No dashboard state is persisted. Date-scoped customer/queue/service values are
+    derived from Booking and QueueTicket. Counter state is labelled separately as
+    live because historical counter transitions are not persisted yet.
     """
     queue_report = get_branch_daily_report(branch, booking_date)
 
