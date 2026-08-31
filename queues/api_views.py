@@ -5,7 +5,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.permissions import IsQueueOperator, IsQueueViewer
+from accounts.models import Profile
+from accounts.permissions import IsQueueOperator, IsQueueViewer, get_user_profile
 from branches.models import Branch
 from counters.models import Counter
 from .models import QueueTicket
@@ -20,21 +21,46 @@ from .services import (
 from .waiting_time import get_ticket_prediction
 
 
+def counter_staff_assignment_error(request, counter):
+    """
+    Protect counter mutations from same-branch but unassigned Counter Staff.
+
+    Branch Managers and System Admins keep their approved operational override.
+    """
+    profile = get_user_profile(request.user)
+    if (
+        profile is not None
+        and profile.role == Profile.COUNTER_STAFF
+        and counter.assigned_staff_id != request.user.id
+    ):
+        return Response(
+            {"detail": "Counter Staff may operate only their assigned counter."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    return None
+
+
 class CallNextTicketAPIView(APIView):
-    """Call the next waiting customer for a counter in the operator's branch."""
+    """Call the next waiting customer for a staffed OPEN counter."""
 
     permission_classes = [IsQueueOperator]
 
     def post(self, request, counter_id):
         counter = get_object_or_404(Counter, pk=counter_id)
-
-        # Role permission alone is not enough: branch staff may operate only the
-        # branch assigned to their Smart Q profile. SYSTEM_ADMIN is global.
         self.check_object_permissions(request, counter)
+
+        assignment_error = counter_staff_assignment_error(request, counter)
+        if assignment_error:
+            return assignment_error
 
         if counter.status != Counter.OPEN:
             return Response(
                 {"detail": "This counter must be open before calling customers."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        if counter.assigned_staff_id is None:
+            return Response(
+                {"detail": "Assign Counter Staff before calling customers."},
                 status=status.HTTP_409_CONFLICT,
             )
 
@@ -66,6 +92,10 @@ class CompleteCurrentTicketAPIView(APIView):
         counter = get_object_or_404(Counter, pk=counter_id)
         self.check_object_permissions(request, counter)
 
+        assignment_error = counter_staff_assignment_error(request, counter)
+        if assignment_error:
+            return assignment_error
+
         ticket = complete_current_ticket(counter)
 
         if ticket is None:
@@ -88,6 +118,10 @@ class NoShowCurrentTicketAPIView(APIView):
     def post(self, request, counter_id):
         counter = get_object_or_404(Counter, pk=counter_id)
         self.check_object_permissions(request, counter)
+
+        assignment_error = counter_staff_assignment_error(request, counter)
+        if assignment_error:
+            return assignment_error
 
         ticket = mark_current_ticket_no_show(counter)
 
