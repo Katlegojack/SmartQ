@@ -6,6 +6,7 @@ from django.utils import timezone
 from bookings.models import Booking
 from notifications.services import create_reschedule_applied_notification
 from queues.models import QueueDisruptionImpact, QueueTicket
+from queues.services import generate_queue_number
 from services.availability import validate_booking_slot
 
 from .models import RescheduleOption, RescheduleRecommendation
@@ -116,7 +117,11 @@ def create_reschedule_recommendation_for_impact(
     return {
         "recommendation": recommendation,
         "created": created,
-        "options_created": len(available_slots) if recommendation.status == RescheduleRecommendation.PENDING else 0,
+        "options_created": (
+            len(available_slots)
+            if recommendation.status == RescheduleRecommendation.PENDING
+            else 0
+        ),
     }
 
 
@@ -270,9 +275,17 @@ def apply_approved_reschedule(recommendation):
         if recommendation.priority_on_reschedule
         else ticket.queue_type
     )
+    ticket.queue_number = generate_queue_number(booking, ticket.queue_type)
     ticket.status = QueueTicket.SCHEDULED
     ticket.assigned_counter = None
-    ticket.save(update_fields=["queue_type", "status", "assigned_counter"])
+    ticket.save(
+        update_fields=[
+            "queue_type",
+            "queue_number",
+            "status",
+            "assigned_counter",
+        ]
+    )
 
     recommendation.ticket = ticket
     recommendation.suggested_booking_date = selected_option.option_date
