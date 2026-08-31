@@ -7,7 +7,8 @@ from django.utils import timezone
 from accounts.models import Profile
 from bookings.models import Booking
 from counters.models import Counter
-from .models import QueueTicket
+from .events import record_queue_event
+from .models import QueueEvent, QueueTicket
 
 
 CHECK_IN_OPEN_HOURS = 6
@@ -93,27 +94,33 @@ def generate_queue_number(booking, queue_type):
     return f"{prefix}{new_number:03d}"
 
 
-def create_queue_ticket_for_booking(booking):
+def create_queue_ticket_for_booking(booking, *, actor=None, record_event=True):
     """Create a non-live SCHEDULED ticket for a future/online appointment."""
     queue_type = determine_queue_type(booking)
     queue_number = generate_queue_number(booking, queue_type)
 
-    return QueueTicket.objects.create(
+    ticket = QueueTicket.objects.create(
         booking=booking,
         queue_type=queue_type,
         queue_number=queue_number,
         status=QueueTicket.SCHEDULED,
     )
 
+    if record_event:
+        record_queue_event(
+            QueueEvent.TICKET_SCHEDULED,
+            ticket=ticket,
+            booking=booking,
+            actor=actor,
+            to_ticket_status=QueueTicket.SCHEDULED,
+            to_booking_status=booking.status,
+        )
+    return ticket
+
 
 @transaction.atomic
-def cancel_expired_unchecked_booking(booking, now=None):
-    """
-    Cancel an appointment whose appointment time passed without check-in.
-
-    Product rule: a customer who never checked in was never in the live queue,
-    so this outcome is CANCELLED rather than NO_SHOW.
-    """
+def cancel_expired_unchecked_booking(booking, now=None, *, actor=None):
+    """Cancel an appointment whose time passed without live-queue activation."""
     if now is None:
         now = timezone.now()
 
@@ -126,6 +133,7 @@ def cancel_expired_unchecked_booking(booking, now=None):
     if now <= get_booking_datetime(booking):
         return False
 
+    old_booking_status = booking.status
     booking.status = Booking.CANCELLED
     booking.save(update_fields=["status"])
 
@@ -134,16 +142,30 @@ def cancel_expired_unchecked_booking(booking, now=None):
     except QueueTicket.DoesNotExist:
         ticket = None
 
+    old_ticket_status = ticket.status if ticket is not None else ""
     if ticket:
         ticket.status = QueueTicket.CANCELLED
         ticket.assigned_counter = None
         ticket.save(update_fields=["status", "assigned_counter"])
 
+    record_queue_event(
+        QueueEvent.CANCELLED,
+        ticket=ticket,
+        booking=booking,
+        actor=actor,
+        source=QueueEvent.SYSTEM if actor is None else None,
+        from_ticket_status=old_ticket_status,
+        to_ticket_status=QueueTicket.CANCELLED if ticket else "",
+        from_booking_status=old_booking_status,
+        to_booking_status=Booking.CANCELLED,
+        occurred_at=now,
+        metadata={"reason": "appointment_expired_without_check_in"},
+    )
     return True
 
 
 @transaction.atomic
-def check_in_booking(booking):
+def check_in_booking(booking, *, actor=None):
     """Activate an eligible online or in-person booking into the live queue."""
     booking = Booking.objects.select_for_update().select_related(
         "branch", "service", "user", "user__profile", "guest_customer"
@@ -162,7 +184,7 @@ def check_in_booking(booking):
     appointment_at = get_booking_datetime(booking)
 
     if now > appointment_at:
-        cancel_expired_unchecked_booking(booking, now=now)
+        cancel_expired_unchecked_booking(booking, now=now, actor=actor)
         return None, "expired_cancelled"
 
     if now < get_check_in_opens_at(booking):
@@ -171,14 +193,13 @@ def check_in_booking(booking):
     try:
         ticket = QueueTicket.objects.select_for_update().get(booking=booking)
     except QueueTicket.DoesNotExist:
-        ticket = create_queue_ticket_for_booking(booking)
+        ticket = create_queue_ticket_for_booking(booking, actor=actor)
 
-    if ticket.status in [
-        QueueTicket.CANCELLED,
-        QueueTicket.COMPLETED,
-        QueueTicket.NO_SHOW,
-    ]:
+    if ticket.status in [QueueTicket.CANCELLED, QueueTicket.COMPLETED, QueueTicket.NO_SHOW]:
         return None, "final_state"
+
+    old_ticket_status = ticket.status
+    old_booking_status = booking.status
 
     new_queue_type = determine_queue_type(booking)
     if new_queue_type != ticket.queue_type:
@@ -187,19 +208,23 @@ def check_in_booking(booking):
 
     ticket.status = QueueTicket.WAITING
     ticket.assigned_counter = None
-    ticket.save(
-        update_fields=[
-            "queue_type",
-            "queue_number",
-            "status",
-            "assigned_counter",
-        ]
-    )
+    ticket.save(update_fields=["queue_type", "queue_number", "status", "assigned_counter"])
 
     booking.checked_in_at = now
     booking.status = Booking.PENDING
     booking.save(update_fields=["checked_in_at", "status"])
 
+    record_queue_event(
+        QueueEvent.CHECKED_IN,
+        ticket=ticket,
+        booking=booking,
+        actor=actor,
+        from_ticket_status=old_ticket_status,
+        to_ticket_status=QueueTicket.WAITING,
+        from_booking_status=old_booking_status,
+        to_booking_status=Booking.PENDING,
+        occurred_at=now,
+    )
     return ticket, None
 
 
@@ -231,8 +256,7 @@ def get_waiting_tickets(branch, booking_date=None, queue_type=None):
     )
 
     if queue_type:
-        tickets = tickets.filter(queue_type=queue_type)
-        return tickets.order_by("booking__checked_in_at", "id")
+        return tickets.filter(queue_type=queue_type).order_by("booking__checked_in_at", "id")
 
     queue_type_rank = Case(
         When(queue_type=QueueTicket.PRIORITY, then=Value(0)),
@@ -240,18 +264,16 @@ def get_waiting_tickets(branch, booking_date=None, queue_type=None):
         default=Value(2),
         output_field=IntegerField(),
     )
-
-    return tickets.annotate(
-        queue_type_rank=queue_type_rank
-    ).order_by("queue_type_rank", "booking__checked_in_at", "id")
+    return tickets.annotate(queue_type_rank=queue_type_rank).order_by(
+        "queue_type_rank", "booking__checked_in_at", "id"
+    )
 
 
 @transaction.atomic
-def call_next_ticket(counter, booking_date=None):
+def call_next_ticket(counter, booking_date=None, *, actor=None):
     """Assign the next checked-in waiting customer to an OPEN counter."""
     if counter.status != Counter.OPEN:
         return None
-
     if booking_date is None:
         booking_date = timezone.localdate()
 
@@ -275,6 +297,7 @@ def call_next_ticket(counter, booking_date=None):
     if ticket is None:
         return None
 
+    old_booking_status = ticket.booking.status
     ticket.assigned_counter = counter
     ticket.status = QueueTicket.SERVING
     ticket.save(update_fields=["assigned_counter", "status"])
@@ -283,19 +306,30 @@ def call_next_ticket(counter, booking_date=None):
         ticket.booking.status = Booking.CONFIRMED
         ticket.booking.save(update_fields=["status"])
 
+    record_queue_event(
+        QueueEvent.CALLED,
+        ticket=ticket,
+        booking=ticket.booking,
+        counter=counter,
+        actor=actor,
+        from_ticket_status=QueueTicket.WAITING,
+        to_ticket_status=QueueTicket.SERVING,
+        from_booking_status=old_booking_status,
+        to_booking_status=ticket.booking.status,
+    )
     return ticket
 
 
 @transaction.atomic
-def complete_current_ticket(counter):
+def complete_current_ticket(counter, *, actor=None):
     ticket = QueueTicket.objects.select_for_update().filter(
         assigned_counter=counter,
         status=QueueTicket.SERVING,
     ).select_related("booking").first()
-
     if ticket is None:
         return None
 
+    old_booking_status = ticket.booking.status
     ticket.status = QueueTicket.COMPLETED
     ticket.assigned_counter = None
     ticket.save(update_fields=["status", "assigned_counter"])
@@ -303,26 +337,32 @@ def complete_current_ticket(counter):
     ticket.booking.status = Booking.COMPLETED
     ticket.booking.save(update_fields=["status"])
 
+    record_queue_event(
+        QueueEvent.COMPLETED,
+        ticket=ticket,
+        booking=ticket.booking,
+        counter=counter,
+        actor=actor,
+        from_ticket_status=QueueTicket.SERVING,
+        to_ticket_status=QueueTicket.COMPLETED,
+        from_booking_status=old_booking_status,
+        to_booking_status=Booking.COMPLETED,
+    )
     return ticket
 
 
 @transaction.atomic
-def mark_current_ticket_no_show(counter):
-    """
-    Mark a called/serving customer as NO_SHOW.
-
-    This only applies after check-in. Unchecked expired appointments are
-    cancelled instead and never enter the live queue.
-    """
+def mark_current_ticket_no_show(counter, *, actor=None):
+    """Mark a called/serving checked-in customer as NO_SHOW."""
     ticket = QueueTicket.objects.select_for_update().filter(
         assigned_counter=counter,
         status=QueueTicket.SERVING,
         booking__checked_in_at__isnull=False,
     ).select_related("booking").first()
-
     if ticket is None:
         return None
 
+    old_booking_status = ticket.booking.status
     ticket.status = QueueTicket.NO_SHOW
     ticket.assigned_counter = None
     ticket.save(update_fields=["status", "assigned_counter"])
@@ -330,4 +370,15 @@ def mark_current_ticket_no_show(counter):
     ticket.booking.status = Booking.NO_SHOW
     ticket.booking.save(update_fields=["status"])
 
+    record_queue_event(
+        QueueEvent.NO_SHOW,
+        ticket=ticket,
+        booking=ticket.booking,
+        counter=counter,
+        actor=actor,
+        from_ticket_status=QueueTicket.SERVING,
+        to_ticket_status=QueueTicket.NO_SHOW,
+        from_booking_status=old_booking_status,
+        to_booking_status=Booking.NO_SHOW,
+    )
     return ticket
