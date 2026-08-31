@@ -19,6 +19,14 @@ DEFAULT_REASON = (
 )
 
 
+class RescheduleWorkflowError(Exception):
+    """Carry a stable business error code while rolling back an atomic workflow."""
+
+    def __init__(self, code):
+        self.code = code
+        super().__init__(code)
+
+
 def get_reschedule_risk_impacts(queue_pause=None):
     """Return reschedule-risk impacts globally or for one specific pause."""
     impacts = QueueDisruptionImpact.objects.filter(
@@ -305,3 +313,26 @@ def apply_approved_reschedule(recommendation):
 
     create_reschedule_applied_notification(recommendation)
     return recommendation, None
+
+
+@transaction.atomic
+def select_and_apply_reschedule_option(option):
+    """
+    Perform customer option selection and booking movement as one transaction.
+
+    The lower-level helpers intentionally return business error codes. This
+    orchestration layer converts any error into an exception so Django rolls back
+    the entire outer transaction instead of committing a half-finished APPROVED
+    recommendation when the subsequent booking update cannot be completed.
+    """
+    selected_option, error_code = select_reschedule_option(option)
+    if error_code:
+        raise RescheduleWorkflowError(error_code)
+
+    recommendation, error_code = apply_approved_reschedule(
+        selected_option.recommendation
+    )
+    if error_code:
+        raise RescheduleWorkflowError(error_code)
+
+    return recommendation
