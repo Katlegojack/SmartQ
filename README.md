@@ -4,7 +4,7 @@
 
 Smart Q is a Django + Django REST Framework Queue Intelligence Platform designed to make queues more predictable, transparent, fair, and operationally efficient.
 
-> **Current development state:** Days 28-32 are integrated into `main`. Day 33 counter lifecycle and staff-to-counter assignment are implemented on `feature/day33-counter-lifecycle`.
+> **Current development state:** Days 28-33 are integrated into `main`. Day 34 manager dashboard read-model APIs are implemented on `feature/day34-manager-dashboard` and are under final regression verification.
 
 ## Product principle
 
@@ -43,9 +43,9 @@ Django REST Framework APIs
         ↓
 Authentication + Role/Branch/Counter Permissions
         ↓
-Serializers
+Serializers / Read Models
         ↓
-Business Logic / Service Layer
+Business Logic / Aggregation Services
         ↓
 Django ORM
         ↓
@@ -63,7 +63,10 @@ queues
 counters
 notifications
 rescheduling
+dashboard
 ```
+
+`dashboard` is intentionally a read-only aggregation app with no database model. It derives manager data from operational source-of-truth models instead of duplicating state.
 
 ## Roles
 
@@ -80,8 +83,8 @@ SYSTEM_ADMIN
 | Customer | Own account, bookings and live queue |
 | Receptionist | Branch queue reads, booking search, staff check-in, guest walk-ins |
 | Counter Staff | Branch queue reads + mutations on their assigned counter |
-| Branch Manager | Own-branch counter assignment and operational override |
-| System Admin | Global operational access |
+| Branch Manager | Own-branch counter assignment, operational override and manager dashboard |
+| System Admin | Global operational and dashboard access |
 
 ## Authentication APIs
 
@@ -240,7 +243,55 @@ POST /api/v1/queues/counters/<counter_id>/complete/
 POST /api/v1/queues/counters/<counter_id>/no-show/
 ```
 
-Counter Staff queue mutations are now assignment-aware.
+Counter Staff queue mutations are assignment-aware.
+
+## Day 34: Manager dashboard read model
+
+Day 34 adds a cross-domain, read-only manager view without introducing a `Dashboard` database table.
+
+```text
+Booking ---------+
+QueueTicket -----+
+Counter ---------+--> Dashboard aggregation service --> Manager API
+Branch ----------+
+Service ---------+
+```
+
+This avoids duplicated/stale dashboard state and keeps operational models as the source of truth.
+
+### Manager dashboard API
+
+```http
+GET /api/v1/dashboard/branches/<branch_id>/
+GET /api/v1/dashboard/branches/<branch_id>/?date=YYYY-MM-DD
+```
+
+Access rules:
+
+- Branch Manager: own branch only.
+- System Admin: any active branch.
+- Counter Staff, Receptionist and Customer: denied.
+
+The dashboard returns:
+
+- branch information and operating hours;
+- customer activity totals;
+- General/Priority lifecycle statistics;
+- combined scheduled/waiting/serving/completed/no-show/cancelled totals;
+- online vs walk-in booking counts;
+- checked-in vs not-checked-in counts;
+- service distribution;
+- live counter totals;
+- staffed/unstaffed counters;
+- free/busy counters;
+- assigned Counter Staff;
+- current serving ticket/customer where applicable.
+
+Date-scoped queue, booking and service metrics use the requested report date. Counter state is explicitly labelled `live_current_state` because historical counter transitions are not yet persisted.
+
+Day 34 also optimises queue lifecycle counting with conditional aggregation and avoids N+1 counter-ticket queries by bulk-fetching serving tickets and indexing them by counter ID.
+
+Smart Q deliberately does **not** claim a historical average actual waiting time yet. A trustworthy value requires the future queue-event timeline (`called_at`, completion/service events, etc.).
 
 ## Waiting-time estimate
 
@@ -283,10 +334,11 @@ python manage.py test counters
 python manage.py test queues
 python manage.py test bookings
 python manage.py test notifications
+python manage.py test dashboard
 python manage.py test
 ```
 
-Day 33 adds explicit counter lifecycle tests while retaining all earlier regression suites.
+Day 34 adds explicit manager dashboard tests while retaining every earlier regression suite.
 
 ## Permanent engineering documentation
 
@@ -297,6 +349,7 @@ docs/DAY30_CHECK_IN.md
 docs/DAY31_RECEPTION_WALKINS.md
 docs/DAY32_BRANCH_SERVICE_CAPACITY.md
 docs/DAY33_COUNTER_LIFECYCLE.md
+docs/DAY34_MANAGER_DASHBOARD.md
 ```
 
 ## Current backend capabilities
@@ -320,26 +373,29 @@ Smart Q now includes:
 - explicit staff-to-counter assignment;
 - counter OPEN/PAUSE/RESUME/CLOSE lifecycle;
 - assignment-aware Call Next/Complete/No Show;
+- manager branch dashboard aggregation;
+- daily queue/customer/service operational reporting;
+- live counter/staff/free/busy manager visibility;
 - in-app notifications;
 - automated tests and GitHub Actions CI.
 
 ## Remaining major backend work
 
-1. Manager live dashboard APIs.
-2. Manager disruption/rescheduling APIs.
-3. Historical QueueEvent timeline/audit data.
-4. Account verification, password reset and throttling.
-5. External notification channels.
-6. PostgreSQL and concurrency hardening.
-7. Production secrets/HTTPS/logging/monitoring/backups.
-8. Real-time delivery strategy.
+1. Manager disruption/rescheduling APIs and repair of older rescheduling logic.
+2. Historical QueueEvent timeline/audit data.
+3. Account verification, password reset and throttling.
+4. External notification channels.
+5. PostgreSQL and concurrency hardening.
+6. Production secrets/HTTPS/logging/monitoring/backups.
+7. Real-time delivery strategy.
+8. Historical analytics/performance reporting.
 9. Historical data collection and genuine ML wait forecasting.
 
 ## Roadmap
 
 ```text
-Day 33  Counter Lifecycle + Staff Assignment
-Day 34  Manager Dashboard APIs
+Day 33  Counter Lifecycle + Staff Assignment       COMPLETE / MERGED
+Day 34  Manager Dashboard APIs                    IN PROGRESS
 Day 35  Disruption + Rescheduling Manager APIs
 Day 36  QueueEvent / Timeline / Audit
 Day 37  Account Security + Notification Hardening
@@ -379,6 +435,7 @@ Verify:
 ```powershell
 python manage.py makemigrations --check --dry-run
 python manage.py check
+python manage.py test dashboard
 python manage.py test
 ```
 
@@ -386,7 +443,7 @@ python manage.py test
 
 Smart Q is being built to give people greater control over time normally lost in uncertain physical queues while giving service organisations safer and clearer operational control.
 
-Day 33 makes the counter layer operationally trustworthy: an active counter now represents a real assigned staff member, and normal Counter Staff can mutate only the counter they actually own.
+Day 33 made the counter layer operationally trustworthy. Day 34 adds the manager's operational read model without duplicating domain state, giving authorised managers one API view of queue demand, customer flow, services and live counter capacity.
 
 ```text
 Make queues fairer, smarter, more transparent,
