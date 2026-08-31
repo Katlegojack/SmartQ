@@ -1,262 +1,338 @@
 from datetime import timedelta
+
+from django.db import transaction
 from django.utils import timezone
-from .models import RescheduleRecommendation,RescheduleOption
-from queues.models import QueueDisruptionImpact,QueueTicket
-from .slots import get_available_reschedule_slots, get_slot_availability
-from queues.services import determine_queue_type
+
+from bookings.models import Booking
+from notifications.services import create_reschedule_applied_notification
+from queues.models import QueueDisruptionImpact, QueueTicket
+from queues.services import generate_queue_number
+from services.availability import validate_booking_slot
+
+from .models import RescheduleOption, RescheduleRecommendation
+from .slots import get_available_reschedule_slots
 
 
-def get_next_recommended_date(booking):
-    return booking.booking_date + timedelta(days=1)
+DEFAULT_REASON = (
+    "Customer was at risk of not being served because service capacity was lost "
+    "during a queue disruption."
+)
+
+
+class RescheduleWorkflowError(Exception):
+    """Carry a stable business error code while rolling back an atomic workflow."""
+
+    def __init__(self, code):
+        self.code = code
+        super().__init__(code)
+
 
 def get_reschedule_risk_impacts(queue_pause=None):
+    """Return reschedule-risk impacts globally or for one specific pause."""
     impacts = QueueDisruptionImpact.objects.filter(
-        impact_type =QueueDisruptionImpact.RESCHEDULE_RISK
-    )
-    if queue_pause is None:
+        impact_type=QueueDisruptionImpact.RESCHEDULE_RISK
+    ).select_related("ticket", "ticket__booking", "queue_pause")
+
+    if queue_pause is not None:
         impacts = impacts.filter(queue_pause=queue_pause)
-    return impacts.order_by("created_at")
 
-def create_reschedule_recommendation_for_impact(impact,suggested_date=None,suggested_time=None,reason=''):
-    if impact is None:
-        return {
-            'recommendation':None,
-            'created':False,
-        }
-    if impact.impact_type != QueueDisruptionImpact.RESCHEDULE_RISK:
-        return {
-            'recommendation':None,
-            'created':False,
-        }
+    return impacts.order_by("created_at", "id")
+
+
+@transaction.atomic
+def create_reschedule_recommendation_for_impact(
+    impact,
+    *,
+    reason="",
+    max_slots=5,
+):
+    """
+    Create one recommendation and up to five current capacity-safe options.
+
+    A QueueDisruptionImpact has at most one recommendation by schema. Re-running
+    this function refreshes options instead of duplicating recommendations.
+    """
+    if impact is None or impact.impact_type != QueueDisruptionImpact.RESCHEDULE_RISK:
+        return {"recommendation": None, "created": False, "options_created": 0}
+
     ticket = impact.ticket
-    if ticket is None or ticket.booking is None:
-        return{
-            'recommendation':None,
-            'created':False,
-        }
+    if ticket is None or ticket.booking_id is None:
+        return {"recommendation": None, "created": False, "options_created": 0}
+
     booking = ticket.booking
-
-    if suggested_date is None:
-        suggested_date =get_next_recommended_date(booking)
-
-    if suggested_time is None:
-        suggested_time = booking.booking_time
-    
-    if not reason:
-        reason = ("Customer was at risk of not being served due to lost "
-            "service capacity from a queue disruption."
-        )
-
-    recommendation,created = RescheduleRecommendation.objects.get_or_create(
-        disruption_impact = impact,
-        defaults={
-            'booking':booking,
-            'ticket':ticket,
-            'old_booking_date':booking.booking_date,
-            'old_booking_time':booking.booking_time,
-            'suggest_booking_date':suggested_date,
-            'suggest_booking_time':suggested_time,
-            'priority_on_reschedule':True,
-            'reason':reason,
-        }
+    available_slots = get_available_reschedule_slots(
+        booking,
+        start_date=booking.booking_date + timedelta(days=1),
+        max_slots=max_slots,
     )
-    return{
-        'recommendation':recommendation,
-        'created':created,
-    }
+    if not available_slots:
+        return {"recommendation": None, "created": False, "options_created": 0}
 
-def create_reschedule_recommendations_for_risk_impacts(queue_pause=None):
-    impacts =get_reschedule_risk_impacts(queue_pause)
-    recommendation_created =0
-    recommendation_processed =0
+    first_slot = available_slots[0]
+    recommendation, created = RescheduleRecommendation.objects.get_or_create(
+        disruption_impact=impact,
+        defaults={
+            "booking": booking,
+            "ticket": ticket,
+            "old_booking_date": booking.booking_date,
+            "old_booking_time": booking.booking_time,
+            "suggested_booking_date": first_slot["date"],
+            "suggested_booking_time": first_slot["time"],
+            "priority_on_reschedule": True,
+            "reason": reason or DEFAULT_REASON,
+            "status": RescheduleRecommendation.PENDING,
+        },
+    )
 
-    for impact in impacts:
-        result = create_reschedule_recommendation_for_impact(impact)
-
-        if result['recommendation'] is None:
-            recommendation_processed += 1
-
-        if result['created'] is None:
-            recommendation_created +=1
-        
-    return{
-        'recommendation_processed':recommendation_processed,
-        'recommendation_created':recommendation_created,
-    }
-
-def create_reschedule_options_for_recommendation(recommendation,max_slot=5):
-    if recommendation is None:
-        return{
-            
-            'options_processed':0,
-            'options_created':0,
-        }
-    booking =recommendation.booking
-
-    if booking is None:
-        return{
-            'options_processed':0,
-            'options_created':0,
-        }
-    
-    RescheduleOption.objects.filter(recommendation=recommendation).update(recommendation=False)
-    slots =get_available_reschedule_slots(booking,start_date=recommendation.old_booking_date+timedelta(days=1))
-    options_processed=0
-    options_created=0
-    for slot in slots:
-        options,created = RescheduleOption.objects.get_or_create(
-            recommendation=recommendation,
-            option_date =slot['date'],
-            option_time = slot['time'],
-            defaults={
-                'capacity':slot['capacity'],
-                'booked_count':slot['booked_count'],
-                'available_count':slot['available_count'],
-                'is_recommended':slot['is_recommended'],
-            }
+    # Pending recommendations may be refreshed because slot capacity changes over
+    # time. Once a manager/customer has approved/applied/rejected a recommendation,
+    # preserve the audit snapshot rather than silently rewriting its options.
+    if recommendation.status == RescheduleRecommendation.PENDING:
+        recommendation.booking = booking
+        recommendation.ticket = ticket
+        recommendation.reason = reason or recommendation.reason or DEFAULT_REASON
+        recommendation.priority_on_reschedule = True
+        recommendation.suggested_booking_date = first_slot["date"]
+        recommendation.suggested_booking_time = first_slot["time"]
+        recommendation.save(
+            update_fields=[
+                "booking",
+                "ticket",
+                "reason",
+                "priority_on_reschedule",
+                "suggested_booking_date",
+                "suggested_booking_time",
+                "updated_at",
+            ]
         )
-        if created is False:
-            options.capacity = slot['capacity']
-            options.booked_count = slot['booked_capacity']
-            options.available_count = slot['available_count']
-            options.is_recommended = slot['is_recommended']
-            options.save()
-        
-        options_processed +=1
-        if created:
-            options_created +=1
-        
-    return{
-        'options_processed':options_processed,
-        'options_created':options_created,
+
+        RescheduleOption.objects.filter(recommendation=recommendation).delete()
+        RescheduleOption.objects.bulk_create(
+            [
+                RescheduleOption(
+                    recommendation=recommendation,
+                    option_date=slot["date"],
+                    option_time=slot["time"],
+                    capacity=slot["capacity"],
+                    booked_count=slot["booked_count"],
+                    available_count=slot["available_count"],
+                    is_recommended=slot["is_recommended"],
+                )
+                for slot in available_slots
+            ]
+        )
+
+    return {
+        "recommendation": recommendation,
+        "created": created,
+        "options_created": (
+            len(available_slots)
+            if recommendation.status == RescheduleRecommendation.PENDING
+            else 0
+        ),
     }
+
+
+def create_reschedule_recommendations_for_risk_impacts(queue_pause=None, *, max_slots=5):
+    """Create/refresh recommendations for every persisted reschedule-risk impact."""
+    processed = 0
+    created = 0
+    options_created = 0
+
+    for impact in get_reschedule_risk_impacts(queue_pause):
+        processed += 1
+        result = create_reschedule_recommendation_for_impact(
+            impact,
+            max_slots=max_slots,
+        )
+        if result["created"]:
+            created += 1
+        options_created += result["options_created"]
+
+    return {
+        "recommendations_processed": processed,
+        "recommendations_created": created,
+        "options_created": options_created,
+    }
+
 
 def get_selected_reschedule_option(recommendation):
+    """Return the single selected option, if one has been chosen."""
     if recommendation is None:
         return None
-    
     return RescheduleOption.objects.filter(
         recommendation=recommendation,
-        is_selected = True,
+        is_selected=True,
     ).first()
 
+
+@transaction.atomic
 def select_reschedule_option(option):
+    """Select one still-available option and approve its recommendation."""
     if option is None:
-        return None
-    
-    if option.available_count <=0:
-        return None
-    
+        return None, "missing_option"
+
+    option = (
+        RescheduleOption.objects.select_for_update()
+        .select_related("recommendation", "recommendation__booking")
+        .filter(pk=option.pk)
+        .first()
+    )
+    if option is None:
+        return None, "missing_option"
+
     recommendation = option.recommendation
-    RescheduleOption.objects.filter(
-        recommendation = recommendation,
+    if recommendation.status not in [
+        RescheduleRecommendation.PENDING,
+        RescheduleRecommendation.APPROVED,
+    ]:
+        return None, "recommendation_finalized"
 
-    ).update(is_selected=False)
+    booking = recommendation.booking
+    _, error_code = validate_booking_slot(
+        booking.branch,
+        booking.service,
+        option.option_date,
+        option.option_time,
+        exclude_booking=booking,
+        lock=True,
+    )
+    if error_code:
+        return None, error_code
 
+    RescheduleOption.objects.filter(recommendation=recommendation).update(
+        is_selected=False
+    )
     option.is_selected = True
-    option.save()
+    option.save(update_fields=["is_selected"])
 
     recommendation.suggested_booking_date = option.option_date
     recommendation.suggested_booking_time = option.option_time
-    recommendation.status =RescheduleRecommendation.APPROVED
-    recommendation.save()
-
-    return option
-
-def generate_rescheduled_queue_number(booking,queue_type,current_ticket=None):
-    prefix = "A" if queue_type == QueueTicket.GENERAL else "P"
-
-    tickets = QueueTicket.objects.filter(
-        booking__branch=booking.branch,
-        booking__booking_date=booking.booking_date,
-        queue_type=queue_type
+    recommendation.status = RescheduleRecommendation.APPROVED
+    recommendation.save(
+        update_fields=[
+            "suggested_booking_date",
+            "suggested_booking_time",
+            "status",
+            "updated_at",
+        ]
     )
-
-    if current_ticket is not None:
-        tickets = tickets.exclude(
-            id=current_ticket.id
-        )
-
-    latest_ticket = tickets.order_by("-id").first()
-
-    if latest_ticket:
-        last_number = int(latest_ticket.queue_number[1:])
-        new_number = last_number + 1
-    else:
-        new_number = 1
-
-    return f"{prefix}{new_number:03d}"
+    return option, None
 
 
+@transaction.atomic
 def apply_approved_reschedule(recommendation):
+    """
+    Atomically move an approved disrupted booking to its selected future slot.
+
+    The booking returns to SCHEDULED/PENDING and must check in again. The ticket
+    is marked Priority as disruption compensation, but it is not put in WAITING
+    before check-in because that would violate Smart Q's live-queue activation rule.
+    """
     if recommendation is None:
-        return None
+        return None, "missing_recommendation"
+
+    recommendation = (
+        RescheduleRecommendation.objects.select_for_update()
+        .select_related("booking", "ticket")
+        .filter(pk=recommendation.pk)
+        .first()
+    )
+    if recommendation is None:
+        return None, "missing_recommendation"
 
     if recommendation.status == RescheduleRecommendation.APPLIED:
-        return recommendation
-
+        return recommendation, None
     if recommendation.status != RescheduleRecommendation.APPROVED:
-        return None
+        return None, "not_approved"
 
-    selected_option = get_selected_reschedule_option(
-        recommendation
-    )
-
+    selected_option = get_selected_reschedule_option(recommendation)
     if selected_option is None:
-        return None
+        return None, "missing_selection"
 
-    if selected_option.available_count <= 0:
-        return None
-
-    booking = recommendation.booking
-
-    if booking is None:
-        return None
-
-    ticket = recommendation.ticket
-
-    if ticket is None:
-        ticket = QueueTicket.objects.filter(
-            booking=booking
-        ).first()
-
-    if ticket is None:
-        return None
-
-    latest_slot = get_slot_availability(
-        booking,
+    booking = Booking.objects.select_for_update().get(pk=recommendation.booking_id)
+    _, error_code = validate_booking_slot(
+        booking.branch,
+        booking.service,
         selected_option.option_date,
         selected_option.option_time,
-        QueueTicket.PRIORITY
+        exclude_booking=booking,
+        lock=True,
     )
+    if error_code:
+        return None, error_code
 
-    if latest_slot["is_available"] is False:
-        return None
+    ticket = recommendation.ticket
+    if ticket is None:
+        ticket = QueueTicket.objects.select_for_update().filter(booking=booking).first()
+    else:
+        ticket = QueueTicket.objects.select_for_update().get(pk=ticket.pk)
+    if ticket is None:
+        return None, "missing_ticket"
 
     booking.booking_date = selected_option.option_date
     booking.booking_time = selected_option.option_time
-    booking.status = booking.CONFIRMED
-    booking.save()
-
-    ticket.queue_type = QueueTicket.PRIORITY
-    ticket.queue_number = generate_rescheduled_queue_number(
-        booking,
-        QueueTicket.PRIORITY,
-        current_ticket=ticket
+    booking.checked_in_at = None
+    booking.status = Booking.PENDING
+    booking.save(
+        update_fields=["booking_date", "booking_time", "checked_in_at", "status"]
     )
-    ticket.status = QueueTicket.WAITING
+
+    ticket.queue_type = (
+        QueueTicket.PRIORITY
+        if recommendation.priority_on_reschedule
+        else ticket.queue_type
+    )
+    ticket.queue_number = generate_queue_number(booking, ticket.queue_type)
+    ticket.status = QueueTicket.SCHEDULED
     ticket.assigned_counter = None
-    ticket.save()
+    ticket.save(
+        update_fields=[
+            "queue_type",
+            "queue_number",
+            "status",
+            "assigned_counter",
+        ]
+    )
 
     recommendation.ticket = ticket
     recommendation.suggested_booking_date = selected_option.option_date
     recommendation.suggested_booking_time = selected_option.option_time
     recommendation.status = RescheduleRecommendation.APPLIED
     recommendation.applied_at = timezone.now()
-    recommendation.save()
+    recommendation.save(
+        update_fields=[
+            "ticket",
+            "suggested_booking_date",
+            "suggested_booking_time",
+            "status",
+            "applied_at",
+            "updated_at",
+        ]
+    )
 
-    #This creates a customer notification after the reschedule is successfully applied
-    from notifications.services import create_reschedule_applied_notification
     create_reschedule_applied_notification(recommendation)
+    return recommendation, None
+
+
+@transaction.atomic
+def select_and_apply_reschedule_option(option):
+    """
+    Perform customer option selection and booking movement as one transaction.
+
+    The lower-level helpers intentionally return business error codes. This
+    orchestration layer converts any error into an exception so Django rolls back
+    the entire outer transaction instead of committing a half-finished APPROVED
+    recommendation when the subsequent booking update cannot be completed.
+    """
+    selected_option, error_code = select_reschedule_option(option)
+    if error_code:
+        raise RescheduleWorkflowError(error_code)
+
+    recommendation, error_code = apply_approved_reschedule(
+        selected_option.recommendation
+    )
+    if error_code:
+        raise RescheduleWorkflowError(error_code)
 
     return recommendation
