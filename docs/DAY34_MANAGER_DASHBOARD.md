@@ -34,7 +34,7 @@ This keeps one source of truth.
 
 ## Day 34 App
 
-A new `dashboard` Django app is used as a cross-domain read layer. It contains no database models and therefore should require no migration.
+A new `dashboard` Django app is used as a cross-domain read layer. It contains no database models and therefore requires no migration.
 
 Files:
 
@@ -87,6 +87,8 @@ The composite dashboard response includes:
 - assigned staff
 - current serving ticket/customer where applicable
 
+Date-scoped booking, queue and service sections use the requested report date. Counter state is explicitly labelled `live_current_state` and includes a generation timestamp because the current schema cannot reconstruct historical counter lifecycle state.
+
 ## Queue Statistics Refactor
 
 Day 34 refactors `queues/statistics.py` to use conditional aggregation.
@@ -119,6 +121,8 @@ Instead Day 34:
 
 This is the bulk-fetch/index/compose pattern and prevents an N+1 query problem.
 
+A regression test uses `assertNumQueries(2)` to protect that query contract even after more counters are added to the fixture.
+
 ## Truthful Metrics
 
 Day 34 deliberately does not label estimated wait values as historical actual averages.
@@ -135,14 +139,14 @@ Smart Q currently stores `checked_in_at` but does not yet persist a complete que
 
 ## Tests
 
-`dashboard/tests.py` covers:
+`dashboard/tests.py` contains 7 Day 34 tests covering:
 
 - correct customer and queue aggregation
 - online vs walk-in counts
 - check-in counts
 - per-service distribution
-- live counter summary
-- assigned staff/current customer representation
+- live counter summary and current customer representation
+- fixed two-query counter aggregation / N+1 regression protection
 - Branch Manager own-branch access
 - cross-branch denial
 - System Admin global access
@@ -151,17 +155,54 @@ Smart Q currently stores `checked_in_at` but does not yet persist a complete que
 
 The tests intentionally mix SCHEDULED, WAITING, and SERVING tickets so the dashboard is tested against realistic overlapping operational state rather than only an empty database.
 
-## CI
+## CI Verification
 
-The GitHub Actions workflow now includes:
+GitHub Actions run:
+
+```text
+33357574981
+```
+
+Verified head:
+
+```text
+757caf6d93d51f47cc90d5a238bb15863bb0b3cc
+```
+
+Observed results:
+
+```text
+makemigrations --check --dry-run: No changes detected
+Django system check: no issues (0 silenced)
+accounts: 6/6 PASS
+services: 8/8 PASS
+counters: 11/11 PASS
+queues: 15/15 PASS
+bookings: 22/22 PASS
+notifications: 6/6 PASS
+dashboard: 7/7 PASS
+full suite: 75/75 PASS
+```
+
+Full-suite output:
+
+```text
+...........................................................................
+----------------------------------------------------------------------
+Ran 75 tests in 66.866s
+
+OK
+Found 75 test(s).
+System check identified no issues (0 silenced).
+```
+
+The GitHub Actions workflow includes:
 
 ```powershell
 python manage.py test dashboard
 ```
 
 and the Day 34 feature branch is included in push-triggered CI.
-
-The final verified CI run and exact test count will be recorded after implementation stabilizes.
 
 ## Engineering Concepts Learned
 
@@ -175,16 +216,18 @@ Day 34 demonstrates:
 - N+1 query avoidance
 - `select_related`
 - bulk fetch/index/compose
+- query-count regression testing
 - object-level authorization
 - API input validation
 - composite dashboard API design
+- temporal/data-semantics correctness
 - truthful metrics and data provenance
 - regression testing
 
 ## Known Limitation
 
-Historical actual waiting/service-time analytics are not yet available because the current schema does not persist a complete event timeline. Day 34 does not fabricate those metrics.
+Historical actual waiting/service-time analytics and historical counter-state reconstruction are not yet available because the current schema does not persist a complete event timeline. Day 34 does not fabricate those metrics.
 
 ## Next Handoff
 
-After Day 34 is verified, Smart Q can move to disruption/rescheduling hardening and later queue-event history, which will unlock trustworthy historical wait-time analytics and future ML training data.
+After Day 34, Smart Q can move to disruption/rescheduling hardening and later queue-event history, which will unlock trustworthy historical wait-time analytics and future ML training data.
