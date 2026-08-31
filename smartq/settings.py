@@ -45,6 +45,8 @@ INSTALLED_APPS = [
     'counters',
     'notifications',
     'rescheduling',
+    # Day 34 read-only aggregation layer for branch manager dashboards.
+    'dashboard',
      # Django REST Framework gives us API tools like serializers, API views, and permissions.
     "rest_framework",
 ]
