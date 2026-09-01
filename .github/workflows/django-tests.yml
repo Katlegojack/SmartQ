@@ -3,24 +3,11 @@ name: Django Tests
 on:
   push:
     branches:
-      - feature/day28-operational-core
-      - feature/day29-auth-roles
-      - feature/day30-check-in
-      - feature/day31-reception-walkins
-      - feature/day32-branch-service-capacity
-      - feature/day33-counter-lifecycle
-      - feature/day34-manager-dashboard
-      - feature/day35-disruption-rescheduling
-      - feature/day36-queue-event-audit
-      - feature/day37-admin-security
-      - feature/day38-production-hardening
+      - main
+      - "feature/**"
   pull_request:
     branches:
       - main
-      - feature/day28-operational-core
-      - feature/day29-auth-roles
-      - feature/day30-check-in
-      - feature/day31-reception-walkins
 
 jobs:
   sqlite-regression:
@@ -74,6 +61,9 @@ jobs:
 
       - name: Run queue event audit tests
         run: python manage.py test queues.test_day36_events queues.test_day36_audit_api
+
+      - name: Run Day 39 reporting and performance tests
+        run: python manage.py test queues.test_day39_reporting
 
       - name: Run full test suite
         run: python manage.py test
