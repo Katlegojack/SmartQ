@@ -128,10 +128,15 @@ jobs:
         env:
           SECURE_SSL_REDIRECT: "true"
           USE_X_FORWARDED_PROTO: "true"
+          SECURE_HSTS_INCLUDE_SUBDOMAINS: "true"
+          SECURE_HSTS_PRELOAD: "true"
         run: python manage.py check --deploy --fail-level WARNING
 
       - name: Run PostgreSQL queue-number concurrency tests
         run: python manage.py test queues.test_day38_queue_numbers.PostgreSQLQueueNumberConcurrencyTests
+
+      - name: Run PostgreSQL slot-capacity concurrency tests
+        run: python manage.py test services.test_day38_concurrency.PostgreSQLSlotCapacityConcurrencyTests
 
       - name: Run full suite on PostgreSQL
         run: python manage.py test
