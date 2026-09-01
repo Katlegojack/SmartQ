@@ -47,6 +47,9 @@ jobs:
       - name: Run account authentication and admin security tests
         run: python manage.py test accounts
 
+      - name: Run branch administration tests
+        run: python manage.py test branches
+
       - name: Run service and capacity tests
         run: python manage.py test services
 
