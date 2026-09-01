@@ -1,10 +1,21 @@
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
+from django.contrib.auth.models import User
+from django.shortcuts import get_object_or_404
 from rest_framework import status
+from rest_framework.generics import ListAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .serializers import AccountSerializer, CustomerRegistrationSerializer
+from .models import Profile
+from .permissions import IsSystemAdmin
+from .serializers import (
+    AccountSerializer,
+    CustomerRegistrationSerializer,
+    StaffAccountCreateSerializer,
+    StaffAccountSerializer,
+    StaffAccountUpdateSerializer,
+)
 
 
 class CustomerRegistrationAPIView(APIView):
@@ -52,8 +63,6 @@ class LoginAPIView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
-        # Smart Q APIs depend on Profile for role/priority information. Refuse a
-        # partially-created account rather than allowing ambiguous authorization.
         if not hasattr(user, "profile"):
             return Response(
                 {"detail": "This account is missing its Smart Q profile."},
@@ -94,3 +103,100 @@ class CurrentAccountAPIView(APIView):
             )
 
         return Response(AccountSerializer(request.user).data)
+
+
+class StaffAccountListCreateAPIView(ListAPIView):
+    """Allow only a Smart Q System Admin to list or create operational staff."""
+
+    permission_classes = [IsAuthenticated, IsSystemAdmin]
+    serializer_class = StaffAccountSerializer
+
+    def get_queryset(self):
+        return (
+            User.objects.filter(profile__role__in=Profile.STAFF_ROLES)
+            .select_related("profile", "profile__branch")
+            .order_by("username")
+        )
+
+    def post(self, request):
+        serializer = StaffAccountCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        return Response(
+            StaffAccountSerializer(user).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class StaffAccountDetailAPIView(APIView):
+    """Read or safely update one operational Smart Q staff account."""
+
+    permission_classes = [IsAuthenticated, IsSystemAdmin]
+
+    def get_object(self, pk):
+        return get_object_or_404(
+            User.objects.select_related("profile", "profile__branch"),
+            pk=pk,
+            profile__role__in=Profile.STAFF_ROLES,
+        )
+
+    def get(self, request, pk):
+        user = self.get_object(pk)
+        return Response(StaffAccountSerializer(user).data)
+
+    def patch(self, request, pk):
+        user = self.get_object(pk)
+        serializer = StaffAccountUpdateSerializer(
+            user,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        user.refresh_from_db()
+        return Response(StaffAccountSerializer(user).data)
+
+
+class StaffAccountActivationAPIView(APIView):
+    """Activate or deactivate an operational staff account without deleting history."""
+
+    permission_classes = [IsAuthenticated, IsSystemAdmin]
+
+    def patch(self, request, pk):
+        user = get_object_or_404(
+            User.objects.select_related("profile"),
+            pk=pk,
+            profile__role__in=Profile.STAFF_ROLES,
+        )
+
+        requested_state = request.data.get("is_active")
+        if not isinstance(requested_state, bool):
+            return Response(
+                {"detail": "is_active must be true or false."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if user.pk == request.user.pk and requested_state is False:
+            return Response(
+                {"detail": "A System Admin cannot deactivate their own active session account."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if (
+            user.profile.role == Profile.SYSTEM_ADMIN
+            and user.is_active
+            and requested_state is False
+        ):
+            active_admin_count = User.objects.filter(
+                profile__role=Profile.SYSTEM_ADMIN,
+                is_active=True,
+            ).count()
+            if active_admin_count <= 1:
+                return Response(
+                    {"detail": "Smart Q must retain at least one active System Admin."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+        user.is_active = requested_state
+        user.save(update_fields=["is_active"])
+        return Response(StaffAccountSerializer(user).data)
