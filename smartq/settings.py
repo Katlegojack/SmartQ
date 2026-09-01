@@ -1,14 +1,13 @@
 """
 Django settings for Smart Q.
 
-Day 38 keeps local development simple while making production configuration
-explicit, environment-driven and fail-fast.
+Day 38 keeps SQLite3 as the project database while making production-facing
+security configuration explicit, environment-driven and fail-fast.
 """
 
 import os
 from pathlib import Path
 
-import dj_database_url
 from django.core.exceptions import ImproperlyConfigured
 
 
@@ -91,7 +90,7 @@ TEMPLATES = [
         "OPTIONS": {
             "context_processors": [
                 "django.template.context_processors.request",
-                "django.contrib.auth.context_processors.auth",
+                "django.template.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
             ],
         },
@@ -102,30 +101,15 @@ WSGI_APPLICATION = "smartq.wsgi.application"
 
 
 # Database
-# Development defaults to SQLite. Production requires DATABASE_URL and uses
-# PostgreSQL via Psycopg. A short persistent connection lifetime reduces
-# connection setup overhead while keeping stale connections bounded.
-DATABASE_URL = os.getenv("DATABASE_URL")
-if DATABASE_URL:
-    DATABASES = {
-        "default": dj_database_url.parse(
-            DATABASE_URL,
-            conn_max_age=60,
-            conn_health_checks=True,
-        )
+# Smart Q uses SQLite3 for this project. The path can be overridden for a
+# deployment that mounts persistent storage; otherwise db.sqlite3 is used.
+SQLITE_PATH = os.getenv("SMARTQ_SQLITE_PATH")
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": Path(SQLITE_PATH) if SQLITE_PATH else BASE_DIR / "db.sqlite3",
     }
-elif IS_PRODUCTION:
-    raise ImproperlyConfigured("DATABASE_URL is required in production.")
-else:
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
-        }
-    }
-
-if IS_PRODUCTION and DATABASES["default"]["ENGINE"] != "django.db.backends.postgresql":
-    raise ImproperlyConfigured("Smart Q production requires PostgreSQL.")
+}
 
 
 AUTH_PASSWORD_VALIDATORS = [

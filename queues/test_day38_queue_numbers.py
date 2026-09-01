@@ -1,10 +1,7 @@
-from concurrent.futures import ThreadPoolExecutor
 from datetime import date, time
-from unittest import skipUnless
 
 from django.contrib.auth.models import User
-from django.db import connection, connections
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase
 
 from accounts.models import Profile
 from bookings.models import Booking
@@ -123,73 +120,3 @@ class QueueNumberSequenceTests(TestCase):
             queue_type=QueueTicket.GENERAL,
         )
         self.assertEqual(sequence.last_number, 8)
-
-
-@skipUnless(
-    connection.vendor == "postgresql",
-    "Concurrent row-lock verification requires PostgreSQL.",
-)
-class PostgreSQLQueueNumberConcurrencyTests(TransactionTestCase):
-    reset_sequences = True
-
-    def setUp(self):
-        self.branch = Branch.objects.create(
-            branch_code="JHB001",
-            name="Johannesburg Branch",
-            address="Civic Centre",
-            city="Johannesburg",
-            opening_time=time(8, 0),
-            closing_time=time(16, 30),
-        )
-        self.service = Service.objects.create(
-            service_code="ID001",
-            name="Identity Service",
-            description="Identity document service",
-            average_service_time=10,
-        )
-        self.user = User.objects.create_user(
-            username="concurrency.customer",
-            password="Strong-Test-Pass-482!",
-        )
-        Profile.objects.create(
-            user=self.user,
-            date_of_birth=date(1995, 1, 1),
-            gender=Profile.OTHER,
-            role=Profile.CUSTOMER,
-        )
-        self.booking_ids = [
-            Booking.objects.create(
-                user=self.user,
-                branch=self.branch,
-                service=self.service,
-                booking_date=date(2026, 9, 2),
-                booking_time=time(9, 0) if index == 0 else time(9, 10),
-                status=Booking.PENDING,
-                source=Booking.ONLINE,
-            ).pk
-            for index in range(2)
-        ]
-
-    def allocate_number(self, booking_id):
-        thread_connection = connections["default"]
-        thread_connection.close()
-        try:
-            booking = Booking.objects.select_related("branch").get(pk=booking_id)
-            return generate_queue_number(booking, QueueTicket.GENERAL)
-        finally:
-            # CONN_MAX_AGE is non-zero in the production profile, so
-            # close_old_connections() may intentionally retain this connection.
-            # Threaded tests must close it explicitly before Django drops test DB.
-            thread_connection.close()
-
-    def test_concurrent_requests_receive_distinct_numbers(self):
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            numbers = list(executor.map(self.allocate_number, self.booking_ids))
-
-        self.assertEqual(set(numbers), {"A001", "A002"})
-        sequence = QueueNumberSequence.objects.get(
-            branch=self.branch,
-            booking_date=date(2026, 9, 2),
-            queue_type=QueueTicket.GENERAL,
-        )
-        self.assertEqual(sequence.last_number, 2)

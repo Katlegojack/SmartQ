@@ -146,9 +146,8 @@ def validate_booking_slot(
     """
     Validate branch-service support, slot alignment and remaining capacity.
 
-    Use lock=True only inside transaction.atomic(). It locks the BranchService
-    row before the final capacity count so concurrent PostgreSQL writes for the
-    same branch/service are serialized before consuming the last slot.
+    Use lock=True only inside transaction.atomic(). The locked code path keeps
+    the final capacity validation grouped with the booking write.
     """
     mapping = get_branch_service(branch, service, lock=lock)
     if mapping is None:
