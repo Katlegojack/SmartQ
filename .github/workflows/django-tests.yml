@@ -65,5 +65,8 @@ jobs:
       - name: Run Day 39 reporting and performance tests
         run: python manage.py test queues.test_day39_reporting
 
+      - name: Run Day 40 final backend audit tests
+        run: python manage.py test queues.test_day40_final_audit
+
       - name: Run full test suite
         run: python manage.py test
