@@ -2,72 +2,67 @@
 
 ## PostgreSQL, Concurrency and Production Hardening
 
-## 1. Purpose
+## 1. Day 38 goal
 
-Day 38 moves Smart Q from a development-safe backend toward a production-safe backend.
+Day 38 moves Smart Q from a backend that is safe for development toward one whose important database and browser-security guarantees are explicitly designed for production.
 
-Days 28-37 proved business behavior primarily with SQLite. SQLite remains useful for fast local development, but production queue systems have additional concerns:
+Days 28-37 established the business system: accounts and roles, booking/check-in, reception walk-ins, capacity, counter lifecycle, live queues, dashboard, disruption recovery, QueueEvent audit and System Admin controls.
+
+Day 38 asks a different question:
 
 ```text
-multiple requests at the same time
-real row-level database locking
-secrets outside source control
-HTTPS and secure cookies
-browser origin / CSRF policy
-production logging
-fresh-database migrations
-backup and restore operations
+Will those guarantees still hold when:
+- multiple requests arrive at the same time,
+- PostgreSQL rather than SQLite owns the data,
+- the frontend is served through a browser over HTTPS,
+- secrets and infrastructure differ between deployments?
 ```
 
-Day 38 therefore treats deployment configuration and concurrency as part of backend correctness.
-
-The following product rules remain unchanged:
+Day 38 does **not** change the approved product rules:
 
 ```text
 Estimated Wait = People Ahead × Service.average_service_time
 Check-in opens exactly 6 hours before appointment time
-Priority = age >= 55 OR disability OR female + pregnancy for visit
-Branch opening time is the service-start boundary
+Priority = age >= 55 OR disability OR female + pregnancy for the visit
+Branch opening time is the customer-service start boundary
 ```
-
-No Day 38 production work changes queue priority or ETA policy.
 
 ---
 
-## 2. Development database vs production database
+## 2. Development vs production database
 
-Local development still defaults to SQLite because it is simple and fast:
+Local development remains intentionally simple:
 
 ```text
 SMARTQ_ENV=development
-DATABASE_URL not supplied
+DATABASE_URL absent
         ↓
 SQLite
 ```
 
-Production is different:
+Production is explicit:
 
 ```text
 SMARTQ_ENV=production
         ↓
 DJANGO_SECRET_KEY required
+DJANGO_DEBUG must be false
 ALLOWED_HOSTS required
 DATABASE_URL required
-DEBUG must be false
-Database must be PostgreSQL
+Database engine must be PostgreSQL
 ```
 
-If one of those production invariants is violated, Smart Q raises `ImproperlyConfigured` instead of silently falling back to an unsafe development setting.
+If those production invariants are missing, Smart Q raises `ImproperlyConfigured` rather than silently falling back to a development configuration.
 
 ### Engineering lesson
 
-**Fail fast when a deployment cannot satisfy an important invariant.**
+**Fail fast when the deployment cannot provide an important guarantee.**
 
-A server refusing to start is easier to detect and repair than a server quietly running with the wrong database or an exposed Django debug page.
+A server refusing to start is safer than a server quietly running production traffic with SQLite, an exposed debug page or a source-controlled secret.
 
 ---
 
-## 3. PostgreSQL dependencies
+## 3. Production dependencies
 
 Day 38 adds:
 
@@ -77,36 +72,30 @@ dj-database-url
 django-cors-headers
 ```
 
-`psycopg` is Django's PostgreSQL driver.
-
-`dj-database-url` converts a deployment-style URL such as:
+Purpose:
 
 ```text
-postgresql://user:password@host:5432/database
+Psycopg 3           -> Django/PostgreSQL driver
+dj-database-url     -> parse deployment DATABASE_URL
+django-cors-headers -> explicit browser-origin policy
 ```
 
-into Django's `DATABASES` configuration.
-
-`django-cors-headers` gives Smart Q an explicit browser-origin policy for a separately hosted frontend.
-
-### Engineering lesson
-
-Dependencies should solve a real infrastructure problem. Day 38 adds only the packages required by the production architecture rather than introducing a broad deployment framework.
+The additions are narrow: each dependency solves a concrete production requirement.
 
 ---
 
-## 4. The queue-number race condition
+## 4. The original queue-number race
 
-Before Day 38, queue numbers were produced by reading the latest ticket and adding one:
+Before Day 38, queue numbers were based on the latest ticket:
 
 ```text
-latest = A007
-next = A008
+latest ticket = A007
+next ticket   = A008
 ```
 
-That works when requests arrive one after another.
+That is correct when requests happen sequentially.
 
-Under concurrency this can happen:
+Under concurrency:
 
 ```text
 Request A reads A007
@@ -115,15 +104,19 @@ Request A calculates A008
 Request B calculates A008
 ```
 
-The arithmetic is correct, but the operation is not atomic.
+Both calculations are individually correct, but the overall operation is not atomic.
 
 This is a classic **read-modify-write race condition**.
+
+### Engineering lesson
+
+Concurrency bugs often do not come from bad arithmetic. They come from several individually correct steps being interleaved by multiple requests.
 
 ---
 
 ## 5. QueueNumberSequence
 
-Day 38 introduces a database-backed allocation record:
+Day 38 introduces an explicit database-backed allocator:
 
 ```text
 QueueNumberSequence
@@ -133,199 +126,271 @@ QueueNumberSequence
 └── last_number
 ```
 
-The unique allocation scope is:
+A database unique constraint owns this scope:
 
 ```text
 branch + booking_date + queue_type
 ```
 
-Therefore:
+Examples:
 
 ```text
-Johannesburg / 2026-09-02 / GENERAL  -> own sequence
-Johannesburg / 2026-09-02 / PRIORITY -> own sequence
-Johannesburg / 2026-09-03 / GENERAL  -> own sequence
-Pretoria     / 2026-09-02 / GENERAL  -> own sequence
+JHB / 2026-09-02 / GENERAL  -> one sequence
+JHB / 2026-09-02 / PRIORITY -> separate sequence
+JHB / 2026-09-03 / GENERAL  -> separate sequence
+PTA / 2026-09-02 / GENERAL  -> separate sequence
 ```
 
-A database uniqueness constraint ensures there can be only one sequence row for each scope.
+This gives the lock a precise business meaning rather than locking an unrelated whole Branch row.
+
+### Trade-off
+
+A dedicated model adds a table and migration, but it keeps unrelated dates/types/branches from sharing one coarse lock.
 
 ---
 
-## 6. Transactional number allocation
+## 6. The first attempted concurrency design and what PostgreSQL taught us
 
-`generate_queue_number()` now runs inside `transaction.atomic()` and uses a row lock:
+The first Day 38 implementation used:
+
+```python
+QueueNumberSequence.objects.select_for_update().get_or_create(...)
+```
+
+The reasoning was:
+
+```text
+unique constraint protects first row
+select_for_update protects later increments
+```
+
+PostgreSQL full-suite testing exposed an important flaw during two simultaneous **first-ever** allocations.
+
+Both transactions could reach `get_or_create()` before the row existed. Both attempted the INSERT. One won the unique constraint. The second transaction could still fail while trying to recover the newly-created row under that concurrency timing.
+
+### Engineering lesson
+
+**`get_or_create()` is a convenience API, not a universal concurrency primitive.**
+
+When correctness depends on conflict behavior, make the conflict strategy explicit and test it on the real database.
+
+---
+
+## 7. Final queue-number allocation protocol
+
+The allocator now uses this protocol:
+
+```text
+1. Determine the highest historical number if the sequence needs seeding
+2. Attempt a conflict-tolerant sequence INSERT
+3. Database uniqueness allows only one row for the scope
+4. SELECT the surviving row FOR UPDATE
+5. Repair last_number from historical state if necessary
+6. Increment
+7. Save
+8. Keep the critical section inside transaction.atomic()
+```
+
+Core implementation shape:
 
 ```python
 @transaction.atomic
 def generate_queue_number(booking, queue_type):
     prefix = "A" if queue_type == QueueTicket.GENERAL else "P"
+    seed_number = get_highest_existing_queue_number(booking, queue_type)
 
-    sequence, _ = QueueNumberSequence.objects.select_for_update().get_or_create(
+    QueueNumberSequence.objects.bulk_create(
+        [
+            QueueNumberSequence(
+                branch=booking.branch,
+                booking_date=booking.booking_date,
+                queue_type=queue_type,
+                last_number=seed_number,
+            )
+        ],
+        ignore_conflicts=True,
+    )
+
+    sequence = QueueNumberSequence.objects.select_for_update().get(
         branch=booking.branch,
         booking_date=booking.booking_date,
         queue_type=queue_type,
-        defaults={"last_number": 0},
     )
+
+    if seed_number > sequence.last_number:
+        sequence.last_number = seed_number
+
     sequence.last_number += 1
     sequence.save(update_fields=["last_number"])
 
     return f"{prefix}{sequence.last_number:03d}"
 ```
 
-On PostgreSQL, once the sequence row exists, `select_for_update()` prevents two transactions from incrementing that row at the same time.
-
-The first ever allocation is also protected by the database unique constraint. Two concurrent transactions may both attempt to create the first sequence row; one wins and the other resolves against the row that now exists.
+On PostgreSQL, conflict-tolerant insert handles simultaneous creation without treating the expected conflict as an application failure. `select_for_update()` then serializes increments of the surviving row.
 
 ### Engineering lesson
 
-**Locks and constraints solve different parts of concurrency.**
+**Constraints and locks are complementary.**
 
-The unique constraint protects creation of the coordination row. The row lock serializes later increments.
+The unique constraint establishes identity. The row lock protects mutation of that identity's shared counter.
 
 ---
 
-## 7. Why not lock the Branch row?
+## 8. Why the transaction boundary matters
 
-One alternative was to lock the entire branch whenever a queue number was allocated.
+A row lock is useful only while the transaction that owns it is alive.
 
-That would be simpler conceptually, but much coarser:
+Smart Q keeps queue allocation inside `transaction.atomic()`. Ticket creation also stays transactionally coupled to allocation.
+
+Conceptually:
 
 ```text
-one General allocation blocks Priority allocation
-one date may block another date
-unrelated branch configuration could share the same lock target
+lock allocator row
+increment
+create/update ticket
+commit
+        ↓
+lock released
 ```
 
-The dedicated sequence row is more precise.
-
-### Trade-off
-
-The new model adds a migration and another database table.
-
-We accepted that extra schema complexity because the concurrency invariant becomes explicit and the lock scope is substantially better.
-
----
-
-## 8. Do queue numbers have to be gapless?
-
-No.
-
-The important Smart Q invariant is:
-
-> Two successful tickets in the same branch/date/queue-type scope must not receive the same queue number.
-
-Queue numbers are operational identifiers, not legal invoice numbers.
-
-Trying to guarantee a perfectly gapless sequence would increase transaction coupling and contention without creating meaningful queue value.
+If the lock were released before the dependent ticket write, another request could enter too early and the protection would be weaker than it appears.
 
 ### Engineering lesson
 
-**Protect the business invariant that matters, not an aesthetic property that merely looks nice.**
+Do not ask only, “Did we call `select_for_update()`?” Ask, “What exact critical section is protected before the transaction commits?”
 
 ---
 
-## 9. Queue sequence data migration
+## 9. Historical compatibility and the data migration
 
-Adding `QueueNumberSequence` alone would cause an existing installation to restart at `A001` and `P001`.
+Adding a new allocator to an existing installation creates another problem: existing ticket history may already have numbers such as `A007`.
 
-Migration `queues.0008_queuenumbersequence` therefore includes a data migration.
+If Day 38 simply created an empty sequence, the next deployment could incorrectly restart at `A001`.
 
-It scans existing queue tickets, groups them by:
+Migration:
 
 ```text
-branch
-booking_date
-queue_type
+queues/migrations/0008_queuenumbersequence.py
 ```
 
-and records the highest historical numeric suffix as `last_number`.
+creates the table/constraint and backfills the highest numeric suffix for each existing:
+
+```text
+branch + booking date + queue type
+```
 
 Example:
 
 ```text
-existing tickets: A001, A002, A003, A007
-migration state: last_number = 7
+historical tickets: A001, A002, A007
+backfilled last_number: 7
 next allocation: A008
 ```
 
-### Engineering lesson
-
-A **schema migration** changes structure. A **data migration** preserves the meaning of existing production data while that structure changes.
-
----
-
-## 10. Existing appointment-capacity locking
-
-Day 32 already made the final booking-capacity check transactional.
-
-For a capacity-critical create/update:
-
-```text
-lock BranchService row
-        ↓
-count current reservations
-        ↓
-reject if capacity reached
-        ↓
-create/update Booking
-        ↓
-commit transaction / release lock
-```
-
-This prevents two PostgreSQL transactions from both consuming the same final appointment capacity.
-
-### Lock granularity trade-off
-
-The lock scope is currently `branch + service`, not `branch + service + individual slot`.
-
-Therefore two bookings for different time slots of the same branch/service may briefly serialize.
-
-A future dedicated slot-lock row could increase concurrency, but it would add schema and operational complexity.
-
-For v1, the existing lock is safe and simple. Day 39 performance work should measure contention before optimizing it.
+The runtime allocator also knows how to seed a missing sequence from existing ticket history. This protects test fixtures or controlled legacy/manual data where ticket records exist but the coordination row does not.
 
 ### Engineering lesson
 
-**Correctness first, measured optimization second.**
-
-Do not make concurrency design more complex until there is evidence that the safe implementation is actually a bottleneck.
+A **schema migration** changes structure. A **data migration** preserves meaning while structure changes.
 
 ---
 
-## 11. Why PostgreSQL-specific tests matter
+## 10. Gapless numbers were deliberately not required
 
-SQLite is useful for local development, but it does not provide the same row-lock behavior as PostgreSQL.
+Queue numbers are operational identifiers, not invoice numbers.
 
-A concurrency test that passes only on SQLite cannot prove a PostgreSQL locking guarantee.
+The invariant Smart Q protects is:
 
-Day 38 therefore keeps:
+> Two successful allocations in the same branch/date/queue-type scope must not receive the same queue number.
 
-```text
-SQLite regression CI
-```
+A failed/rolled-back business operation may leave a gap. That is acceptable.
 
-and adds:
-
-```text
-PostgreSQL production CI
-```
-
-PostgreSQL-only `TransactionTestCase` tests use separate threads and separate database connections to issue simultaneous operations.
+Trying to guarantee absolutely gapless numbering would increase transaction coupling and contention without improving queue fairness.
 
 ### Engineering lesson
 
-**Test an infrastructure guarantee on the infrastructure that provides that guarantee.**
-
-Mocks and lightweight databases are useful, but they cannot prove every production behavior.
+Protect the real business invariant, not an aesthetic property that merely looks cleaner.
 
 ---
 
-## 12. Production settings contract
+## 11. Appointment-capacity concurrency
 
-Day 38 moves deployment-specific settings to environment variables.
+Day 32 already performs the final capacity check under a transaction and locks the relevant `BranchService` row before counting reservations.
 
-Important variables are documented in `.env.example`:
+Day 38 verifies that design on PostgreSQL with two simultaneous customers attempting to consume a single remaining slot.
+
+Required result:
+
+```text
+one request -> booking created
+one request -> slot full
+final booking count -> 1
+```
+
+### Lock-granularity trade-off
+
+The current lock is per `branch + service`, not per individual generated slot.
+
+That is safe but somewhat coarse. Different time slots for the same service can briefly serialize.
+
+A dedicated slot-lock model could improve throughput, but it would add schema/logic. Day 39 should measure real contention before optimizing it.
+
+### Engineering lesson
+
+**Correctness first; measured optimization second.**
+
+Do not add concurrency complexity because it feels more advanced. Add it when evidence shows the safe implementation is a bottleneck.
+
+---
+
+## 12. Why SQLite tests are not enough
+
+SQLite remains useful for fast local development and regression testing, but its locking semantics are not PostgreSQL row-lock semantics.
+
+Day 38 therefore uses two CI jobs:
+
+```text
+sqlite-regression
+postgres-production
+```
+
+PostgreSQL-specific concurrency tests use `TransactionTestCase`, worker threads and separate database connections.
+
+### Engineering lesson
+
+**Test an infrastructure guarantee on the infrastructure that actually provides it.**
+
+A mock or lightweight database can prove business logic, but it cannot prove every production lock/transaction behavior.
+
+---
+
+## 13. A test teardown failure that was not a business failure
+
+An early PostgreSQL concurrency run passed its actual queue-number assertion, then failed while Django tried to destroy the test database.
+
+Reason:
+
+```text
+production profile CONN_MAX_AGE = 60
+worker thread retained a PostgreSQL connection
+Django teardown could not drop test_smartq
+```
+
+The threaded tests were changed to explicitly close their per-thread connection.
+
+### Engineering lesson
+
+**Read the phase of a CI failure.**
+
+Red can mean setup, assertion, teardown, packaging or infrastructure. Do not rewrite correct business logic to solve a cleanup problem.
+
+---
+
+## 14. Production environment contract
+
+Day 38 moves environment-specific values out of source code.
+
+`.env.example` documents the contract:
 
 ```text
 SMARTQ_ENV
@@ -346,89 +411,111 @@ SECURE_HSTS_PRELOAD
 LOG_LEVEL
 ```
 
-Real `.env` files are ignored by Git.
+`.gitignore` excludes real `.env` files while allowing `.env.example` to remain versioned.
 
 ### Engineering lesson
 
-**Source control should contain the configuration contract, not the production secrets.**
-
-`.env.example` teaches an operator what must be configured. `.env` contains real values and must stay outside Git.
+Source control should contain the **configuration contract**, not production credentials.
 
 ---
 
-## 13. SECRET_KEY
+## 15. Secret, DEBUG and database fail-fast rules
 
-The old development settings stored a Django secret key directly in source code.
-
-Day 38 changes this behavior:
+Production refuses to start when:
 
 ```text
-development -> safe development-only fallback is allowed
-production  -> DJANGO_SECRET_KEY is mandatory
+DJANGO_SECRET_KEY is missing
+DJANGO_DEBUG is true
+ALLOWED_HOSTS is empty
+DATABASE_URL is missing
+DATABASE_URL does not configure PostgreSQL
 ```
 
-The production key must come from the deployment platform's secret store or environment configuration.
+Development can still use a clearly development-only fallback secret and SQLite.
 
 ### Engineering lesson
 
-A secret is not secret if it is committed to a public repository.
-
-Production credentials must be rotatable without changing application source code.
+A deployment label should mean something. `SMARTQ_ENV=production` must activate real production invariants rather than being a cosmetic string.
 
 ---
 
-## 14. DEBUG and ALLOWED_HOSTS
-
-Production now refuses to start when:
-
-```text
-DJANGO_DEBUG=true
-```
-
-Production also requires explicit `ALLOWED_HOSTS`.
-
-This protects against accidentally exposing Django debug information and prevents arbitrary Host headers from being treated as valid application hosts.
-
----
-
-## 15. CORS vs CSRF
-
-CORS and CSRF solve different problems.
-
-### CORS
+## 16. CORS and CSRF are different controls
 
 CORS answers:
 
-> Is browser JavaScript from this origin allowed to read/send cross-origin requests to the API?
+> Which browser origins may communicate with/read the API cross-origin?
 
-Configured with:
+CSRF answers:
+
+> Is this state-changing cookie-authenticated request intentionally coming from the trusted client/session flow?
+
+Day 38 configures both separately.
 
 ```text
 CORS_ALLOWED_ORIGINS
 CORS_ALLOW_CREDENTIALS
+CSRF_TRUSTED_ORIGINS
 ```
 
-Smart Q does **not** enable an allow-all CORS policy.
+Smart Q does not enable an allow-all CORS policy.
 
-### CSRF
+### Engineering lesson
 
-Because Smart Q uses Django session authentication, state-changing browser requests also need CSRF protection.
+**CORS does not replace CSRF protection.**
 
-Trusted frontend origins are configured separately with:
+---
+
+## 17. Explicit CSRF bootstrap for browser login
+
+A session-authenticated browser needs a CSRF token before it can safely POST login credentials.
+
+Day 38 adds:
+
+```http
+GET /api/v1/accounts/csrf/
+```
+
+Flow:
 
 ```text
-CSRF_TRUSTED_ORIGINS
+GET /api/v1/accounts/csrf/
+        ↓
+Django sets CSRF cookie and returns token
+        ↓
+POST /api/v1/accounts/login/
+Header: X-CSRFToken: <token>
+        ↓
+CSRF validation
+        ↓
+Django session established
+```
+
+`LoginAPIView` is explicitly wrapped in Django `csrf_protect`.
+
+Tests use:
+
+```python
+APIClient(enforce_csrf_checks=True)
+```
+
+and prove:
+
+```text
+CSRF endpoint returns token/cookie
+login without CSRF header -> 403
+login with bootstrapped token -> 200
+session /me request works afterward
 ```
 
 ### Engineering lesson
 
-**CORS is not a substitute for CSRF protection.**
+**Configuration is not protection unless the request path actually uses it.**
 
-Allowing a frontend origin to communicate with an API does not remove the need to prove that a state-changing request is legitimate.
+Security tests must also turn framework shortcuts off when those shortcuts would bypass the behavior being tested.
 
 ---
 
-## 16. Session cookies
+## 18. Session/cookie policy
 
 Production defaults include:
 
@@ -438,320 +525,266 @@ SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 ```
 
-`Secure` cookies are sent only over HTTPS.
-
-`HttpOnly` keeps the session identifier out of normal browser JavaScript access.
-
-`SameSite` remains configurable because the correct value depends on how the final frontend and API domains are deployed.
-
-### Trade-off
-
-`SameSite=Lax` is a safer simple default for same-site deployment.
-
-A genuinely cross-site frontend may require `SameSite=None`, which also requires HTTPS and should be chosen only after the final frontend/API topology is known.
-
----
-
-## 17. HTTPS and reverse proxy
-
-Production defaults to HTTPS redirection.
-
-Smart Q can trust `X-Forwarded-Proto` only when explicitly configured for a trusted reverse proxy:
-
-```python
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-```
-
-This must only be enabled when the hosting proxy strips/replaces client-supplied forwarding headers correctly.
-
-### Engineering lesson
-
-**Trust boundaries matter.**
-
-A forwarding header becomes security information only when it comes from infrastructure you control and trust.
-
----
-
-## 18. HSTS
-
-Day 38 supports HSTS through:
+`SameSite` is configurable because final policy depends on frontend/API topology.
 
 ```text
+same-site deployment -> Lax is a simple safer default
+genuinely cross-site deployment -> may require None + HTTPS
+```
+
+The final value must be chosen from the actual deployment architecture, not guessed during backend development.
+
+---
+
+## 19. HTTPS, reverse proxy and HSTS
+
+Production supports:
+
+```text
+SECURE_SSL_REDIRECT
+SECURE_PROXY_SSL_HEADER (through USE_X_FORWARDED_PROTO)
 SECURE_HSTS_SECONDS
 SECURE_HSTS_INCLUDE_SUBDOMAINS
 SECURE_HSTS_PRELOAD
 ```
 
-CI runs Django's deployment check with the strict profile enabled.
+Forwarded-protocol trust is safe only behind a trusted reverse proxy that strips/replaces untrusted client forwarding headers.
 
-However, `includeSubDomains` and browser preload are **not** automatically enabled for every future deployment.
+Django's first `check --deploy` run highlighted HSTS include-subdomain and preload recommendations.
 
-Why?
-
-`includeSubDomains` commits every subdomain to HTTPS.
-
-HSTS preload is intentionally difficult to reverse after browsers ship the domain on preload lists.
+Smart Q deliberately did **not** turn those commitments on globally just to make the warnings disappear. CI exercises a strict HSTS profile, while the deployment must review whether all subdomains are HTTPS-only before enabling those irreversible/broad commitments.
 
 ### Engineering lesson
 
-Some security options are **infrastructure commitments**, not checkboxes that should be turned on simply to remove a warning.
+Some security options are **infrastructure commitments**, not cosmetic toggles.
 
 ---
 
-## 19. Production logging
+## 20. Production logging
 
-Day 38 configures application logging to standard output/error rather than writing rotating application files inside the Django container/process.
+Smart Q now emits timestamp/level/logger messages to stdout/stderr.
 
-The deployment platform can then collect and retain logs centrally.
-
-The log level is configured with:
+The hosting platform is expected to collect, retain and search those streams.
 
 ```text
 LOG_LEVEL=INFO
 ```
 
-Django security messages are explicitly retained at warning level.
+Django security warnings are retained explicitly.
 
-Smart Q should not log passwords, session cookies, CSRF tokens, disability/pregnancy information or other unnecessary sensitive request data.
-
-### Engineering lesson
-
-In container/cloud deployments, the application should usually **emit logs**, while infrastructure handles storage, rotation and search.
-
----
-
-## 20. Database backup requirement
-
-Day 38 defines the production backup requirement, but it does not falsely claim a backup provider is already configured.
-
-The final PostgreSQL deployment must provide:
-
-```text
-1. automated database backups at least daily
-2. retention appropriate to the deployment/provider
-3. encrypted backup storage
-4. point-in-time recovery when the provider supports it
-5. a documented restore procedure
-6. at least one restore test before production launch
-```
-
-A backup that has never been restored is not yet proven useful.
-
-### Recommended launch target
-
-For the first production release:
-
-```text
-Daily automated backup
-+ provider point-in-time recovery if available
-+ minimum 7-day recoverability target
-+ restore drill before real customer data is trusted to the system
-```
-
-The exact retention period may be increased according to organisation/legal requirements.
+Do not log passwords, session cookies, CSRF tokens, pregnancy/disability attributes or other unnecessary sensitive request content.
 
 ### Engineering lesson
 
-**Backup configuration and restore verification are separate states.**
-
-Creating backups is only half the reliability problem. We must know that they can actually restore Smart Q.
+Cloud/container applications usually emit logs; infrastructure owns durable rotation/storage/search.
 
 ---
 
-## 21. PostgreSQL transport security
+## 21. Backup and restore requirement
 
-Production database credentials belong in `DATABASE_URL`.
+Day 38 defines the requirement without pretending a cloud provider has already been selected/configured.
 
-If the managed database is reached across an untrusted network, its provider URL/configuration should require TLS, commonly with a PostgreSQL parameter such as:
+A real PostgreSQL deployment must provide:
 
 ```text
-sslmode=require
+automated backups at least daily
+encrypted backup storage
+known retention
+point-in-time recovery when supported
+documented restore procedure
+restore drill before trusting real customer data
 ```
 
-Some cloud platforms provide a private trusted network or inject their own TLS parameters. Therefore Day 38 does not hard-code one SSL mode that could conflict with the eventual hosting provider.
+Initial target:
+
+```text
+>= 7 days recoverability
++ provider point-in-time recovery when available
++ verified restore before launch
+```
 
 ### Engineering lesson
 
-**Application security configuration must respect the actual infrastructure boundary.**
+A backup is not fully proven until a restore works.
 
-Document the requirement, then configure the final provider correctly rather than guessing a provider-specific connection policy in source code.
+“Backup configured” and “recoverability verified” are separate engineering states.
 
 ---
 
-## 22. Fresh database verification
+## 22. Database transport security
 
-The PostgreSQL CI job starts a clean PostgreSQL service and runs:
+Production credentials live in `DATABASE_URL`.
+
+When PostgreSQL traffic crosses an untrusted network, the provider connection should require TLS (commonly via a provider-supplied option such as `sslmode=require`).
+
+Day 38 does not hard-code one SSL mode because some managed platforms use private trusted networks or inject their own connection requirements.
+
+### Engineering lesson
+
+Security settings must match the real infrastructure trust boundary rather than guessing a provider-specific policy in source code.
+
+---
+
+## 23. Fresh-database and deployment verification
+
+The PostgreSQL CI job creates a clean PostgreSQL 17 service and runs:
 
 ```text
 python manage.py makemigrations --check --dry-run
 python manage.py migrate --noinput
+python manage.py check --deploy --fail-level WARNING
 ```
 
-This verifies that Smart Q can be built from an empty production database using committed migrations only.
+This proves committed migrations can construct Smart Q from an empty production database.
 
-That is different from merely proving that a developer's existing database can be upgraded.
+That is different from proving only that one developer's already-existing database can upgrade successfully.
 
 ### Engineering lesson
 
 **Migration-from-empty is a release property.**
 
-A new deployment should not depend on invisible state from a developer's machine.
-
 ---
 
-## 23. Django deployment checks
+## 24. CI architecture
 
-PostgreSQL CI also runs:
+### SQLite job
+
+Protects:
 
 ```text
-python manage.py check --deploy --fail-level WARNING
+local developer path
+app-specific regressions
+full established business suite
 ```
 
-Day 38 intentionally treated its warnings as design feedback.
+### PostgreSQL job
 
-The first production check exposed HSTS deployment decisions. Those were reviewed rather than blindly silenced.
-
-### Engineering lesson
-
-A security check is useful when we understand why it is complaining. Passing the check is not the goal by itself; satisfying or deliberately resolving the underlying security concern is the goal.
-
----
-
-## 24. Threaded test connection lesson
-
-The first PostgreSQL queue concurrency run produced a useful test-infrastructure failure.
-
-The actual concurrency assertion passed, but Django could not destroy `test_smartq` because a worker thread still held a persistent PostgreSQL connection.
-
-Day 38 production settings use a non-zero connection lifetime (`CONN_MAX_AGE`). Therefore `close_old_connections()` can intentionally retain a still-healthy connection.
-
-The threaded tests now explicitly close their per-thread database connection.
-
-### Engineering lesson
-
-**Read the phase of a test failure.**
-
-A red CI job can fail during setup, the assertion, cleanup, packaging or deployment. Do not rewrite working business logic when the actual failure is test teardown.
-
----
-
-## 25. CI architecture
-
-Day 38 CI has two complementary jobs.
-
-### SQLite regression
-
-Protects the local-development path and all established business behavior.
-
-It runs app-level regressions plus the full suite.
-
-### PostgreSQL production
-
-Verifies:
+Protects:
 
 ```text
-production configuration imports
+production settings import
 fresh PostgreSQL migrations
-Django deployment security checks
+Django deployment checks
 queue-number concurrency
-appointment-capacity concurrency
+last-slot capacity concurrency
 full Smart Q suite on PostgreSQL
 ```
 
-### Engineering lesson
-
-Use a **test matrix by risk**.
-
-The lightweight environment protects developer speed. The production-like environment proves guarantees that depend on the real database and deployment profile.
+This is a test matrix by risk: use each environment to prove the guarantees it actually owns.
 
 ---
 
-## 26. What Day 38 deliberately does not do
+## 25. Day 38 files introduced/changed
+
+Core Day 38 work includes:
+
+```text
+.env.example
+.gitignore
+.github/workflows/django-tests.yml
+requirements.txt
+smartq/settings.py
+accounts/api_views.py
+accounts/api_urls.py
+accounts/test_day38_csrf.py
+queues/models.py
+queues/services.py
+queues/migrations/0008_queuenumbersequence.py
+queues/test_day38_queue_numbers.py
+services/test_day38_concurrency.py
+docs/DAY38_PRODUCTION_HARDENING.md
+README.md
+```
+
+---
+
+## 26. Deliberate Day 38 non-goals
 
 Day 38 does not:
 
 - change the approved ETA formula;
 - add ML forecasting;
-- add SMS/WhatsApp;
 - add WebSockets;
-- introduce Celery/Redis;
+- add SMS/WhatsApp;
+- add Celery/Redis;
 - choose a hosting vendor prematurely;
-- claim managed backups are active before a database provider exists;
-- turn on HSTS preload without domain/infrastructure review;
-- optimize BranchService locking before measuring contention.
+- claim provider backups are active before a provider exists;
+- enable HSTS preload blindly;
+- optimize safe BranchService locking before measuring contention;
+- claim Django `runserver` is a production server.
 
-These boundaries keep Day 38 focused on production correctness rather than scope expansion.
+A real deployment must use an appropriate production WSGI/ASGI server behind the selected hosting/reverse-proxy setup.
 
 ---
 
-## 27. Day 38 deployment checklist
+## 27. Production launch checklist created by Day 38
 
-Before a real production launch, the deployment operator must confirm:
+Before production traffic:
 
 ```text
 [ ] SMARTQ_ENV=production
-[ ] DJANGO_SECRET_KEY is a strong secret outside Git
+[ ] strong DJANGO_SECRET_KEY stored outside Git
 [ ] DJANGO_DEBUG=false
-[ ] ALLOWED_HOSTS contains only intended hosts
-[ ] DATABASE_URL points to PostgreSQL
-[ ] database transport/TLS matches provider security guidance
-[ ] CORS_ALLOWED_ORIGINS matches the actual frontend origin
-[ ] CSRF_TRUSTED_ORIGINS matches trusted browser origins
-[ ] credentialed CORS is enabled only when required
-[ ] SameSite policy matches frontend/API topology
-[ ] HTTPS terminates at trusted infrastructure
-[ ] SECURE_SSL_REDIRECT is enabled
-[ ] forwarding-header trust matches the reverse proxy
-[ ] HSTS policy has been reviewed
-[ ] logs are collected by the platform
-[ ] automated database backups are enabled
-[ ] backup retention is known
-[ ] a restore has been tested
-[ ] reminder management command is scheduled hourly
-[ ] migrations run before application traffic
-[ ] python manage.py check --deploy is clean for final settings
+[ ] ALLOWED_HOSTS restricted
+[ ] PostgreSQL DATABASE_URL configured
+[ ] DB transport security matches provider guidance
+[ ] frontend CORS origin configured exactly
+[ ] CSRF trusted origins configured when cross-origin
+[ ] cookie SameSite policy matches deployment topology
+[ ] HTTPS termination is trusted
+[ ] reverse-proxy header trust is correct
+[ ] HSTS commitment reviewed
+[ ] platform collects logs
+[ ] automated DB backups enabled
+[ ] retention known
+[ ] restore tested
+[ ] reminder command scheduled hourly
+[ ] migrations run before traffic
+[ ] final check --deploy is clean
 ```
 
 ---
 
-## 28. Main Day 38 engineering lessons
+## 28. Main engineering lessons
 
-1. Development database behavior is not proof of production concurrency behavior.
-2. Read-modify-write operations require database coordination under concurrency.
-3. Unique constraints and row locks solve complementary race conditions.
-4. Transaction boundaries determine whether a lock actually protects the write.
-5. Data migrations preserve existing meaning when schema changes.
-6. Correctness is more important than perfectly gapless operational numbers.
-7. Safe coarse locking is better than premature fine-grained complexity.
-8. Environment configuration belongs outside source code.
-9. Production should fail fast when required security/database guarantees are missing.
-10. CORS and CSRF are different controls.
-11. Secure cookie policy depends partly on frontend/API topology.
-12. Reverse-proxy headers are trustworthy only at a deliberate infrastructure boundary.
-13. HSTS preload/subdomain settings are commitments, not cosmetic warning suppressors.
-14. Log to platform-managed streams; do not casually persist sensitive application logs.
-15. Backups are not proven until restore works.
-16. Fresh-database migrations must be tested independently of developer state.
-17. Read exactly where CI failed before deciding what code to change.
-18. Test production-specific guarantees on the real production database engine.
+1. SQLite success does not prove PostgreSQL concurrency behavior.
+2. Read-modify-write sequences require coordination under simultaneous requests.
+3. ORM convenience APIs are not automatically concurrency primitives.
+4. Conflict-tolerant insert, uniqueness constraints and row locks solve different parts of the allocator problem.
+5. Transaction boundaries determine how long a lock actually protects correctness.
+6. Data migrations preserve production meaning across schema changes.
+7. Queue-number uniqueness matters; perfectly gapless numbering does not.
+8. Safe coarse capacity locking is better than premature complexity; measure before optimizing.
+9. Production should fail fast when its security/database invariants are not present.
+10. Secrets and deployment values belong outside source control.
+11. CORS and CSRF are separate controls.
+12. Browser session login needs an explicit CSRF bootstrap/protected request path.
+13. Secure-cookie policy depends partly on actual frontend/API topology.
+14. Reverse-proxy headers are security inputs only across a trusted boundary.
+15. HSTS subdomain/preload settings are commitments, not warning-suppression flags.
+16. Threaded integration tests must manage their own database connections carefully.
+17. Read the exact phase of CI failure before changing business logic.
+18. A backup is only operationally trusted after restore verification.
+19. Fresh PostgreSQL migration is a release property.
+20. Production configuration and actual deployed infrastructure are related but not the same claim.
 
 ---
 
 ## 29. Day 39 handoff
 
-Once Day 38's final dual-database CI is green, Day 39 should move to historical reporting and performance review.
+Once the final Day 38 dual-database CI head is green, Day 39 moves to historical reporting and measured performance work.
 
-Day 39 should use the existing append-only `QueueEvent` history to build approved operational reporting without changing Smart Q's deterministic ETA policy.
-
-Performance work should be evidence-driven:
+The existing append-only `QueueEvent` history should power approved reports. Performance work should be evidence-driven:
 
 ```text
 measure query counts
 inspect repeated joins
 review indexes
-identify slow report paths
-measure lock contention if any
+measure report latency
+measure lock contention if needed
 optimize only where evidence justifies it
 ```
 
-Day 40 remains the full backend journey/security/release audit.
+The deterministic ETA formula remains unchanged unless explicit product approval says otherwise.
+
+Day 40 remains the full role-journey, abuse-case, release and backend-security audit.
