@@ -42,20 +42,20 @@ class QueueNumberSequenceTests(TestCase):
             role=Profile.CUSTOMER,
         )
 
-    def create_booking(self, *, booking_date=None):
+    def create_booking(self, *, booking_date=None, booking_time=None):
         return Booking.objects.create(
             user=self.user,
             branch=self.branch,
             service=self.service,
             booking_date=booking_date or date(2026, 9, 2),
-            booking_time=time(9, 0),
+            booking_time=booking_time or time(9, 0),
             status=Booking.PENDING,
             source=Booking.ONLINE,
         )
 
     def test_ticket_creation_advances_database_sequence(self):
-        first_booking = self.create_booking()
-        second_booking = self.create_booking()
+        first_booking = self.create_booking(booking_time=time(9, 0))
+        second_booking = self.create_booking(booking_time=time(9, 10))
 
         first_ticket = create_queue_ticket_for_booking(first_booking)
         second_ticket = create_queue_ticket_for_booking(second_booking)
@@ -81,8 +81,8 @@ class QueueNumberSequenceTests(TestCase):
         self.assertEqual(QueueNumberSequence.objects.count(), 2)
 
     def test_general_and_priority_sequences_are_independent(self):
-        general_booking = self.create_booking()
-        priority_booking = self.create_booking()
+        general_booking = self.create_booking(booking_time=time(9, 0))
+        priority_booking = self.create_booking(booking_time=time(9, 10))
 
         general_number = generate_queue_number(general_booking, QueueTicket.GENERAL)
         priority_number = generate_queue_number(priority_booking, QueueTicket.PRIORITY)
@@ -103,6 +103,26 @@ class QueueNumberSequenceTests(TestCase):
         queue_number = generate_queue_number(booking, QueueTicket.GENERAL)
 
         self.assertEqual(queue_number, "A008")
+
+    def test_missing_sequence_is_seeded_from_existing_ticket_history(self):
+        historical_booking = self.create_booking(booking_time=time(9, 0))
+        new_booking = self.create_booking(booking_time=time(9, 10))
+        QueueTicket.objects.create(
+            booking=historical_booking,
+            queue_number="A007",
+            queue_type=QueueTicket.GENERAL,
+            status=QueueTicket.SCHEDULED,
+        )
+
+        queue_number = generate_queue_number(new_booking, QueueTicket.GENERAL)
+
+        self.assertEqual(queue_number, "A008")
+        sequence = QueueNumberSequence.objects.get(
+            branch=self.branch,
+            booking_date=new_booking.booking_date,
+            queue_type=QueueTicket.GENERAL,
+        )
+        self.assertEqual(sequence.last_number, 8)
 
 
 @skipUnless(
