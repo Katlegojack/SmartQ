@@ -4,7 +4,7 @@
 
 Smart Q is a Django + Django REST Framework Queue Intelligence Platform designed to make queues more predictable, transparent, fair, and operationally efficient.
 
-> **Current development state:** Days 28-36 are integrated into `main`. Day 37 adds System Admin configuration APIs, staff provisioning/deactivation, password rotation, scoped throttling and the production reminder-scheduler decision on `feature/day37-admin-security`.
+> **Current development state:** Days 28-37 are integrated into `main`. Day 38 adds PostgreSQL production configuration, concurrency-safe queue-number allocation, PostgreSQL capacity verification, explicit browser CSRF login bootstrap, environment-based secrets/settings, HTTPS/cookie/CORS policy, production logging and deployment/backup requirements on `feature/day38-production-hardening`.
 
 ## Product principle
 
@@ -41,6 +41,8 @@ If a branch opens at 08:00, customer service starts at 08:00. Smart Q does not a
 ```text
 Frontend / API Client
         ↓
+HTTPS + CORS/CSRF/session security
+        ↓
 Django REST Framework APIs
         ↓
 Authentication + Role/Branch/Counter/Ownership Permissions
@@ -49,9 +51,9 @@ Serializers / Read Models / Workflow APIs
         ↓
 Business Logic / Aggregation / Transaction Services
         ↓
-Django ORM
+Django ORM + database constraints/row locks
         ↓
-Database
+SQLite (development) / PostgreSQL (production)
 ```
 
 Current apps:
@@ -92,6 +94,7 @@ Smart Q's `SYSTEM_ADMIN` business role is intentionally separate from Django `is
 
 ```http
 POST /api/v1/accounts/register/
+GET  /api/v1/accounts/csrf/
 POST /api/v1/accounts/login/
 POST /api/v1/accounts/logout/
 GET  /api/v1/accounts/me/
@@ -102,7 +105,24 @@ Public registration always creates a normal Customer account. Password changes r
 
 Login and password-security endpoints use scoped DRF throttling.
 
-## Day 37 System Admin control plane
+### Browser session login / CSRF flow
+
+Smart Q uses Django session authentication. A browser client should bootstrap CSRF before login:
+
+```text
+GET /api/v1/accounts/csrf/
+        ↓
+CSRF cookie + token
+        ↓
+POST /api/v1/accounts/login/
+with X-CSRFToken
+        ↓
+Django session established
+```
+
+The login endpoint is explicitly CSRF-protected. CORS and CSRF are separate controls: an origin being allowed by CORS does not bypass CSRF validation.
+
+## System Admin control plane
 
 ### Staff management
 
@@ -125,7 +145,7 @@ GET  /api/v1/branches/admin/<id>/
 PATCH /api/v1/branches/admin/<id>/
 ```
 
-The public branch catalogue still returns active branches only.
+The public branch catalogue returns active branches only.
 
 ### Service management
 
@@ -165,6 +185,8 @@ GET /api/v1/services/branches/<branch_id>/<service_id>/availability/?date=YYYY-M
 ```
 
 The backend rejects unoffered services, invalid generated times, past slots and fully-booked slots. Guest walk-ins do not consume scheduled appointment capacity.
+
+For capacity-critical booking writes, Smart Q locks the relevant `BranchService` configuration row before the final reservation count. PostgreSQL concurrency tests verify that two simultaneous requests cannot both consume the same final slot.
 
 ## Booking and check-in APIs
 
@@ -246,6 +268,30 @@ POST /api/v1/queues/counters/<counter_id>/complete/
 POST /api/v1/queues/counters/<counter_id>/no-show/
 ```
 
+## Concurrency-safe queue-number allocation
+
+Queue numbers are scoped by:
+
+```text
+branch + booking date + queue type
+```
+
+Day 38 introduces `QueueNumberSequence` as the database-backed allocation record for each scope.
+
+```text
+QueueNumberSequence
+├── branch
+├── booking_date
+├── queue_type
+└── last_number
+```
+
+Allocation uses a conflict-tolerant first insert, a database uniqueness constraint, `transaction.atomic()` and `select_for_update()` before incrementing the surviving sequence row.
+
+This prevents simultaneous production requests from both receiving the same queue number. The migration also backfills the highest existing historical number so an upgraded installation does not restart from `A001`/`P001`.
+
+Queue numbers are allowed to have gaps. The required invariant is uniqueness/order within a successful operational allocation, not gapless accounting-style numbering.
+
 ## Waiting-time estimate
 
 Smart Q's current ETA is deterministic, not ML.
@@ -258,7 +304,7 @@ Estimated Wait = People Ahead × Service.average_service_time
 
 Counter count does **not** divide the ETA formula.
 
-The QueueEvent audit trail does **not** replace this ETA calculation.
+The QueueEvent audit trail and Day 38 sequence allocator do **not** replace or alter this ETA calculation.
 
 ## Manager dashboard
 
@@ -273,7 +319,7 @@ The dashboard derives operational data from source-of-truth models rather than m
 
 ## Disruption and rescheduling
 
-Day 35 provides a repaired capacity-safe disruption workflow:
+Day 35 provides a capacity-safe disruption workflow:
 
 ```text
 Branch Manager pauses service
@@ -312,7 +358,7 @@ POST /api/v1/rescheduling/options/<option_id>/select/
 
 ## QueueEvent lifecycle audit
 
-Day 36 adds append-only history for queue, booking and counter transitions.
+Smart Q has append-only history for queue, booking and counter transitions.
 
 Tracked facts include:
 
@@ -341,7 +387,7 @@ Events snapshot operational context such as actor username/role, source, before/
 GET /api/v1/queues/bookings/<booking_id>/timeline/
 ```
 
-Customer access is ownership-scoped. A customer cannot read another customer's booking history.
+Customer access is ownership-scoped.
 
 ### Branch audit
 
@@ -371,7 +417,7 @@ python manage.py process_check_in_reminders
 
 The same processor cancels unchecked appointments after appointment time passes.
 
-Day 37 production decision:
+Production strategy:
 
 ```text
 Keep the Django management command as the business entry point.
@@ -379,43 +425,104 @@ Invoke it hourly with the deployment platform's scheduler/cron facility.
 Do not add Celery/Redis before backend v1 is complete.
 ```
 
-This keeps the hourly job reliable without introducing an unnecessary worker/broker subsystem before the Day 40 deadline.
+## Day 38 production configuration
+
+Local development remains simple:
+
+```text
+SMARTQ_ENV=development
+DATABASE_URL absent
+→ SQLite
+```
+
+Production is fail-fast:
+
+```text
+SMARTQ_ENV=production
+→ DJANGO_SECRET_KEY required
+→ DJANGO_DEBUG must be false
+→ ALLOWED_HOSTS required
+→ DATABASE_URL required
+→ database engine must be PostgreSQL
+```
+
+Important deployment variables are documented in `.env.example`. Real `.env` files and secrets are ignored by Git.
+
+### CORS, CSRF and cookies
+
+Production supports explicit:
+
+```text
+CORS_ALLOWED_ORIGINS
+CORS_ALLOW_CREDENTIALS
+CSRF_TRUSTED_ORIGINS
+SESSION_COOKIE_SAMESITE
+CSRF_COOKIE_SAMESITE
+```
+
+Session and CSRF cookies are `Secure` in production; the session cookie is `HttpOnly`.
+
+The final SameSite value must match the actual frontend/API domain topology. `Lax` is the simple default; a genuinely cross-site frontend may require `None` and therefore HTTPS.
+
+### HTTPS / reverse proxy
+
+Production supports:
+
+```text
+SECURE_SSL_REDIRECT
+USE_X_FORWARDED_PROTO
+SECURE_HSTS_SECONDS
+SECURE_HSTS_INCLUDE_SUBDOMAINS
+SECURE_HSTS_PRELOAD
+```
+
+Forwarded-protocol trust must only be enabled behind infrastructure that correctly strips/replaces client-provided forwarding headers.
+
+HSTS `includeSubDomains` and preload are deliberate infrastructure commitments, not unconditional defaults.
+
+### Logging
+
+Smart Q emits production-friendly console logs so the deployment platform can handle log collection, retention and search. Application logs should not contain passwords, session cookies, CSRF tokens, pregnancy/disability data or other unnecessary sensitive information.
+
+### Backup requirement
+
+Day 38 defines the production PostgreSQL requirement; it does not falsely claim a cloud backup already exists before a provider is chosen.
+
+A real production deployment must provide:
+
+```text
+automated backups at least daily
+encrypted backup storage
+known retention
+point-in-time recovery when supported
+restore procedure
+restore test before trusting real customer data
+```
+
+The first launch target is at least seven days of recoverability, increased when organisational/legal requirements demand it.
 
 ## Automated verification
 
-GitHub Actions runs migration checks, Django system checks, focused app regressions and the full Django suite.
+GitHub Actions now uses two complementary CI jobs.
 
-```powershell
-python manage.py makemigrations --check --dry-run
-python manage.py check
-python manage.py test accounts
-python manage.py test branches
-python manage.py test services
-python manage.py test counters
-python manage.py test queues
-python manage.py test bookings
-python manage.py test notifications
-python manage.py test dashboard
-python manage.py test rescheduling
-python manage.py test queues.test_day36_events queues.test_day36_audit_api
-python manage.py test
-```
+### SQLite regression
 
-Day 37 verified code checkpoint (`faa7dac...`, Actions run `33461789242`):
+Protects local-development behavior and the established Smart Q business regression suites.
+
+### PostgreSQL production
+
+Starts a clean PostgreSQL 17 service and verifies:
 
 ```text
-accounts      19/19 PASS
-branches       4/4 PASS
-services      14/14 PASS
-counters      11/11 PASS
-queues        24/24 PASS
-bookings      22/22 PASS
-notifications  6/6 PASS
-dashboard      7/7 PASS
-rescheduling  12/12 PASS
-Day 36 audit   9/9 PASS
-full suite   119/119 PASS
+missing migrations check
+fresh database migration from empty
+Django production deployment security checks
+queue-number concurrency
+last-slot appointment-capacity concurrency
+full Smart Q test suite on PostgreSQL
 ```
+
+PostgreSQL-only concurrency tests use separate threads/database connections because SQLite cannot prove row-level PostgreSQL locking behavior.
 
 ## Permanent engineering documentation
 
@@ -430,19 +537,21 @@ docs/DAY34_MANAGER_DASHBOARD.md
 docs/DAY35_DISRUPTION_RESCHEDULING.md
 docs/DAY36_QUEUE_EVENT_AUDIT.md
 docs/DAY37_ADMIN_SECURITY.md
+docs/DAY38_PRODUCTION_HARDENING.md
 ```
 
 ## Current backend capabilities
 
 Smart Q now includes:
 
-- authentication and Customer registration;
+- Customer registration and Django session authentication;
+- explicit CSRF bootstrap + CSRF-protected browser login;
 - secure password rotation and scoped login/account throttling;
 - role + branch + counter + ownership authorization;
 - System Admin staff provisioning, role/branch updates and safe deactivation;
 - System Admin branch/service/BranchService configuration;
 - public active branch/service catalogues;
-- capacity-aware appointment slots;
+- capacity-aware appointment slots and PostgreSQL last-slot locking verification;
 - booking/rescheduling validation;
 - six-hour online/in-person check-in;
 - hourly reminder business logic and an approved external scheduler strategy;
@@ -450,6 +559,7 @@ Smart Q now includes:
 - reception search and guest walk-ins;
 - backend General/Priority assignment;
 - live queues, queue position and deterministic ETA;
+- PostgreSQL-safe database-backed queue-number allocation;
 - staff-to-counter assignment and lifecycle;
 - Call Next / Complete / No Show;
 - branch manager operational dashboard;
@@ -459,13 +569,15 @@ Smart Q now includes:
 - append-only queue/booking/counter lifecycle events;
 - customer-owned booking timelines;
 - manager/System Admin branch audit history;
-- automated abuse-case tests and GitHub Actions CI.
+- environment-driven production settings;
+- HTTPS/CORS/CSRF/cookie/logging configuration contract;
+- fresh PostgreSQL migration/deployment checks in CI;
+- automated abuse-case, regression and production-concurrency tests.
 
 ## Remaining major backend work to Day 40
 
-1. **Day 38 - Production database/concurrency:** PostgreSQL, queue-number concurrency hardening, environment secrets, production settings, CORS/CSRF/cookies, HTTPS/logging/backups.
-2. **Day 39 - Reporting/performance:** approved historical operational reports using QueueEvent, query/performance review. Do not change ETA formula without explicit product approval.
-3. **Day 40 - Final backend audit:** full role journeys, cross-user/cross-branch attacks, duplicate submissions, stale capacity, migrations-from-empty-db, security and complete regression verification.
+1. **Day 39 - Reporting/performance:** approved historical operational reports using QueueEvent, query/performance review and evidence-based index/query tuning. Do not change the approved ETA formula without explicit product approval.
+2. **Day 40 - Final backend audit:** full role journeys, cross-user/cross-branch attacks, duplicate submissions, stale capacity, fresh database/release checks, security review and complete regression verification.
 
 Optional future enhancements such as ML forecasting, SMS/WhatsApp, WebSockets and broader external integrations are not required to call Smart Q backend v1 complete.
 
@@ -476,8 +588,8 @@ Day 33  Counter Lifecycle + Staff Assignment       COMPLETE / MERGED
 Day 34  Manager Dashboard APIs                    COMPLETE / MERGED
 Day 35  Disruption + Rescheduling Repair          COMPLETE / MERGED
 Day 36  QueueEvent / Timeline / Audit             COMPLETE / MERGED
-Day 37  Admin + Account/Security Hardening        IMPLEMENTED / FINAL VERIFY
-Day 38  PostgreSQL + Concurrency + Production Config
+Day 37  Admin + Account/Security Hardening        COMPLETE / MERGED
+Day 38  PostgreSQL + Concurrency + Production     IMPLEMENTED / FINAL VERIFY
 Day 39  Historical Reporting + Performance
 Day 40  Full Backend Integration + Security Audit
 ```
@@ -488,14 +600,16 @@ Day 40  Full Backend Integration + Security Audit
 |---|---|
 | Backend | Django 6 |
 | API | Django REST Framework |
-| Authentication | Django sessions |
+| Authentication | Django sessions + CSRF |
 | Authorization | Profile roles + branch/counter/ownership scope |
 | Account abuse protection | DRF scoped throttling |
 | Development DB | SQLite |
-| Target production DB | PostgreSQL |
+| Production DB | PostgreSQL via Psycopg 3 |
+| Database configuration | `DATABASE_URL` via dj-database-url |
+| Browser origin policy | django-cors-headers + Django CSRF |
 | Admin/control plane | Protected Smart Q System Admin APIs + Django Admin for development |
-| Tests | Django + DRF APITestCase |
-| CI | GitHub Actions |
+| Tests | Django + DRF APITestCase/TransactionTestCase |
+| CI | GitHub Actions: SQLite regression + PostgreSQL production |
 
 ## Local setup
 
@@ -509,19 +623,26 @@ python manage.py migrate
 python manage.py runserver
 ```
 
-Verify:
+`runserver` is for development only. A real deployment must use a production WSGI/ASGI server behind the chosen hosting/reverse-proxy setup.
+
+Local verification:
 
 ```powershell
 python manage.py makemigrations --check --dry-run
 python manage.py check
-python manage.py test accounts branches services
-python manage.py test queues.test_day36_events queues.test_day36_audit_api
 python manage.py test
+```
+
+Production configuration reference:
+
+```text
+.env.example
+docs/DAY38_PRODUCTION_HARDENING.md
 ```
 
 ## Final project statement
 
-Smart Q is being built to give people greater control over time normally lost in uncertain physical queues while giving service organisations safer and clearer operational control.
+Smart Q is being built to give people greater control over time normally lost in uncertain physical queues while giving service organisations safer, clearer and increasingly production-ready operational control.
 
 ```text
 Make queues fairer, smarter, more transparent,
