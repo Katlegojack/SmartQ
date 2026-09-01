@@ -82,14 +82,11 @@ class CustomerRegistrationSerializer(serializers.Serializer):
         return value
 
     def validate_password(self, value):
-        # Reuse Django's configured password validators rather than duplicating
-        # password policy inside Smart Q.
         validate_password(value)
         return value
 
     @transaction.atomic
     def create(self, validated_data):
-        """Create User + Profile as one database transaction."""
         user = User.objects.create_user(
             username=validated_data["username"],
             password=validated_data["password"],
@@ -107,6 +104,37 @@ class CustomerRegistrationSerializer(serializers.Serializer):
             branch=None,
         )
 
+        return user
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    """Validate an authenticated user's password rotation request."""
+
+    current_password = serializers.CharField(write_only=True, trim_whitespace=False)
+    new_password = serializers.CharField(write_only=True, trim_whitespace=False)
+
+    def validate_current_password(self, value):
+        user = self.context["request"].user
+        if not user.check_password(value):
+            raise serializers.ValidationError("Current password is incorrect.")
+        return value
+
+    def validate_new_password(self, value):
+        user = self.context["request"].user
+        validate_password(value, user=user)
+        return value
+
+    def validate(self, attrs):
+        if attrs["current_password"] == attrs["new_password"]:
+            raise serializers.ValidationError(
+                {"new_password": "New password must be different from the current password."}
+            )
+        return attrs
+
+    def save(self, **kwargs):
+        user = self.context["request"].user
+        user.set_password(self.validated_data["new_password"])
+        user.save(update_fields=["password"])
         return user
 
 
@@ -138,12 +166,7 @@ class StaffAccountSerializer(serializers.ModelSerializer):
 
 
 def validate_staff_role_branch(role, branch):
-    """
-    Enforce the same role/branch invariant as the Profile database constraint.
-
-    Receptionist, Counter Staff and Branch Manager are branch-scoped.
-    System Admin is intentionally global and therefore branchless.
-    """
+    """Enforce Smart Q's role/branch invariant before database persistence."""
     if role in BRANCH_SCOPED_STAFF_ROLES and branch is None:
         raise serializers.ValidationError(
             {"branch": "This staff role must be assigned to an active branch."}
