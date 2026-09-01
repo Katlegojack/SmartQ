@@ -26,6 +26,11 @@ class AccountAuthenticationAPITests(APITestCase):
             "disability_status": False,
         }
 
+    def csrf_token(self):
+        response = self.client.get(reverse("api_csrf_token"))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return response.data["csrfToken"]
+
     def test_public_registration_creates_customer_profile(self):
         response = self.client.post(
             reverse("api_register"),
@@ -87,6 +92,7 @@ class AccountAuthenticationAPITests(APITestCase):
             role=Profile.CUSTOMER,
         )
 
+        csrf_token = self.csrf_token()
         login_response = self.client.post(
             reverse("api_login"),
             {
@@ -94,6 +100,7 @@ class AccountAuthenticationAPITests(APITestCase):
                 "password": "Strong-Test-Pass-482!",
             },
             format="json",
+            HTTP_X_CSRFTOKEN=csrf_token,
         )
         me_response = self.client.get(reverse("api_current_account"))
 
@@ -114,10 +121,12 @@ class AccountAuthenticationAPITests(APITestCase):
             role=Profile.CUSTOMER,
         )
 
+        csrf_token = self.csrf_token()
         response = self.client.post(
             reverse("api_login"),
             {"username": "customer", "password": "wrong-password"},
             format="json",
+            HTTP_X_CSRFTOKEN=csrf_token,
         )
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
