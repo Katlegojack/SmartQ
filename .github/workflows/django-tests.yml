@@ -68,5 +68,8 @@ jobs:
       - name: Run Day 40 final backend audit tests
         run: python manage.py test queues.test_day40_final_audit
 
+      - name: Run Day 41 frontend foundation tests
+        run: python manage.py test smartq.test_frontend
+
       - name: Run full test suite
         run: python manage.py test
