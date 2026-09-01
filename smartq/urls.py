@@ -6,6 +6,7 @@ API routes are grouped by Django app so each domain owns its own endpoint paths.
 
 from django.contrib import admin
 from django.urls import include, path
+from django.views.generic import TemplateView
 
 
 urlpatterns = [
@@ -26,4 +27,11 @@ urlpatterns = [
 
     # Day 34 manager read-model APIs.
     path("api/v1/dashboard/", include("dashboard.api_urls")),
+
+    # Frontend foundation. Role-aware screens are added from Day 42 onward.
+    path(
+        "",
+        TemplateView.as_view(template_name="frontend/index.html"),
+        name="frontend_home",
+    ),
 ]
