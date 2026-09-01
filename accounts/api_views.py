@@ -5,7 +5,10 @@ from django.contrib.auth import (
     update_session_auth_hash,
 )
 from django.contrib.auth.models import User
+from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
 from rest_framework import status
 from rest_framework.generics import ListAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -41,8 +44,19 @@ class CustomerRegistrationAPIView(APIView):
         )
 
 
+@method_decorator(ensure_csrf_cookie, name="dispatch")
+class CSRFTokenAPIView(APIView):
+    """Issue the CSRF cookie/token required before a browser session login."""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        return Response({"csrfToken": get_token(request)})
+
+
+@method_decorator(csrf_protect, name="dispatch")
 class LoginAPIView(APIView):
-    """Authenticate username/password and start a Django session."""
+    """Authenticate username/password and start a CSRF-protected Django session."""
 
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]
