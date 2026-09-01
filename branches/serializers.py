@@ -1,17 +1,59 @@
-#Import DRF Serializers tools
-#Serializers convert django model objects into JSON-data friendly
 from rest_framework import serializers
-#Import branch models that we want to expose through the api
+
 from .models import Branch
 
+
 class BranchSerializer(serializers.ModelSerializer):
-    #Meta tells DRF which model this serializer uses and which fields should be shown in the API responses
+    """Public read-only branch catalogue representation."""
+
     class Meta:
-        #This serializer is based on the Branch model
         model = Branch
+        fields = [
+            "id",
+            "branch_code",
+            "name",
+            "address",
+            "city",
+            "opening_time",
+            "closing_time",
+            "is_active",
+            "created_at",
+        ]
+        read_only_fields = fields
 
-        #These are the branch fields the API is allowed to return
-        fields = ['id','branch_code','name','address','city','opening_time','closing_time','is_active','created_at']
-        #For now this API is read only, Users should not create/edit branches through this serializers yet
-        read_only_fields = ['id','branch_code','name','address','city','opening_time','closing_time','is_active','created_at']
 
+class BranchAdminSerializer(serializers.ModelSerializer):
+    """System Admin serializer for branch creation and configuration changes."""
+
+    class Meta:
+        model = Branch
+        fields = [
+            "id",
+            "branch_code",
+            "name",
+            "address",
+            "city",
+            "opening_time",
+            "closing_time",
+            "is_active",
+            "created_at",
+        ]
+        read_only_fields = ["id", "created_at"]
+
+    def validate(self, attrs):
+        opening_time = attrs.get(
+            "opening_time",
+            getattr(self.instance, "opening_time", None),
+        )
+        closing_time = attrs.get(
+            "closing_time",
+            getattr(self.instance, "closing_time", None),
+        )
+
+        if opening_time is not None and closing_time is not None:
+            if opening_time >= closing_time:
+                raise serializers.ValidationError(
+                    {"closing_time": "Closing time must be later than opening time."}
+                )
+
+        return attrs
