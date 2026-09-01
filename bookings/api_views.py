@@ -10,7 +10,8 @@ from rest_framework.views import APIView
 from accounts.models import Profile
 from accounts.permissions import IsQueueViewer, get_user_profile
 from branches.models import Branch
-from queues.models import QueueTicket
+from queues.events import record_queue_event
+from queues.models import QueueEvent, QueueTicket
 from queues.services import (
     check_in_booking,
     create_queue_ticket_for_booking,
@@ -28,7 +29,6 @@ from .serializers import (
 
 
 def check_in_error_response(error_code, booking=None):
-    """Translate reusable check-in service outcomes into clear HTTP responses."""
     if error_code == "too_early":
         opens_at = get_check_in_opens_at(booking) if booking is not None else None
         return Response(
@@ -62,20 +62,12 @@ def check_in_error_response(error_code, booking=None):
 
 
 def get_staff_branch(request):
-    """
-    Resolve the branch for a reception workflow.
-
-    Branch-scoped staff always use their assigned branch. SYSTEM_ADMIN is global
-    and must explicitly provide branch_id so a global account never searches or
-    creates walk-ins in an unintended branch.
-    """
     profile = get_user_profile(request.user)
     if profile is None:
         return None, Response(
             {"detail": "A Smart Q staff profile is required."},
             status=status.HTTP_403_FORBIDDEN,
         )
-
     if profile.role != Profile.SYSTEM_ADMIN:
         return profile.branch, None
 
@@ -85,14 +77,11 @@ def get_staff_branch(request):
             {"detail": "System administrators must provide branch_id."},
             status=status.HTTP_400_BAD_REQUEST,
         )
-
     branch = get_object_or_404(Branch, pk=branch_id, is_active=True)
     return branch, None
 
 
 class BookingCreateAPIView(CreateAPIView):
-    """Create a scheduled online booking and its non-live queue ticket."""
-
     serializer_class = BookingCreateSerializer
     permission_classes = [IsAuthenticated]
 
@@ -100,7 +89,7 @@ class BookingCreateAPIView(CreateAPIView):
         with transaction.atomic():
             booking = serializer.save(user=self.request.user, source=Booking.ONLINE)
             if not QueueTicket.objects.filter(booking=booking).exists():
-                create_queue_ticket_for_booking(booking)
+                create_queue_ticket_for_booking(booking, actor=self.request.user)
 
 
 class MyBookingListAPIView(ListAPIView):
@@ -124,61 +113,42 @@ class BookingDetailAPIView(RetrieveAPIView):
 
 
 class BookingCheckInAPIView(APIView):
-    """Allow a customer to activate their own booking into the live queue."""
-
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
         booking = get_object_or_404(Booking, pk=pk, user=request.user)
-        ticket, error_code = check_in_booking(booking)
-
+        ticket, error_code = check_in_booking(booking, actor=request.user)
         error_response = check_in_error_response(error_code, booking=booking)
         if error_response:
             return error_response
-
         booking.refresh_from_db()
-        return Response(
-            BookingListSerializer(booking).data,
-            status=status.HTTP_200_OK,
-        )
+        return Response(BookingListSerializer(booking).data, status=status.HTTP_200_OK)
 
 
 class StaffBookingCheckInAPIView(APIView):
-    """Allow authorised branch staff to activate a customer's live queue ticket."""
-
     permission_classes = [IsQueueViewer]
 
     def post(self, request, pk):
         booking = get_object_or_404(
-            Booking.objects.select_related(
-                "branch", "service", "user", "guest_customer"
-            ),
+            Booking.objects.select_related("branch", "service", "user", "guest_customer"),
             pk=pk,
         )
         self.check_object_permissions(request, booking)
-
-        ticket, error_code = check_in_booking(booking)
+        ticket, error_code = check_in_booking(booking, actor=request.user)
         error_response = check_in_error_response(error_code, booking=booking)
         if error_response:
             return error_response
-
         booking.refresh_from_db()
-        return Response(
-            BookingListSerializer(booking).data,
-            status=status.HTTP_200_OK,
-        )
+        return Response(BookingListSerializer(booking).data, status=status.HTTP_200_OK)
 
 
 class ReceptionBookingSearchAPIView(APIView):
-    """Search customers/bookings only inside the authorised reception branch."""
-
     permission_classes = [IsQueueViewer]
 
     def get(self, request):
         branch, error_response = get_staff_branch(request)
         if error_response:
             return error_response
-
         query = request.query_params.get("q", "").strip()
         if len(query) < 2:
             return Response(
@@ -194,7 +164,6 @@ class ReceptionBookingSearchAPIView(APIView):
             | Q(guest_customer__full_name__icontains=query)
             | Q(guest_customer__phone_number__icontains=query)
         )
-
         if query.isdigit():
             filters |= Q(pk=int(query))
 
@@ -204,63 +173,39 @@ class ReceptionBookingSearchAPIView(APIView):
             .select_related("branch", "service", "user", "guest_customer")
             .order_by("-booking_date", "-booking_time")[:50]
         )
-
-        return Response(
-            BookingListSerializer(bookings, many=True).data,
-            status=status.HTTP_200_OK,
-        )
+        return Response(BookingListSerializer(bookings, many=True).data)
 
 
 class ReceptionGuestWalkInAPIView(APIView):
-    """Create a no-account guest walk-in and immediately join the live queue."""
-
     permission_classes = [IsQueueViewer]
 
     def post(self, request):
         branch, error_response = get_staff_branch(request)
         if error_response:
             return error_response
-
         serializer = GuestWalkInSerializer(
             data=request.data,
-            context={"branch": branch},
+            context={"branch": branch, "actor": request.user},
         )
         serializer.is_valid(raise_exception=True)
         booking = serializer.save()
-
-        return Response(
-            BookingListSerializer(booking).data,
-            status=status.HTTP_201_CREATED,
-        )
+        return Response(BookingListSerializer(booking).data, status=status.HTTP_201_CREATED)
 
 
 class BookingCancelAPIView(APIView):
-    """Cancel an eligible registered-customer booking and connected ticket."""
-
     permission_classes = [IsAuthenticated]
 
     @transaction.atomic
     def patch(self, request, pk):
         booking = get_object_or_404(Booking, pk=pk, user=request.user)
-
         if booking.status == Booking.COMPLETED:
-            return Response(
-                {"detail": "Completed bookings cannot be cancelled."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
+            return Response({"detail": "Completed bookings cannot be cancelled."}, status=400)
         if booking.status == Booking.NO_SHOW:
-            return Response(
-                {"detail": "No-show bookings cannot be cancelled."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
+            return Response({"detail": "No-show bookings cannot be cancelled."}, status=400)
         if booking.status == Booking.CANCELLED:
-            return Response(
-                BookingListSerializer(booking).data,
-                status=status.HTTP_200_OK,
-            )
+            return Response(BookingListSerializer(booking).data, status=200)
 
+        old_booking_status = booking.status
         booking.status = Booking.CANCELLED
         booking.save(update_fields=["status"])
 
@@ -268,79 +213,80 @@ class BookingCancelAPIView(APIView):
             ticket = booking.queueticket
         except QueueTicket.DoesNotExist:
             ticket = None
-
+        old_ticket_status = ticket.status if ticket else ""
         if ticket:
             ticket.status = QueueTicket.CANCELLED
             ticket.assigned_counter = None
             ticket.save(update_fields=["status", "assigned_counter"])
 
-        return Response(
-            BookingListSerializer(booking).data,
-            status=status.HTTP_200_OK,
+        record_queue_event(
+            QueueEvent.CANCELLED,
+            ticket=ticket,
+            booking=booking,
+            actor=request.user,
+            from_ticket_status=old_ticket_status,
+            to_ticket_status=QueueTicket.CANCELLED if ticket else "",
+            from_booking_status=old_booking_status,
+            to_booking_status=Booking.CANCELLED,
+            metadata={"reason": "customer_cancelled"},
         )
+        return Response(BookingListSerializer(booking).data, status=status.HTTP_200_OK)
 
 
 class BookingRescheduleAPIView(APIView):
-    """Move a registered booking and require fresh check-in for the new slot."""
-
     permission_classes = [IsAuthenticated]
 
     @transaction.atomic
     def patch(self, request, pk):
         booking = get_object_or_404(Booking, pk=pk, user=request.user)
-
         if booking.status == Booking.COMPLETED:
-            return Response(
-                {"detail": "Completed bookings cannot be rescheduled."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
+            return Response({"detail": "Completed bookings cannot be rescheduled."}, status=400)
         if booking.status == Booking.CANCELLED:
-            return Response(
-                {"detail": "Cancelled bookings cannot be rescheduled."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
+            return Response({"detail": "Cancelled bookings cannot be rescheduled."}, status=400)
         if booking.status == Booking.NO_SHOW:
-            return Response(
-                {"detail": "No-show bookings cannot be rescheduled."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return Response({"detail": "No-show bookings cannot be rescheduled."}, status=400)
 
-        serializer = BookingRescheduleSerializer(
-            booking,
-            data=request.data,
-            partial=True,
-        )
+        old_date = booking.booking_date
+        old_time = booking.booking_time
+        old_booking_status = booking.status
+        try:
+            existing_ticket = booking.queueticket
+        except QueueTicket.DoesNotExist:
+            existing_ticket = None
+        old_ticket_status = existing_ticket.status if existing_ticket else ""
+
+        serializer = BookingRescheduleSerializer(booking, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         booking = serializer.save()
 
-        try:
-            ticket = booking.queueticket
-        except QueueTicket.DoesNotExist:
-            ticket = None
-
+        ticket = existing_ticket
         if ticket:
             ticket.queue_type = determine_queue_type(booking)
             ticket.queue_number = generate_queue_number(booking, ticket.queue_type)
             ticket.status = QueueTicket.SCHEDULED
             ticket.assigned_counter = None
-            ticket.save(
-                update_fields=[
-                    "queue_type",
-                    "queue_number",
-                    "status",
-                    "assigned_counter",
-                ]
-            )
+            ticket.save(update_fields=["queue_type", "queue_number", "status", "assigned_counter"])
         else:
-            create_queue_ticket_for_booking(booking)
+            ticket = create_queue_ticket_for_booking(booking, actor=request.user)
 
         booking.checked_in_at = None
         booking.status = Booking.PENDING
         booking.save(update_fields=["checked_in_at", "status"])
 
-        return Response(
-            BookingListSerializer(booking).data,
-            status=status.HTTP_200_OK,
+        record_queue_event(
+            QueueEvent.RESCHEDULED,
+            ticket=ticket,
+            booking=booking,
+            actor=request.user,
+            from_ticket_status=old_ticket_status,
+            to_ticket_status=QueueTicket.SCHEDULED,
+            from_booking_status=old_booking_status,
+            to_booking_status=Booking.PENDING,
+            metadata={
+                "old_booking_date": old_date.isoformat(),
+                "old_booking_time": old_time.isoformat() if old_time else None,
+                "new_booking_date": booking.booking_date.isoformat(),
+                "new_booking_time": booking.booking_time.isoformat() if booking.booking_time else None,
+            },
         )
+        return Response(BookingListSerializer(booking).data, status=status.HTTP_200_OK)

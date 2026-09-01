@@ -12,7 +12,6 @@ from .services import create_guest_walk_in
 
 
 def raise_slot_validation_error(error_code):
-    """Translate availability-engine outcomes into DRF validation errors."""
     messages = {
         "service_not_offered": "The selected service is not offered at this branch.",
         "past_date": "Booking date cannot be in the past.",
@@ -26,36 +25,16 @@ def raise_slot_validation_error(error_code):
 
 
 class BookingCreateSerializer(serializers.ModelSerializer):
-    """Validate a customer-created online appointment against branch capacity."""
-
-    branch = serializers.PrimaryKeyRelatedField(
-        queryset=Branch.objects.filter(is_active=True)
-    )
-    service = serializers.PrimaryKeyRelatedField(
-        queryset=Service.objects.filter(is_active=True)
-    )
+    branch = serializers.PrimaryKeyRelatedField(queryset=Branch.objects.filter(is_active=True))
+    service = serializers.PrimaryKeyRelatedField(queryset=Service.objects.filter(is_active=True))
 
     class Meta:
         model = Booking
         fields = [
-            "id",
-            "branch",
-            "service",
-            "booking_date",
-            "booking_time",
-            "is_pregnant",
-            "status",
-            "source",
-            "checked_in_at",
-            "created_at",
+            "id", "branch", "service", "booking_date", "booking_time",
+            "is_pregnant", "status", "source", "checked_in_at", "created_at",
         ]
-        read_only_fields = [
-            "id",
-            "status",
-            "source",
-            "checked_in_at",
-            "created_at",
-        ]
+        read_only_fields = ["id", "status", "source", "checked_in_at", "created_at"]
 
     def validate_booking_date(self, value):
         if value < timezone.localdate():
@@ -68,21 +47,13 @@ class BookingCreateSerializer(serializers.ModelSerializer):
         service = attrs.get("service")
         booking_date = attrs.get("booking_date")
         booking_time = attrs.get("booking_time")
-
         if branch and service and booking_date and booking_time:
-            _, error_code = validate_booking_slot(
-                branch,
-                service,
-                booking_date,
-                booking_time,
-            )
+            _, error_code = validate_booking_slot(branch, service, booking_date, booking_time)
             raise_slot_validation_error(error_code)
-
         return attrs
 
     @transaction.atomic
     def create(self, validated_data):
-        """Re-check capacity under a BranchService row lock before inserting."""
         _, error_code = validate_booking_slot(
             validated_data["branch"],
             validated_data["service"],
@@ -95,8 +66,6 @@ class BookingCreateSerializer(serializers.ModelSerializer):
 
 
 class BookingListSerializer(serializers.ModelSerializer):
-    """Read-only booking representation for customer and staff workflows."""
-
     branch_name = serializers.CharField(source="branch.name", read_only=True)
     service_name = serializers.CharField(source="service.name", read_only=True)
     is_checked_in = serializers.BooleanField(read_only=True)
@@ -106,21 +75,9 @@ class BookingListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Booking
         fields = [
-            "id",
-            "customer_name",
-            "source",
-            "branch",
-            "branch_name",
-            "service",
-            "service_name",
-            "booking_date",
-            "booking_time",
-            "is_pregnant",
-            "status",
-            "checked_in_at",
-            "is_checked_in",
-            "created_at",
-            "queue_ticket",
+            "id", "customer_name", "source", "branch", "branch_name", "service",
+            "service_name", "booking_date", "booking_time", "is_pregnant", "status",
+            "checked_in_at", "is_checked_in", "created_at", "queue_ticket",
         ]
         read_only_fields = fields
 
@@ -129,7 +86,6 @@ class BookingListSerializer(serializers.ModelSerializer):
             ticket = obj.queueticket
         except ObjectDoesNotExist:
             return None
-
         return {
             "id": ticket.id,
             "queue_number": ticket.queue_number,
@@ -139,8 +95,6 @@ class BookingListSerializer(serializers.ModelSerializer):
 
 
 class BookingRescheduleSerializer(serializers.ModelSerializer):
-    """Validate a new appointment slot against the existing branch/service."""
-
     class Meta:
         model = Booking
         fields = ["booking_date", "booking_time"]
@@ -155,10 +109,8 @@ class BookingRescheduleSerializer(serializers.ModelSerializer):
         booking = self.instance
         if booking is None:
             return attrs
-
         booking_date = attrs.get("booking_date", booking.booking_date)
         booking_time = attrs.get("booking_time", booking.booking_time)
-
         _, error_code = validate_booking_slot(
             booking.branch,
             booking.service,
@@ -171,10 +123,8 @@ class BookingRescheduleSerializer(serializers.ModelSerializer):
 
     @transaction.atomic
     def update(self, instance, validated_data):
-        """Lock and re-check the destination slot before moving the booking."""
         booking_date = validated_data.get("booking_date", instance.booking_date)
         booking_time = validated_data.get("booking_time", instance.booking_time)
-
         _, error_code = validate_booking_slot(
             instance.branch,
             instance.service,
@@ -188,17 +138,13 @@ class BookingRescheduleSerializer(serializers.ModelSerializer):
 
 
 class GuestWalkInSerializer(serializers.Serializer):
-    """Reception input for a guest who does not have a Smart Q account."""
-
     full_name = serializers.CharField(max_length=150)
     phone_number = serializers.CharField(max_length=30, required=False, allow_blank=True)
     date_of_birth = serializers.DateField()
     gender = serializers.ChoiceField(choices=Profile.GENDER_CHOICE)
     disability_status = serializers.BooleanField(required=False, default=False)
     is_pregnant = serializers.BooleanField(required=False, default=False)
-    service = serializers.PrimaryKeyRelatedField(
-        queryset=Service.objects.filter(is_active=True)
-    )
+    service = serializers.PrimaryKeyRelatedField(queryset=Service.objects.filter(is_active=True))
 
     def validate_date_of_birth(self, value):
         if value > timezone.localdate():
@@ -207,18 +153,15 @@ class GuestWalkInSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
-
         if attrs.get("is_pregnant") and attrs.get("gender") != Profile.FEMALE:
             raise serializers.ValidationError(
                 {"is_pregnant": "Pregnancy priority applies only to a female profile."}
             )
-
         branch = self.context["branch"]
         if get_branch_service(branch, attrs["service"]) is None:
             raise serializers.ValidationError(
                 {"service": "This service is not offered at the selected branch."}
             )
-
         return attrs
 
     def create(self, validated_data):
@@ -232,4 +175,5 @@ class GuestWalkInSerializer(serializers.Serializer):
             gender=validated_data["gender"],
             disability_status=validated_data.get("disability_status", False),
             is_pregnant=validated_data.get("is_pregnant", False),
+            actor=self.context.get("actor"),
         )

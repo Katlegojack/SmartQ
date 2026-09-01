@@ -11,6 +11,7 @@ on:
       - feature/day33-counter-lifecycle
       - feature/day34-manager-dashboard
       - feature/day35-disruption-rescheduling
+      - feature/day36-queue-event-audit
   pull_request:
     branches:
       - main
@@ -65,6 +66,9 @@ jobs:
 
       - name: Run disruption and rescheduling tests
         run: python manage.py test rescheduling
+
+      - name: Run queue event audit tests
+        run: python manage.py test queues.test_day36_events queues.test_day36_audit_api
 
       - name: Run full test suite
         run: python manage.py test

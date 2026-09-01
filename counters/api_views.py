@@ -25,7 +25,6 @@ from .services import (
 
 
 def counter_error_response(error_code):
-    """Translate counter-domain outcomes into stable HTTP responses."""
     responses = {
         "invalid_staff_role": (
             "Only a user with the Counter Staff role can be assigned to a counter.",
@@ -68,12 +67,6 @@ def counter_error_response(error_code):
 
 
 def counter_operator_denied(request, counter):
-    """
-    Return True when Counter Staff tries to operate a counter not assigned to them.
-
-    Branch Managers and System Admins retain operational override inside their
-    existing branch/global permission scope.
-    """
     profile = get_user_profile(request.user)
     return (
         profile is not None
@@ -83,14 +76,11 @@ def counter_operator_denied(request, counter):
 
 
 class BranchCounterListAPIView(APIView):
-    """List counters visible to authorised staff for one branch."""
-
     permission_classes = [IsQueueViewer]
 
     def get(self, request, branch_id):
         branch = get_object_or_404(Branch, pk=branch_id, is_active=True)
         self.check_object_permissions(request, branch)
-
         counters = Counter.objects.filter(branch=branch).select_related(
             "branch", "assigned_staff"
         ).order_by("counter_number")
@@ -98,8 +88,6 @@ class BranchCounterListAPIView(APIView):
 
 
 class MyAssignedCounterAPIView(APIView):
-    """Return the counter assigned to the logged-in Counter Staff user."""
-
     permission_classes = [IsQueueOperator]
 
     def get(self, request):
@@ -109,7 +97,6 @@ class MyAssignedCounterAPIView(APIView):
                 {"detail": "This endpoint is for Counter Staff assignments."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-
         counter = Counter.objects.filter(assigned_staff=request.user).select_related(
             "branch", "assigned_staff"
         ).first()
@@ -118,53 +105,43 @@ class MyAssignedCounterAPIView(APIView):
                 {"detail": "You are not currently assigned to a counter."},
                 status=status.HTTP_404_NOT_FOUND,
             )
-
         return Response(CounterSerializer(counter).data)
 
 
 class CounterAssignStaffAPIView(APIView):
-    """Allow Branch Manager/System Admin to assign one Counter Staff user."""
-
     permission_classes = [IsBranchManager]
 
     def post(self, request, counter_id):
         counter = get_object_or_404(Counter, pk=counter_id)
         self.check_object_permissions(request, counter)
-
         staff_user_id = request.data.get("staff_user_id")
         if not staff_user_id:
             return Response(
                 {"detail": "staff_user_id is required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
         staff_user = get_object_or_404(User, pk=staff_user_id)
-        counter, error_code = assign_counter_staff(counter, staff_user)
+        counter, error_code = assign_counter_staff(
+            counter, staff_user, actor=request.user
+        )
         if error_code:
             return counter_error_response(error_code)
-
         return Response(CounterSerializer(counter).data, status=status.HTTP_200_OK)
 
 
 class CounterUnassignStaffAPIView(APIView):
-    """Allow Branch Manager/System Admin to remove a counter assignment safely."""
-
     permission_classes = [IsBranchManager]
 
     def post(self, request, counter_id):
         counter = get_object_or_404(Counter, pk=counter_id)
         self.check_object_permissions(request, counter)
-
-        counter, error_code = unassign_counter_staff(counter)
+        counter, error_code = unassign_counter_staff(counter, actor=request.user)
         if error_code:
             return counter_error_response(error_code)
-
         return Response(CounterSerializer(counter).data, status=status.HTTP_200_OK)
 
 
 class CounterLifecycleAPIView(APIView):
-    """Base class for OPEN/PAUSE/RESUME/CLOSE counter actions."""
-
     permission_classes = [IsQueueOperator]
     lifecycle_service = None
 
@@ -178,10 +155,9 @@ class CounterLifecycleAPIView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        counter, error_code = self.lifecycle_service(counter)
+        counter, error_code = self.lifecycle_service(counter, actor=request.user)
         if error_code:
             return counter_error_response(error_code)
-
         return Response(CounterSerializer(counter).data, status=status.HTTP_200_OK)
 
 

@@ -1,10 +1,12 @@
 from django.urls import path
 
 from .api_views import (
+    BranchQueueEventAuditAPIView,
     BranchWaitingQueueAPIView,
     CallNextTicketAPIView,
     CompleteCurrentTicketAPIView,
     CurrentCounterTicketAPIView,
+    CustomerBookingTimelineAPIView,
     MyCurrentQueueTicketAPIView,
     NoShowCurrentTicketAPIView,
 )
@@ -13,6 +15,13 @@ from .api_views import (
 urlpatterns = [
     # Customer queue tracker: current ticket + position + estimated wait.
     path("my-current/", MyCurrentQueueTicketAPIView.as_view(), name="api_my_current_queue_ticket"),
+
+    # Customer-owned append-only lifecycle history for one booking.
+    path(
+        "bookings/<int:booking_id>/timeline/",
+        CustomerBookingTimelineAPIView.as_view(),
+        name="api_customer_booking_timeline",
+    ),
 
     # Staff read APIs used by the counter/reception dashboards.
     path(
@@ -24,6 +33,13 @@ urlpatterns = [
         "counters/<int:counter_id>/current/",
         CurrentCounterTicketAPIView.as_view(),
         name="api_current_counter_ticket",
+    ),
+
+    # Manager/System Admin historical operational audit timeline.
+    path(
+        "branches/<int:branch_id>/events/",
+        BranchQueueEventAuditAPIView.as_view(),
+        name="api_branch_queue_event_audit",
     ),
 
     # Staff queue-operation APIs.

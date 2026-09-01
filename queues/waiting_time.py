@@ -1,4 +1,3 @@
-from counters.services import get_active_counter_count
 from queues.models import QueueTicket
 
 
@@ -23,17 +22,14 @@ def get_queue_position(ticket):
 
 
 def calculate_estimated_wait_time(ticket):
-    branch = ticket.booking.branch
-    service = ticket.booking.service
+    """
+    Apply Smart Q's approved deterministic ETA rule.
 
-    active_counters = get_active_counter_count(branch, ticket.queue_type)
-
-    if active_counters == 0:
-        return None
-
+    Estimated wait = people ahead * the selected service's average service time.
+    Counter count does not alter this rule.
+    """
     people_ahead = get_people_ahead(ticket)
-    estimated_wait_time = (people_ahead * service.average_service_time) / active_counters
-
+    estimated_wait_time = people_ahead * ticket.booking.service.average_service_time
     return round(estimated_wait_time)
 
 

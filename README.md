@@ -4,7 +4,7 @@
 
 Smart Q is a Django + Django REST Framework Queue Intelligence Platform designed to make queues more predictable, transparent, fair, and operationally efficient.
 
-> **Current development state:** Days 28-34 are integrated into `main`. Day 35 disruption and rescheduling repair is implemented on `feature/day35-disruption-rescheduling` and is under final regression/documentation verification.
+> **Current development state:** Days 28-35 are integrated into `main`. Day 36 adds QueueEvent lifecycle history, audit APIs, and the explicitly approved deterministic ETA rule on `feature/day36-queue-event-audit`.
 
 ## Product principle
 
@@ -33,6 +33,8 @@ SERVING
 ```
 
 If appointment time passes without check-in, the booking becomes `CANCELLED` because the customer never entered the live queue.
+
+If a branch opens at 08:00, customer service starts at 08:00. Smart Q does not add an artificial staff-preparation buffer before branch opening time.
 
 ## Architecture
 
@@ -66,8 +68,6 @@ rescheduling
 dashboard
 ```
 
-`dashboard` is intentionally a read-only aggregation app with no database model. It derives manager data from operational source-of-truth models instead of duplicating state.
-
 ## Roles
 
 ```text
@@ -80,11 +80,11 @@ SYSTEM_ADMIN
 
 | Role | Current operational scope |
 |---|---|
-| Customer | Own account, bookings, live queue and own disruption reschedule options |
+| Customer | Own account, bookings, live queue, own disruption options, own booking timeline |
 | Receptionist | Branch queue reads, booking search, staff check-in, guest walk-ins |
-| Counter Staff | Branch queue reads + mutations on their assigned counter |
-| Branch Manager | Own-branch counter assignment, disruption control, operational override and manager dashboard |
-| System Admin | Global operational, disruption and dashboard access |
+| Counter Staff | Branch queue reads + mutations on assigned counter |
+| Branch Manager | Own-branch counter assignment, disruption control, dashboard and branch audit history |
+| System Admin | Global operational, disruption, dashboard and branch audit access |
 
 ## Authentication APIs
 
@@ -102,21 +102,11 @@ Public registration always creates a normal Customer account.
 A service must be explicitly offered by a branch through `BranchService`.
 
 ```text
-BranchService
-├── branch
-├── service
-├── max_bookings_per_slot
-└── is_active
-```
-
-Approved scheduling rules:
-
-```text
 slot duration = Service.average_service_time
 capacity = BranchService.max_bookings_per_slot
 ```
 
-### Service availability APIs
+### Service APIs
 
 ```http
 GET /api/v1/services/
@@ -124,11 +114,7 @@ GET /api/v1/services/branches/<branch_id>/
 GET /api/v1/services/branches/<branch_id>/<service_id>/availability/?date=YYYY-MM-DD
 ```
 
-The backend rejects unoffered services, non-generated times, past slots and fully-booked slots.
-
-Cancelled appointments release future slot capacity. Guest walk-ins do not reserve future appointment capacity.
-
-Day 35 reuses this same availability engine for disruption replacement slots so normal booking and rescheduling cannot disagree about capacity.
+The backend rejects unoffered services, invalid generated times, past slots and fully-booked slots. Guest walk-ins do not consume scheduled appointment capacity.
 
 ## Booking and check-in APIs
 
@@ -155,7 +141,7 @@ Guest walk-ins require no Smart Q account and enter `WAITING` immediately.
 
 ## Priority policy
 
-Queue type is backend-controlled.
+Queue type is backend-controlled:
 
 ```text
 age >= 55
@@ -165,23 +151,9 @@ OR female + pregnancy for the visit
 
 The same rules apply to registered customers and guest walk-ins.
 
-## Day 33: Counter lifecycle
+## Counter lifecycle
 
-A Counter has explicit staff ownership.
-
-```text
-Counter
-├── branch
-├── counter_number
-├── queue_type
-├── assigned_staff
-├── status
-└── created_at
-```
-
-`assigned_staff` is a OneToOne relationship. This enforces one staff member -> at most one counter.
-
-### Counter lifecycle
+A Counter has explicit staff ownership and lifecycle state.
 
 ```text
 UNASSIGNED
@@ -198,20 +170,7 @@ OPEN
        CLOSED
 ```
 
-Rules:
-
-- Counter Staff cannot assign themselves.
-- Branch Manager assigns same-branch Counter Staff.
-- System Admin can assign globally.
-- Assigned user must have `COUNTER_STAFF` role.
-- Staff and counter must belong to the same branch.
-- One staff user cannot be assigned to two counters.
-- An unassigned counter cannot open.
-- Assignment changes require a CLOSED, idle counter.
-- PAUSE blocks Call Next but the current customer may still be completed/no-show.
-- CLOSE is blocked while a customer is currently being served.
-- Counter Staff can mutate only their assigned counter.
-- Branch Manager/System Admin retain their authorised override.
+Rules include one staff -> one counter, same-branch assignment, no self-assignment, staffed counter required before opening, PAUSE blocks Call Next, CLOSE blocked while serving, and assignment-aware Counter Staff mutations.
 
 ### Counter APIs
 
@@ -237,84 +196,54 @@ POST /api/v1/queues/counters/<counter_id>/complete/
 POST /api/v1/queues/counters/<counter_id>/no-show/
 ```
 
-Counter Staff queue mutations are assignment-aware.
+## Waiting-time estimate
 
-## Day 34: Manager dashboard read model
+Smart Q's current ETA is deterministic, not ML.
 
-Day 34 adds a cross-domain, read-only manager view without introducing a `Dashboard` database table.
+Approved formula:
 
 ```text
-Booking ---------+
-QueueTicket -----+
-Counter ---------+--> Dashboard aggregation service --> Manager API
-Branch ----------+
-Service ---------+
+Estimated Wait = People Ahead × Service.average_service_time
 ```
 
-### Manager dashboard API
+Counter count does **not** divide the ETA formula.
+
+The QueueEvent audit trail does **not** replace this ETA calculation.
+
+## Manager dashboard
 
 ```http
 GET /api/v1/dashboard/branches/<branch_id>/
 GET /api/v1/dashboard/branches/<branch_id>/?date=YYYY-MM-DD
 ```
 
-Access rules:
+Branch Manager sees only the assigned branch. System Admin can inspect any active branch. Customer, Receptionist and Counter Staff are denied.
 
-- Branch Manager: own branch only.
-- System Admin: any active branch.
-- Counter Staff, Receptionist and Customer: denied.
+The dashboard derives operational data from source-of-truth models rather than maintaining a duplicate Dashboard table.
 
-The dashboard returns branch information, customer activity, General/Priority lifecycle counts, booking sources, check-in totals, service distribution and live counter/staff/free/busy state.
+## Disruption and rescheduling
 
-Date-scoped queue, booking and service metrics use the requested report date. Counter state is explicitly labelled `live_current_state` because historical counter transitions are not yet persisted.
-
-Smart Q deliberately does **not** claim a historical average actual waiting time yet. A trustworthy value requires the future queue-event timeline.
-
-## Day 35: Disruption and rescheduling repair
-
-Day 35 replaces unfinished legacy disruption/rescheduling logic with a workflow aligned to current Smart Q invariants.
-
-### Approved disruption flow
+Day 35 provides a repaired capacity-safe disruption workflow:
 
 ```text
-Branch Manager pauses branch service
+Branch Manager pauses service
         ↓
-Live disruption preview
+Live impact preview
         ↓
 Manager resumes service
         ↓
-Final lost-capacity calculation
+Finalize affected/risk records
         ↓
-Persist AFFECTED + RESCHEDULE_RISK impacts
+Generate up to 5 future options
         ↓
-Generate up to 5 capacity-safe future options
+Affected customer chooses option
         ↓
-Affected customer chooses replacement slot
-        ↓
-Fresh capacity check under transaction/lock
-        ↓
-Apply new appointment atomically
+Fresh capacity validation under transaction/lock
         ↓
 PENDING booking + SCHEDULED Priority ticket
         ↓
-Customer must check in again
+Fresh check-in required
 ```
-
-Rules:
-
-- only `WAITING` customers in the paused branch + service + booking date are affected;
-- lost capacity is approximated from pause duration / `Service.average_service_time`;
-- risk customers are selected from the back of the affected queue;
-- risk is finalized when the pause ends, not continuously persisted during an active outage;
-- each at-risk customer receives up to five available future options beginning the next day;
-- replacement options reuse the Day 32 `BranchService` capacity engine;
-- stored option availability is only a snapshot and is revalidated at confirmation time;
-- affected registered customers choose their own replacement slot;
-- customer option selection and booking application happen atomically;
-- disruption compensation changes the future ticket to Priority and regenerates a `P###` queue number;
-- Priority compensation does not bypass check-in;
-- after apply, `checked_in_at=None`, booking is `PENDING`, ticket is `SCHEDULED` and has no assigned counter;
-- retrying disruption finalization is idempotent.
 
 ### Manager disruption APIs
 
@@ -324,42 +253,63 @@ GET  /api/v1/rescheduling/pauses/<pause_id>/
 POST /api/v1/rescheduling/pauses/<pause_id>/resume/
 ```
 
-Branch Managers are restricted to their assigned branch. System Admin is global.
-
-### Customer disruption-reschedule APIs
+### Customer disruption APIs
 
 ```http
 GET  /api/v1/rescheduling/recommendations/my/
 POST /api/v1/rescheduling/options/<option_id>/select/
 ```
 
-The selection endpoint enforces recommendation booking ownership, rechecks capacity, and returns `409 Conflict` when an option became stale or unavailable.
+## Day 36: QueueEvent lifecycle audit
 
-### Day 35 schema repair
+Day 36 adds append-only history for queue, booking and counter transitions.
 
-`RescheduleOption.option_time` is now a real `TimeField` rather than `TextField` so persisted times round-trip with the type required by the availability engine.
-
-Migration:
+Tracked facts include:
 
 ```text
-rescheduling/migrations/0003_alter_rescheduleoption_option_time.py
+TICKET_SCHEDULED
+CHECKED_IN
+CALLED
+COMPLETED
+NO_SHOW
+CANCELLED
+RESCHEDULED
+DISRUPTION_RESCHEDULED
+COUNTER_STAFF_ASSIGNED
+COUNTER_STAFF_UNASSIGNED
+COUNTER_OPENED
+COUNTER_PAUSED
+COUNTER_RESUMED
+COUNTER_CLOSED
 ```
 
-## Waiting-time estimate
+Events snapshot operational context such as actor username/role, source, before/after statuses, queue number/type and timestamp. Sensitive priority inputs such as pregnancy/disability must not be written to audit metadata.
 
-Current waiting time is deterministic, not ML:
+### Customer timeline
+
+```http
+GET /api/v1/queues/bookings/<booking_id>/timeline/
+```
+
+Customer access is ownership-scoped. A customer cannot read another customer's booking history.
+
+### Branch audit
+
+```http
+GET /api/v1/queues/branches/<branch_id>/events/
+```
+
+Access:
 
 ```text
-Estimated Wait ≈
-(People Ahead × Average Service Time) ÷ Active Counters
+Branch Manager -> own branch only
+System Admin   -> any active branch
+Receptionist   -> denied
+Counter Staff  -> denied
+Customer       -> denied
 ```
 
-An active counter means:
-
-```text
-Counter.status = OPEN
-AND Counter.assigned_staff IS NOT NULL
-```
+Customer responses intentionally omit management actor/metadata fields. Manager/System Admin responses contain the operational audit context needed to trace actions.
 
 ## Check-in reminders
 
@@ -369,11 +319,11 @@ Advance online appointments receive hourly in-app reminders during the six-hour 
 python manage.py process_check_in_reminders
 ```
 
-The same processor cancels unchecked appointments after their appointment time passes.
+The same processor cancels unchecked appointments after the appointment time passes. Production scheduler execution remains a Day 37 infrastructure decision.
 
 ## Automated verification
 
-GitHub Actions runs:
+GitHub Actions runs migration checks, Django system checks, app-specific regression suites, Day 36 audit tests and the full Django suite.
 
 ```powershell
 python manage.py makemigrations --check --dry-run
@@ -386,34 +336,8 @@ python manage.py test bookings
 python manage.py test notifications
 python manage.py test dashboard
 python manage.py test rescheduling
+python manage.py test queues.test_day36_events queues.test_day36_audit_api
 python manage.py test
-```
-
-Verified Day 35 customer-selection implementation run:
-
-```text
-33367663442
-```
-
-Observed results:
-
-```text
-accounts: 6/6 PASS
-services: 8/8 PASS
-counters: 11/11 PASS
-queues: 15/15 PASS
-bookings: 22/22 PASS
-notifications: 6/6 PASS
-dashboard: 7/7 PASS
-rescheduling: 12/12 PASS
-full suite: 87/87 PASS
-```
-
-Full suite:
-
-```text
-Ran 87 tests in 91.979s
-OK
 ```
 
 ## Permanent engineering documentation
@@ -427,62 +351,55 @@ docs/DAY32_BRANCH_SERVICE_CAPACITY.md
 docs/DAY33_COUNTER_LIFECYCLE.md
 docs/DAY34_MANAGER_DASHBOARD.md
 docs/DAY35_DISRUPTION_RESCHEDULING.md
+docs/DAY36_QUEUE_EVENT_AUDIT.md
 ```
 
 ## Current backend capabilities
 
 Smart Q now includes:
 
-- authentication and customer registration;
+- authentication and Customer registration;
 - role + branch + counter + ownership authorization;
-- branch/service catalogues;
-- BranchService mapping;
+- branch/service catalogues and BranchService mappings;
 - capacity-aware appointment slots;
-- appointment creation/rescheduling validation;
+- booking/rescheduling validation;
 - six-hour online/in-person check-in;
-- hourly reminder engine;
+- hourly reminder business logic;
 - automatic unchecked-appointment cancellation;
-- branch-scoped reception search;
-- guest walk-ins without accounts;
+- reception search and guest walk-ins;
 - backend General/Priority assignment;
-- live waiting queues;
-- rule-based queue position and ETA;
-- explicit staff-to-counter assignment;
-- counter OPEN/PAUSE/RESUME/CLOSE lifecycle;
-- assignment-aware Call Next/Complete/No Show;
-- manager branch dashboard aggregation;
-- daily queue/customer/service operational reporting;
-- live counter/staff/free/busy manager visibility;
-- branch-service disruption pause/resume and impact preview;
-- idempotent disruption impact finalization;
-- capacity-safe disruption replacement recommendations;
-- customer-controlled replacement slot selection;
-- transactional Priority compensation rescheduling;
-- in-app disruption/reschedule notifications for registered customers;
+- live queues, queue position and deterministic ETA;
+- staff-to-counter assignment and lifecycle;
+- Call Next / Complete / No Show;
+- branch manager operational dashboard;
+- disruption pause/resume and rescheduling recovery;
+- capacity-safe customer-selected replacement appointments;
+- in-app notifications for registered customers;
+- append-only queue/booking/counter lifecycle events;
+- customer-owned booking timelines;
+- manager/System Admin branch audit history;
 - automated tests and GitHub Actions CI.
 
-## Remaining major backend work
+## Remaining major backend work to Day 40
 
-1. Historical QueueEvent timeline/audit data.
-2. Account verification, password reset and throttling.
-3. External notification channels and guest delivery strategy.
-4. PostgreSQL and concurrency hardening.
-5. Production secrets/HTTPS/logging/monitoring/backups.
-6. Real-time delivery strategy.
-7. Historical analytics/performance reporting.
-8. Historical data collection and genuine ML wait forecasting.
+1. **Day 37 - Admin/account/security:** real System Admin CRUD for branches/services/BranchService/staff, password/account security, throttling, account deactivation, reminder scheduler decision.
+2. **Day 38 - Production database/concurrency:** PostgreSQL, queue-number concurrency hardening, environment secrets, production settings, CORS/CSRF/cookies, HTTPS/logging/backups.
+3. **Day 39 - Reporting/performance:** approved historical operational reports using QueueEvent, query/performance review. Do not change ETA formula without explicit product approval.
+4. **Day 40 - Final backend audit:** full role journeys, cross-user/cross-branch attacks, duplicate submissions, stale capacity, migrations-from-empty-db, security and complete regression verification.
+
+Optional future enhancements such as ML forecasting, SMS/WhatsApp, WebSockets and broader external integrations are not required to call Smart Q backend v1 complete.
 
 ## Roadmap
 
 ```text
 Day 33  Counter Lifecycle + Staff Assignment       COMPLETE / MERGED
 Day 34  Manager Dashboard APIs                    COMPLETE / MERGED
-Day 35  Disruption + Rescheduling Repair          IMPLEMENTED / VERIFYING
-Day 36  QueueEvent / Timeline / Audit
-Day 37  Account Security + Notification Hardening
+Day 35  Disruption + Rescheduling Repair          COMPLETE / MERGED
+Day 36  QueueEvent / Timeline / Audit             IMPLEMENTED / FINAL VERIFY
+Day 37  Admin + Account/Security Hardening
 Day 38  PostgreSQL + Concurrency + Production Config
-Day 39  Analytics / Performance
-Day 40  Full Backend Integration + Security + Regression Audit
+Day 39  Historical Reporting + Performance
+Day 40  Full Backend Integration + Security Audit
 ```
 
 ## Technology stack
@@ -495,7 +412,7 @@ Day 40  Full Backend Integration + Security + Regression Audit
 | Authorization | Profile roles + branch/counter/ownership scope |
 | Development DB | SQLite |
 | Target production DB | PostgreSQL |
-| Admin | Django Admin |
+| Admin | Django Admin + planned System Admin APIs |
 | Tests | Django + DRF APITestCase |
 | CI | GitHub Actions |
 
@@ -516,15 +433,13 @@ Verify:
 ```powershell
 python manage.py makemigrations --check --dry-run
 python manage.py check
-python manage.py test rescheduling
+python manage.py test queues.test_day36_events queues.test_day36_audit_api
 python manage.py test
 ```
 
 ## Final project statement
 
 Smart Q is being built to give people greater control over time normally lost in uncertain physical queues while giving service organisations safer and clearer operational control.
-
-Day 33 made counter ownership trustworthy. Day 34 gave managers a truthful operational read model. Day 35 makes service disruption handling deterministic and capacity-safe while preserving customer control: the organisation identifies the disruption, but the affected customer chooses the replacement appointment that works for them.
 
 ```text
 Make queues fairer, smarter, more transparent,
