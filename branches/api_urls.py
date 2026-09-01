@@ -1,11 +1,22 @@
-#path let us define URL route for this app
 from django.urls import path
-#Import the branch ListAPIView
-from .api_views import BranchListAPIView
 
-#These are the branch API routes
+from .api_views import (
+    BranchAdminDetailAPIView,
+    BranchAdminListCreateAPIView,
+    BranchListAPIView,
+)
 
-urlpatterns =[
-    #Return all active branches. FULL URL: /api/v1/branches/
-    path('',BranchListAPIView.as_view(),name='api_branch_list'),
+
+urlpatterns = [
+    path("", BranchListAPIView.as_view(), name="api_branch_list"),
+    path(
+        "admin/",
+        BranchAdminListCreateAPIView.as_view(),
+        name="api_admin_branch_list_create",
+    ),
+    path(
+        "admin/<int:pk>/",
+        BranchAdminDetailAPIView.as_view(),
+        name="api_admin_branch_detail",
+    ),
 ]

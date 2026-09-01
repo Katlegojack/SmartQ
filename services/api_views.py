@@ -3,14 +3,21 @@ from datetime import date
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.generics import ListAPIView
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.permissions import IsSystemAdmin
 from branches.models import Branch
+
 from .availability import get_slot_availability
 from .models import BranchService, Service
-from .serializers import BranchServiceSerializer, ServiceSerializer
+from .serializers import (
+    BranchServiceAdminSerializer,
+    BranchServiceSerializer,
+    ServiceAdminSerializer,
+    ServiceSerializer,
+)
 
 
 class ServiceListAPIView(ListAPIView):
@@ -89,3 +96,90 @@ class BranchServiceAvailabilityAPIView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class ServiceAdminListCreateAPIView(ListAPIView):
+    """System Admin global service catalogue including inactive services."""
+
+    serializer_class = ServiceAdminSerializer
+    permission_classes = [IsAuthenticated, IsSystemAdmin]
+
+    def get_queryset(self):
+        return Service.objects.all().order_by("name")
+
+    def post(self, request):
+        serializer = ServiceAdminSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        service = serializer.save()
+        return Response(
+            ServiceAdminSerializer(service).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class ServiceAdminDetailAPIView(APIView):
+    """Read or update one service while preserving historical references."""
+
+    permission_classes = [IsAuthenticated, IsSystemAdmin]
+
+    def get_object(self, pk):
+        return get_object_or_404(Service, pk=pk)
+
+    def get(self, request, pk):
+        return Response(ServiceAdminSerializer(self.get_object(pk)).data)
+
+    def patch(self, request, pk):
+        service = self.get_object(pk)
+        serializer = ServiceAdminSerializer(
+            service,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        service = serializer.save()
+        return Response(ServiceAdminSerializer(service).data)
+
+
+class BranchServiceAdminListCreateAPIView(ListAPIView):
+    """System Admin view of all branch/service capacity mappings."""
+
+    serializer_class = BranchServiceAdminSerializer
+    permission_classes = [IsAuthenticated, IsSystemAdmin]
+
+    def get_queryset(self):
+        return BranchService.objects.select_related("branch", "service").all()
+
+    def post(self, request):
+        serializer = BranchServiceAdminSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        mapping = serializer.save()
+        return Response(
+            BranchServiceAdminSerializer(mapping).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class BranchServiceAdminDetailAPIView(APIView):
+    """Read or update one branch/service capacity mapping."""
+
+    permission_classes = [IsAuthenticated, IsSystemAdmin]
+
+    def get_object(self, pk):
+        return get_object_or_404(
+            BranchService.objects.select_related("branch", "service"),
+            pk=pk,
+        )
+
+    def get(self, request, pk):
+        return Response(BranchServiceAdminSerializer(self.get_object(pk)).data)
+
+    def patch(self, request, pk):
+        mapping = self.get_object(pk)
+        serializer = BranchServiceAdminSerializer(
+            mapping,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        mapping = serializer.save()
+        return Response(BranchServiceAdminSerializer(mapping).data)
