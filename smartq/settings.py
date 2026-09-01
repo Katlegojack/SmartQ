@@ -151,7 +151,7 @@ REST_FRAMEWORK = {
 # Session authentication means cross-origin frontend requests require both CORS
 # permission and Django CSRF trust. We never enable allow-all origins.
 CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS")
-CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_CREDENTIALS = env_bool("CORS_ALLOW_CREDENTIALS", default=True)
 CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS")
 
 SESSION_COOKIE_HTTPONLY = True
