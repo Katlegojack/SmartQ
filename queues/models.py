@@ -52,6 +52,41 @@ class QueueTicket(models.Model):
         return self.queue_number
 
 
+class QueueNumberSequence(models.Model):
+    """
+    Database-backed allocator for queue numbers.
+
+    One row owns the last number allocated for a specific branch, appointment
+    date and queue type. PostgreSQL can lock this small row while allocating the
+    next number, preventing concurrent requests from reading the same "latest"
+    ticket and generating duplicates.
+    """
+
+    branch = models.ForeignKey(
+        "branches.Branch",
+        on_delete=models.CASCADE,
+        related_name="queue_number_sequences",
+    )
+    booking_date = models.DateField()
+    queue_type = models.CharField(max_length=20, choices=QueueTicket.QUEUE_TYPES)
+    last_number = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["branch", "booking_date", "queue_type"],
+                name="unique_queue_number_sequence",
+            )
+        ]
+        ordering = ["branch_id", "booking_date", "queue_type"]
+
+    def __str__(self):
+        return (
+            f"{self.branch_id}:{self.booking_date}:{self.queue_type}="
+            f"{self.last_number}"
+        )
+
+
 class QueueEvent(models.Model):
     """Append-only operational history for queue, booking and counter transitions."""
 
