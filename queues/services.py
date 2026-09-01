@@ -76,23 +76,63 @@ def get_check_in_opens_at(booking):
     return get_booking_datetime(booking) - timedelta(hours=CHECK_IN_OPEN_HOURS)
 
 
+def get_highest_existing_queue_number(booking, queue_type):
+    """Return the highest historical numeric suffix for one queue-number scope."""
+    prefix = "A" if queue_type == QueueTicket.GENERAL else "P"
+    highest = 0
+
+    numbers = QueueTicket.objects.filter(
+        booking__branch=booking.branch,
+        booking__booking_date=booking.booking_date,
+        queue_type=queue_type,
+        queue_number__startswith=prefix,
+    ).values_list("queue_number", flat=True)
+
+    for queue_number in numbers:
+        try:
+            highest = max(highest, int(queue_number[1:]))
+        except (TypeError, ValueError):
+            continue
+
+    return highest
+
+
 @transaction.atomic
 def generate_queue_number(booking, queue_type):
     """
     Reserve and return the next queue number for branch/date/type.
 
-    QueueNumberSequence has a unique database key for the allocation scope.
-    `select_for_update()` serializes concurrent increments on PostgreSQL so two
-    successful requests cannot reserve the same number.
+    The first allocator inserts a coordination row with conflict-tolerant SQL.
+    Concurrent first allocations may race to insert, but only one row survives
+    because the database unique constraint owns that invariant. Every allocator
+    then locks the surviving row before incrementing it.
     """
     prefix = "A" if queue_type == QueueTicket.GENERAL else "P"
+    seed_number = get_highest_existing_queue_number(booking, queue_type)
 
-    sequence, _ = QueueNumberSequence.objects.select_for_update().get_or_create(
+    QueueNumberSequence.objects.bulk_create(
+        [
+            QueueNumberSequence(
+                branch=booking.branch,
+                booking_date=booking.booking_date,
+                queue_type=queue_type,
+                last_number=seed_number,
+            )
+        ],
+        ignore_conflicts=True,
+    )
+
+    sequence = QueueNumberSequence.objects.select_for_update().get(
         branch=booking.branch,
         booking_date=booking.booking_date,
         queue_type=queue_type,
-        defaults={"last_number": 0},
     )
+
+    # If a sequence row exists but direct/manual QueueTicket writes have moved
+    # historical data ahead, repair the allocator before taking the next number.
+    if seed_number > sequence.last_number:
+        sequence.last_number = seed_number
+
     sequence.last_number += 1
     sequence.save(update_fields=["last_number"])
 
