@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .api_views import (
+    ChangePasswordAPIView,
     CurrentAccountAPIView,
     CustomerRegistrationAPIView,
     LoginAPIView,
@@ -16,6 +17,11 @@ urlpatterns = [
     path("login/", LoginAPIView.as_view(), name="api_login"),
     path("logout/", LogoutAPIView.as_view(), name="api_logout"),
     path("me/", CurrentAccountAPIView.as_view(), name="api_current_account"),
+    path(
+        "change-password/",
+        ChangePasswordAPIView.as_view(),
+        name="api_change_password",
+    ),
     path(
         "admin/staff/",
         StaffAccountListCreateAPIView.as_view(),
