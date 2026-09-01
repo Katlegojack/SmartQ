@@ -1,16 +1,23 @@
-from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
+from django.contrib.auth import (
+    authenticate,
+    login as auth_login,
+    logout as auth_logout,
+    update_session_auth_hash,
+)
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.generics import ListAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from .models import Profile
 from .permissions import IsSystemAdmin
 from .serializers import (
     AccountSerializer,
+    ChangePasswordSerializer,
     CustomerRegistrationSerializer,
     StaffAccountCreateSerializer,
     StaffAccountSerializer,
@@ -35,16 +42,11 @@ class CustomerRegistrationAPIView(APIView):
 
 
 class LoginAPIView(APIView):
-    """
-    Authenticate username/password and start a Django session.
-
-    Day 29 intentionally uses Django's built-in session authentication instead
-    of adding an unreviewed JWT dependency. This is a secure foundation for the
-    current Django/DRF application. Cross-origin production frontend deployment
-    will require an explicit CORS/CSRF/cookie strategy before launch.
-    """
+    """Authenticate username/password and start a Django session."""
 
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "login"
 
     def post(self, request):
         username = request.data.get("username")
@@ -103,6 +105,31 @@ class CurrentAccountAPIView(APIView):
             )
 
         return Response(AccountSerializer(request.user).data)
+
+
+class ChangePasswordAPIView(APIView):
+    """Allow an authenticated user to rotate their own password safely."""
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "account_security"
+
+    def post(self, request):
+        serializer = ChangePasswordSerializer(
+            data=request.data,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+
+        # Changing a Django password changes the session auth hash. Preserve the
+        # current trusted session instead of unexpectedly logging the user out.
+        update_session_auth_hash(request, user)
+
+        return Response(
+            {"detail": "Password changed successfully."},
+            status=status.HTTP_200_OK,
+        )
 
 
 class StaffAccountListCreateAPIView(ListAPIView):
