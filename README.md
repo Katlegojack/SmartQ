@@ -4,7 +4,7 @@
 
 Smart Q is a Django + Django REST Framework Queue Intelligence Platform designed to make queues more predictable, transparent, fair, and operationally efficient.
 
-> **Current development state:** Days 28-35 are integrated into `main`. Day 36 adds QueueEvent lifecycle history, audit APIs, and the explicitly approved deterministic ETA rule on `feature/day36-queue-event-audit`.
+> **Current development state:** Days 28-36 are integrated into `main`. Day 37 adds System Admin configuration APIs, staff provisioning/deactivation, password rotation, scoped throttling and the production reminder-scheduler decision on `feature/day37-admin-security`.
 
 ## Product principle
 
@@ -84,18 +84,68 @@ SYSTEM_ADMIN
 | Receptionist | Branch queue reads, booking search, staff check-in, guest walk-ins |
 | Counter Staff | Branch queue reads + mutations on assigned counter |
 | Branch Manager | Own-branch counter assignment, disruption control, dashboard and branch audit history |
-| System Admin | Global operational, disruption, dashboard and branch audit access |
+| System Admin | Global operational/audit access plus staff, branch, service and BranchService configuration |
 
-## Authentication APIs
+Smart Q's `SYSTEM_ADMIN` business role is intentionally separate from Django `is_superuser`.
+
+## Authentication and account APIs
 
 ```http
 POST /api/v1/accounts/register/
 POST /api/v1/accounts/login/
 POST /api/v1/accounts/logout/
 GET  /api/v1/accounts/me/
+POST /api/v1/accounts/change-password/
 ```
 
-Public registration always creates a normal Customer account.
+Public registration always creates a normal Customer account. Password changes reuse Django password validators and preserve the current trusted session after successful rotation.
+
+Login and password-security endpoints use scoped DRF throttling.
+
+## Day 37 System Admin control plane
+
+### Staff management
+
+```http
+GET  /api/v1/accounts/admin/staff/
+POST /api/v1/accounts/admin/staff/
+GET  /api/v1/accounts/admin/staff/<id>/
+PATCH /api/v1/accounts/admin/staff/<id>/
+PATCH /api/v1/accounts/admin/staff/<id>/activation/
+```
+
+System Admin can provision Receptionist, Counter Staff, Branch Manager and additional System Admin accounts. Branch-scoped roles require an active branch; System Admin remains branchless. Deactivation uses `User.is_active=False` rather than deleting operational identity/history.
+
+### Branch management
+
+```http
+GET  /api/v1/branches/admin/
+POST /api/v1/branches/admin/
+GET  /api/v1/branches/admin/<id>/
+PATCH /api/v1/branches/admin/<id>/
+```
+
+The public branch catalogue still returns active branches only.
+
+### Service management
+
+```http
+GET  /api/v1/services/admin/
+POST /api/v1/services/admin/
+GET  /api/v1/services/admin/<id>/
+PATCH /api/v1/services/admin/<id>/
+```
+
+### BranchService/capacity management
+
+```http
+GET  /api/v1/services/admin/branch-services/
+POST /api/v1/services/admin/branch-services/
+GET  /api/v1/services/admin/branch-services/<id>/
+PATCH /api/v1/services/admin/branch-services/<id>/
+```
+
+Active mappings require an active branch and active service. Core operational configuration uses deactivation rather than destructive hard delete so historical context remains intact.
 
 ## Branch-service mapping and capacity
 
@@ -106,7 +156,7 @@ slot duration = Service.average_service_time
 capacity = BranchService.max_bookings_per_slot
 ```
 
-### Service APIs
+### Public service APIs
 
 ```http
 GET /api/v1/services/
@@ -260,7 +310,7 @@ GET  /api/v1/rescheduling/recommendations/my/
 POST /api/v1/rescheduling/options/<option_id>/select/
 ```
 
-## Day 36: QueueEvent lifecycle audit
+## QueueEvent lifecycle audit
 
 Day 36 adds append-only history for queue, booking and counter transitions.
 
@@ -311,7 +361,7 @@ Customer       -> denied
 
 Customer responses intentionally omit management actor/metadata fields. Manager/System Admin responses contain the operational audit context needed to trace actions.
 
-## Check-in reminders
+## Check-in reminders and scheduler decision
 
 Advance online appointments receive hourly in-app reminders during the six-hour check-in window until check-in.
 
@@ -319,16 +369,27 @@ Advance online appointments receive hourly in-app reminders during the six-hour 
 python manage.py process_check_in_reminders
 ```
 
-The same processor cancels unchecked appointments after the appointment time passes. Production scheduler execution remains a Day 37 infrastructure decision.
+The same processor cancels unchecked appointments after appointment time passes.
+
+Day 37 production decision:
+
+```text
+Keep the Django management command as the business entry point.
+Invoke it hourly with the deployment platform's scheduler/cron facility.
+Do not add Celery/Redis before backend v1 is complete.
+```
+
+This keeps the hourly job reliable without introducing an unnecessary worker/broker subsystem before the Day 40 deadline.
 
 ## Automated verification
 
-GitHub Actions runs migration checks, Django system checks, app-specific regression suites, Day 36 audit tests and the full Django suite.
+GitHub Actions runs migration checks, Django system checks, focused app regressions and the full Django suite.
 
 ```powershell
 python manage.py makemigrations --check --dry-run
 python manage.py check
 python manage.py test accounts
+python manage.py test branches
 python manage.py test services
 python manage.py test counters
 python manage.py test queues
@@ -338,6 +399,22 @@ python manage.py test dashboard
 python manage.py test rescheduling
 python manage.py test queues.test_day36_events queues.test_day36_audit_api
 python manage.py test
+```
+
+Day 37 verified code checkpoint (`faa7dac...`, Actions run `33461789242`):
+
+```text
+accounts      19/19 PASS
+branches       4/4 PASS
+services      14/14 PASS
+counters      11/11 PASS
+queues        24/24 PASS
+bookings      22/22 PASS
+notifications  6/6 PASS
+dashboard      7/7 PASS
+rescheduling  12/12 PASS
+Day 36 audit   9/9 PASS
+full suite   119/119 PASS
 ```
 
 ## Permanent engineering documentation
@@ -352,6 +429,7 @@ docs/DAY33_COUNTER_LIFECYCLE.md
 docs/DAY34_MANAGER_DASHBOARD.md
 docs/DAY35_DISRUPTION_RESCHEDULING.md
 docs/DAY36_QUEUE_EVENT_AUDIT.md
+docs/DAY37_ADMIN_SECURITY.md
 ```
 
 ## Current backend capabilities
@@ -359,12 +437,15 @@ docs/DAY36_QUEUE_EVENT_AUDIT.md
 Smart Q now includes:
 
 - authentication and Customer registration;
+- secure password rotation and scoped login/account throttling;
 - role + branch + counter + ownership authorization;
-- branch/service catalogues and BranchService mappings;
+- System Admin staff provisioning, role/branch updates and safe deactivation;
+- System Admin branch/service/BranchService configuration;
+- public active branch/service catalogues;
 - capacity-aware appointment slots;
 - booking/rescheduling validation;
 - six-hour online/in-person check-in;
-- hourly reminder business logic;
+- hourly reminder business logic and an approved external scheduler strategy;
 - automatic unchecked-appointment cancellation;
 - reception search and guest walk-ins;
 - backend General/Priority assignment;
@@ -378,14 +459,13 @@ Smart Q now includes:
 - append-only queue/booking/counter lifecycle events;
 - customer-owned booking timelines;
 - manager/System Admin branch audit history;
-- automated tests and GitHub Actions CI.
+- automated abuse-case tests and GitHub Actions CI.
 
 ## Remaining major backend work to Day 40
 
-1. **Day 37 - Admin/account/security:** real System Admin CRUD for branches/services/BranchService/staff, password/account security, throttling, account deactivation, reminder scheduler decision.
-2. **Day 38 - Production database/concurrency:** PostgreSQL, queue-number concurrency hardening, environment secrets, production settings, CORS/CSRF/cookies, HTTPS/logging/backups.
-3. **Day 39 - Reporting/performance:** approved historical operational reports using QueueEvent, query/performance review. Do not change ETA formula without explicit product approval.
-4. **Day 40 - Final backend audit:** full role journeys, cross-user/cross-branch attacks, duplicate submissions, stale capacity, migrations-from-empty-db, security and complete regression verification.
+1. **Day 38 - Production database/concurrency:** PostgreSQL, queue-number concurrency hardening, environment secrets, production settings, CORS/CSRF/cookies, HTTPS/logging/backups.
+2. **Day 39 - Reporting/performance:** approved historical operational reports using QueueEvent, query/performance review. Do not change ETA formula without explicit product approval.
+3. **Day 40 - Final backend audit:** full role journeys, cross-user/cross-branch attacks, duplicate submissions, stale capacity, migrations-from-empty-db, security and complete regression verification.
 
 Optional future enhancements such as ML forecasting, SMS/WhatsApp, WebSockets and broader external integrations are not required to call Smart Q backend v1 complete.
 
@@ -395,8 +475,8 @@ Optional future enhancements such as ML forecasting, SMS/WhatsApp, WebSockets an
 Day 33  Counter Lifecycle + Staff Assignment       COMPLETE / MERGED
 Day 34  Manager Dashboard APIs                    COMPLETE / MERGED
 Day 35  Disruption + Rescheduling Repair          COMPLETE / MERGED
-Day 36  QueueEvent / Timeline / Audit             IMPLEMENTED / FINAL VERIFY
-Day 37  Admin + Account/Security Hardening
+Day 36  QueueEvent / Timeline / Audit             COMPLETE / MERGED
+Day 37  Admin + Account/Security Hardening        IMPLEMENTED / FINAL VERIFY
 Day 38  PostgreSQL + Concurrency + Production Config
 Day 39  Historical Reporting + Performance
 Day 40  Full Backend Integration + Security Audit
@@ -410,9 +490,10 @@ Day 40  Full Backend Integration + Security Audit
 | API | Django REST Framework |
 | Authentication | Django sessions |
 | Authorization | Profile roles + branch/counter/ownership scope |
+| Account abuse protection | DRF scoped throttling |
 | Development DB | SQLite |
 | Target production DB | PostgreSQL |
-| Admin | Django Admin + planned System Admin APIs |
+| Admin/control plane | Protected Smart Q System Admin APIs + Django Admin for development |
 | Tests | Django + DRF APITestCase |
 | CI | GitHub Actions |
 
@@ -433,6 +514,7 @@ Verify:
 ```powershell
 python manage.py makemigrations --check --dry-run
 python manage.py check
+python manage.py test accounts branches services
 python manage.py test queues.test_day36_events queues.test_day36_audit_api
 python manage.py test
 ```
