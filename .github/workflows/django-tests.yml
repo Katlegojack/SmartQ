@@ -12,6 +12,7 @@ on:
       - feature/day34-manager-dashboard
       - feature/day35-disruption-rescheduling
       - feature/day36-queue-event-audit
+      - feature/day37-admin-security
   pull_request:
     branches:
       - main
@@ -43,7 +44,7 @@ jobs:
       - name: Run Django system checks
         run: python manage.py check
 
-      - name: Run account authentication tests
+      - name: Run account authentication and admin security tests
         run: python manage.py test accounts
 
       - name: Run service and capacity tests
