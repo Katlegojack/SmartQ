@@ -93,7 +93,7 @@ DATABASES = {
 
 
 # Password validation
-# https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
+# https://docs.djangoproject.com/en/6.0/topics/auth/passwords/
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -109,6 +109,18 @@ AUTH_PASSWORD_VALIDATORS = [
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
     },
 ]
+
+
+# Django REST Framework
+# Day 37 applies throttling only to explicitly scoped sensitive endpoints.
+# We do not globally throttle every API because operational queue traffic has
+# different rate requirements from login/password operations.
+REST_FRAMEWORK = {
+    "DEFAULT_THROTTLE_RATES": {
+        "login": "10/min",
+        "account_security": "10/min",
+    }
+}
 
 
 # Internationalization
