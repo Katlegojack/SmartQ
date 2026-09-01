@@ -3,7 +3,7 @@ from datetime import time, timedelta
 from unittest import skipUnless
 
 from django.contrib.auth.models import User
-from django.db import close_old_connections, connection
+from django.db import connection, connections
 from django.test import TransactionTestCase
 from django.utils import timezone
 from rest_framework import serializers
@@ -52,7 +52,8 @@ class PostgreSQLSlotCapacityConcurrencyTests(TransactionTestCase):
         self.booking_date = timezone.localdate() + timedelta(days=1)
 
     def attempt_booking(self, user_id):
-        close_old_connections()
+        thread_connection = connections["default"]
+        thread_connection.close()
         try:
             user = User.objects.get(pk=user_id)
             serializer = BookingCreateSerializer(
@@ -71,7 +72,7 @@ class PostgreSQLSlotCapacityConcurrencyTests(TransactionTestCase):
             except serializers.ValidationError:
                 return "slot_full"
         finally:
-            close_old_connections()
+            thread_connection.close()
 
     def test_only_one_concurrent_booking_consumes_last_slot(self):
         with ThreadPoolExecutor(max_workers=2) as executor:
