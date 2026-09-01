@@ -10,6 +10,7 @@ from .api_views import (
     MyCurrentQueueTicketAPIView,
     NoShowCurrentTicketAPIView,
 )
+from .reporting_api import BranchOperationalReportAPIView
 
 
 urlpatterns = [
@@ -40,6 +41,13 @@ urlpatterns = [
         "branches/<int:branch_id>/events/",
         BranchQueueEventAuditAPIView.as_view(),
         name="api_branch_queue_event_audit",
+    ),
+
+    # Manager/System Admin historical QueueEvent reporting.
+    path(
+        "branches/<int:branch_id>/reports/operational/",
+        BranchOperationalReportAPIView.as_view(),
+        name="api_branch_operational_report",
     ),
 
     # Staff queue-operation APIs.
