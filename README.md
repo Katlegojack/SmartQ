@@ -4,7 +4,7 @@
 
 Smart Q is a Django + Django REST Framework Queue Intelligence Platform designed to make queues more predictable, transparent, fair, and operationally efficient.
 
-> **Current development state:** Days 28-37 are integrated into `main`. Day 38 is complete on `feature/day38-production-hardening` and keeps Smart Q on SQLite3 while adding browser CSRF protection, environment-based secrets/settings, HTTPS/cookie/CORS policy, queue-number sequence hardening, production logging, persistence/backup guidance, and SQLite3 regression CI.
+> **Current development state:** Days 28-39 are integrated into `main`. Day 40 is complete on `feature/day40-final-backend-audit`, where the final integration, security, stale-state, duplicate-submission, reporting-isolation and ETA-contract audit has passed the complete SQLite3 regression workflow. The Day 40 pull request is the final backend v1 merge before frontend integration begins.
 
 ## Product principle
 
@@ -85,8 +85,8 @@ SYSTEM_ADMIN
 | Customer | Own account, bookings, live queue, own disruption options, own booking timeline |
 | Receptionist | Branch queue reads, booking search, staff check-in, guest walk-ins |
 | Counter Staff | Branch queue reads + mutations on assigned counter |
-| Branch Manager | Own-branch counter assignment, disruption control, dashboard and branch audit history |
-| System Admin | Global operational/audit access plus staff, branch, service and BranchService configuration |
+| Branch Manager | Own-branch counter assignment, disruption control, dashboard, branch audit history and historical reports |
+| System Admin | Global operational/audit/reporting access plus staff, branch, service and BranchService configuration |
 
 Smart Q's `SYSTEM_ADMIN` business role is intentionally separate from Django `is_superuser`.
 
@@ -251,7 +251,7 @@ Queue numbers are scoped by:
 branch + booking date + queue type
 ```
 
-Day 38 uses `QueueNumberSequence` as the database-backed allocation record for each scope.
+`QueueNumberSequence` is the database-backed allocation record for each scope.
 
 ```text
 QueueNumberSequence
@@ -265,7 +265,7 @@ The migration seeds sequence state from historical tickets so existing data does
 
 ## Waiting-time estimate
 
-Smart Q's current ETA is deterministic, not ML.
+Smart Q's live ETA is deterministic, not ML.
 
 ```text
 Estimated Wait = People Ahead × Service.average_service_time
@@ -281,6 +281,19 @@ GET /api/v1/dashboard/branches/<branch_id>/?date=YYYY-MM-DD
 ```
 
 Branch Manager sees only the assigned branch. System Admin can inspect any active branch.
+
+## Historical operational reporting
+
+```http
+GET /api/v1/queues/branches/<branch_id>/reports/operational/
+GET /api/v1/queues/branches/<branch_id>/reports/operational/?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
+```
+
+Reporting reads the append-only `QueueEvent` history and returns historical operational facts such as check-ins, calls, completions, no-shows, cancellations, actual wait time, actual service time, completion/no-show rates, and service/daily/queue-type/source breakdowns.
+
+The default period is the most recent 30 days and the maximum accepted range is 366 days. Branch Managers can read only their own branch; System Admin can inspect any active branch.
+
+Historical actual wait is kept separate from the live ETA contract.
 
 ## Disruption and rescheduling
 
@@ -364,7 +377,7 @@ python manage.py process_check_in_reminders
 
 The same processor cancels unchecked appointments after appointment time passes. Deployment can invoke the command hourly using the platform scheduler/cron facility.
 
-## Day 38 SQLite3 production hardening
+## SQLite3 production hardening
 
 Smart Q uses SQLite3 as the project database in development, testing and the current deployment scope.
 
@@ -374,7 +387,7 @@ SMARTQ_ENV=development or production
 SQLite3
 ```
 
-Production mode still requires:
+Production mode requires:
 
 ```text
 DJANGO_SECRET_KEY
@@ -426,7 +439,24 @@ GitHub Actions uses one database path:
 SQLite3 regression
 ```
 
-The job verifies dependencies, missing migrations, Django system checks, app-specific regression suites, QueueEvent audit tests and the full Smart Q test suite.
+The job verifies dependencies, missing migrations, Django system checks, app-specific regression suites, QueueEvent audit tests, Day 39 reporting tests, the Day 40 final audit suite and the full Smart Q regression suite.
+
+## Day 40 final backend audit
+
+The final focused audit proves that separate backend features still agree when exercised together.
+
+```text
+cross-customer timeline denial
+duplicate check-in conflict + single activation event
+stale final-slot capacity rejection
+Counter Staff Call Next -> Complete integration
+counter-assignment isolation
+Branch Manager report isolation
+System Admin global reporting access
+locked ETA contract
+```
+
+This audit complements the complete app-specific regression suite rather than replacing it.
 
 ## Permanent engineering documentation
 
@@ -442,18 +472,21 @@ docs/DAY35_DISRUPTION_RESCHEDULING.md
 docs/DAY36_QUEUE_EVENT_AUDIT.md
 docs/DAY37_ADMIN_SECURITY.md
 docs/DAY38_PRODUCTION_HARDENING.md
+docs/DAY39_REPORTING_PERFORMANCE.md
+docs/DAY40_FINAL_BACKEND_AUDIT.md
 ```
 
-## Current backend capabilities
+## Backend v1 capabilities
 
-Smart Q now includes customer registration/session authentication, CSRF-protected browser login, password rotation, role/branch/counter/ownership authorization, System Admin control APIs, branch/service/capacity configuration, booking/check-in, reception walk-ins, General/Priority queues, deterministic ETA, queue-number sequence allocation, counter lifecycle, manager dashboard, disruption/rescheduling, in-app notifications, QueueEvent history, customer timelines, branch audit history, environment-driven security settings, SQLite3 persistence guidance and SQLite3 CI regression verification.
+Smart Q backend v1 includes customer registration/session authentication, CSRF-protected browser login, password rotation, role/branch/counter/ownership authorization, System Admin control APIs, branch/service/capacity configuration, booking/check-in, reception walk-ins, General/Priority queues, deterministic ETA, queue-number sequence allocation, counter lifecycle, manager dashboard, disruption/rescheduling, in-app notifications, QueueEvent history, customer timelines, branch audit history, historical operational reporting, environment-driven security settings, SQLite3 persistence guidance and complete SQLite3 regression verification.
 
-## Remaining backend work to Day 40
+## Backend v1 completion status
 
-1. **Day 39 - Reporting/performance:** approved historical operational reports using QueueEvent plus measured query/performance review. The approved ETA formula stays unchanged.
-2. **Day 40 - Final backend audit:** full role journeys, cross-user/cross-branch attacks, duplicate submissions, stale capacity, security review and complete regression verification.
+Days 28-39 are merged into `main`. Day 40 is complete and green on the final backend feature branch. The final backend v1 integration step is merging the Day 40 pull request into `main` and verifying the resulting main commit.
 
-Optional future enhancements such as ML forecasting, SMS/WhatsApp, WebSockets and broader external integrations are not required to call Smart Q backend v1 complete.
+After that merge, frontend implementation can integrate against the stable backend contract without adding more required backend milestones.
+
+Optional future enhancements such as ML forecasting, SMS/WhatsApp, WebSockets and broader external integrations are separate product milestones and are not required for backend v1.
 
 ## Roadmap
 
@@ -463,9 +496,9 @@ Day 34  Manager Dashboard APIs                    COMPLETE / MERGED
 Day 35  Disruption + Rescheduling Repair          COMPLETE / MERGED
 Day 36  QueueEvent / Timeline / Audit             COMPLETE / MERGED
 Day 37  Admin + Account/Security Hardening        COMPLETE / MERGED
-Day 38  SQLite3 + Production Hardening            COMPLETE / READY FOR PR
-Day 39  Historical Reporting + Performance
-Day 40  Full Backend Integration + Security Audit
+Day 38  SQLite3 + Production Hardening            COMPLETE / MERGED
+Day 39  Historical Reporting + Performance        COMPLETE / MERGED
+Day 40  Full Backend Integration + Security Audit COMPLETE / READY FOR PR
 ```
 
 ## Technology stack
