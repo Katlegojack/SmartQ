@@ -1,9 +1,9 @@
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, time, timedelta
+from datetime import date, time
 from unittest import skipUnless
 
 from django.contrib.auth.models import User
-from django.db import close_old_connections, connection
+from django.db import connection, connections
 from django.test import TestCase, TransactionTestCase
 
 from accounts.models import Profile
@@ -151,12 +151,16 @@ class PostgreSQLQueueNumberConcurrencyTests(TransactionTestCase):
         ]
 
     def allocate_number(self, booking_id):
-        close_old_connections()
+        thread_connection = connections["default"]
+        thread_connection.close()
         try:
             booking = Booking.objects.select_related("branch").get(pk=booking_id)
             return generate_queue_number(booking, QueueTicket.GENERAL)
         finally:
-            close_old_connections()
+            # CONN_MAX_AGE is non-zero in the production profile, so
+            # close_old_connections() may intentionally retain this connection.
+            # Threaded tests must close it explicitly before Django drops test DB.
+            thread_connection.close()
 
     def test_concurrent_requests_receive_distinct_numbers(self):
         with ThreadPoolExecutor(max_workers=2) as executor:
