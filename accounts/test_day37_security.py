@@ -26,6 +26,11 @@ class Day37AccountSecurityTests(APITestCase):
             role=Profile.CUSTOMER,
         )
 
+    def csrf_token(self, client):
+        response = client.get(reverse("api_csrf_token"))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return response.data["csrfToken"]
+
     def test_authenticated_user_can_change_password_and_keep_current_session(self):
         self.client.login(
             username="customer",
@@ -79,6 +84,7 @@ class Day37AccountSecurityTests(APITestCase):
         self.assertIn("new_password", response.data)
 
     def test_login_endpoint_is_throttled_after_repeated_failures(self):
+        csrf_token = self.csrf_token(self.client)
         responses = []
         for _ in range(11):
             responses.append(
@@ -89,6 +95,7 @@ class Day37AccountSecurityTests(APITestCase):
                         "password": "wrong-password",
                     },
                     format="json",
+                    HTTP_X_CSRFTOKEN=csrf_token,
                 )
             )
 
@@ -136,6 +143,7 @@ class Day37AccountSecurityTests(APITestCase):
 
         cache.clear()
         login_client = APIClient()
+        csrf_token = self.csrf_token(login_client)
         login_response = login_client.post(
             reverse("api_login"),
             {
@@ -143,6 +151,7 @@ class Day37AccountSecurityTests(APITestCase):
                 "password": "Staff-Strong-Pass-482!",
             },
             format="json",
+            HTTP_X_CSRFTOKEN=csrf_token,
         )
 
         self.assertEqual(deactivate_response.status_code, status.HTTP_200_OK)
