@@ -39,6 +39,8 @@ if not SECRET_KEY:
     SECRET_KEY = "django-insecure-smartq-development-only-key"
 
 DEBUG = env_bool("DJANGO_DEBUG", default=not IS_PRODUCTION)
+if IS_PRODUCTION and DEBUG:
+    raise ImproperlyConfigured("DJANGO_DEBUG must be false in production.")
 
 ALLOWED_HOSTS = env_list(
     "ALLOWED_HOSTS",
@@ -121,6 +123,9 @@ else:
             "NAME": BASE_DIR / "db.sqlite3",
         }
     }
+
+if IS_PRODUCTION and DATABASES["default"]["ENGINE"] != "django.db.backends.postgresql":
+    raise ImproperlyConfigured("Smart Q production requires PostgreSQL.")
 
 
 AUTH_PASSWORD_VALIDATORS = [
