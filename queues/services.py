@@ -8,7 +8,7 @@ from accounts.models import Profile
 from bookings.models import Booking
 from counters.models import Counter
 from .events import record_queue_event
-from .models import QueueEvent, QueueTicket
+from .models import QueueEvent, QueueNumberSequence, QueueTicket
 
 
 CHECK_IN_OPEN_HOURS = 6
@@ -76,24 +76,30 @@ def get_check_in_opens_at(booking):
     return get_booking_datetime(booking) - timedelta(hours=CHECK_IN_OPEN_HOURS)
 
 
+@transaction.atomic
 def generate_queue_number(booking, queue_type):
+    """
+    Reserve and return the next queue number for branch/date/type.
+
+    QueueNumberSequence has a unique database key for the allocation scope.
+    `select_for_update()` serializes concurrent increments on PostgreSQL so two
+    successful requests cannot reserve the same number.
+    """
     prefix = "A" if queue_type == QueueTicket.GENERAL else "P"
 
-    latest_ticket = QueueTicket.objects.filter(
-        booking__branch=booking.branch,
-        booking__booking_date=booking.booking_date,
+    sequence, _ = QueueNumberSequence.objects.select_for_update().get_or_create(
+        branch=booking.branch,
+        booking_date=booking.booking_date,
         queue_type=queue_type,
-    ).order_by("-id").first()
+        defaults={"last_number": 0},
+    )
+    sequence.last_number += 1
+    sequence.save(update_fields=["last_number"])
 
-    if latest_ticket:
-        last_number = int(latest_ticket.queue_number[1:])
-        new_number = last_number + 1
-    else:
-        new_number = 1
-
-    return f"{prefix}{new_number:03d}"
+    return f"{prefix}{sequence.last_number:03d}"
 
 
+@transaction.atomic
 def create_queue_ticket_for_booking(booking, *, actor=None, record_event=True):
     """Create a non-live SCHEDULED ticket for a future/online appointment."""
     queue_type = determine_queue_type(booking)
