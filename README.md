@@ -4,7 +4,7 @@
 
 Smart Q is a Django + Django REST Framework Queue Intelligence Platform designed to make queues more predictable, transparent, fair, and operationally efficient.
 
-> **Current development state:** Backend v1 is complete and merged through Day 40. Frontend Days 41-43 are merged into `main`. Day 44 is implemented on `feature/day44-booking-experience`, adding the full customer appointment booking and rescheduling experience on top of the Day 43 customer dashboard.
+> **Current development state:** Backend v1 is complete and merged through Day 40. Frontend Days 41-45 are complete and merged into `main`. Day 45 replaces the generic reception shell with a branch-scoped operating workspace for booking search, assisted check-in, guest walk-ins and live waiting-queue visibility. Day 46 is the next frontend milestone: the Counter Staff Workspace.
 
 ## Product principle
 
@@ -129,6 +129,7 @@ Day 41 -> shared design system + frontend foundation
 Day 42 -> authentication + session restoration + role-aware app shell
 Day 43 -> live Customer Dashboard
 Day 44 -> appointment booking + availability + rescheduling experience
+Day 45 -> live Receptionist Workspace
 ```
 
 The browser presents backend state and coordinates API requests. It does not recreate Smart Q business rules.
@@ -141,7 +142,7 @@ Frontend routes currently include:
 /register/              customer registration
 /app/                   role-routing entry
 /app/customer/          customer dashboard + booking workflow
-/app/reception/         receptionist shell
+/app/reception/         receptionist operations workspace
 /app/counter/           counter staff shell
 /app/manager/           branch manager shell
 /app/admin/             system admin shell
@@ -174,6 +175,34 @@ Booking + SCHEDULED QueueTicket
 The frontend never generates queue numbers, appointment slots, priority state or capacity. Availability is treated as advisory until the final server write revalidates the slot.
 
 Upcoming customer appointments can also be rescheduled through fresh backend availability. Rescheduling returns the queue ticket to `SCHEDULED`, clears check-in state and requires a fresh check-in.
+
+### Day 45 receptionist flow
+
+```text
+Receptionist session
+        ↓
+Assigned branch from /accounts/me/
+        ↓
+Search branch bookings
+        ↓
+Staff-assisted check-in when backend allows it
+        ↓
+WAITING live queue refresh
+
+or
+
+Register guest walk-in
+        ↓
+Choose branch-offered service
+        ↓
+Backend derives General/Priority
+        ↓
+Backend allocates queue number
+        ↓
+WAITING immediately
+```
+
+Reception never selects another branch, queue type, queue number or live-queue state. Those values remain authenticated/backend-owned.
 
 ## System Admin control plane
 
@@ -256,9 +285,11 @@ Pregnancy priority input is validated at the backend boundary: a booking cannot 
 ```http
 GET  /api/v1/bookings/reception/search/?q=<query>
 POST /api/v1/bookings/reception/walk-ins/
+POST /api/v1/bookings/<id>/staff-check-in/
+GET  /api/v1/queues/branches/<branch_id>/waiting/
 ```
 
-Guest walk-ins require no Smart Q account and enter `WAITING` immediately.
+Guest walk-ins require no Smart Q account and enter `WAITING` immediately. Reception search, check-in and waiting-queue visibility remain branch-scoped.
 
 ## Priority policy
 
@@ -496,7 +527,7 @@ GitHub Actions uses one database path:
 SQLite3 regression
 ```
 
-The job verifies dependencies, missing migrations, Django system checks, app-specific regression suites, QueueEvent audit tests, Day 39 reporting tests, Day 40 final audit tests, Day 41-44 frontend milestone tests and the complete Smart Q regression suite.
+The job verifies dependencies, missing migrations, Django system checks, app-specific regression suites, QueueEvent audit tests, Day 39 reporting tests, Day 40 final audit tests, Day 41-45 frontend milestone tests and the complete Smart Q regression suite.
 
 ## Day 40 final backend audit
 
@@ -535,15 +566,16 @@ docs/DAY41_FRONTEND_FOUNDATION.md
 docs/DAY42_AUTH_APP_SHELL.md
 docs/DAY43_CUSTOMER_DASHBOARD.md
 docs/DAY44_BOOKING_EXPERIENCE.md
+docs/DAY45_RECEPTION_WORKSPACE.md
 ```
 
 ## Backend v1 capabilities
 
 Smart Q backend v1 includes customer registration/session authentication, CSRF-protected browser login, password rotation, role/branch/counter/ownership authorization, System Admin control APIs, branch/service/capacity configuration, booking/check-in, reception walk-ins, General/Priority queues, deterministic ETA, queue-number sequence allocation, counter lifecycle, manager dashboard, disruption/rescheduling, in-app notifications, QueueEvent history, customer timelines, branch audit history, historical operational reporting, environment-driven security settings, SQLite3 persistence guidance and complete SQLite3 regression verification.
 
-## Frontend capabilities through Day 44
+## Frontend capabilities through Day 45
 
-Smart Q now includes a public entry page, customer registration/sign-in, CSRF-protected session restoration, role-aware workspace routing, a live Customer Dashboard, customer-owned appointment/history views, live queue position/ETA presentation, lifecycle history, server-authoritative check-in/cancellation, and a full appointment booking/rescheduling workflow driven by real branch/service/availability APIs.
+Smart Q now includes a public entry page, customer registration/sign-in, CSRF-protected session restoration, role-aware workspace routing, a live Customer Dashboard, customer-owned appointment/history views, live queue position/ETA presentation, lifecycle history, server-authoritative check-in/cancellation, a full appointment booking/rescheduling workflow, and a branch-scoped Receptionist Workspace for search, assisted check-in, guest walk-ins and live waiting-queue visibility.
 
 ## Roadmap
 
@@ -559,9 +591,9 @@ Day 40  Full Backend Integration + Security Audit COMPLETE / MERGED
 Day 41  Frontend Foundation + Design System       COMPLETE / MERGED
 Day 42  Authentication + Role-Aware App Shell     COMPLETE / MERGED
 Day 43  Customer Dashboard                        COMPLETE / MERGED
-Day 44  Booking + Availability + Rescheduling     COMPLETE / PR
-Day 45  Receptionist Workspace                    NEXT
-Day 46  Counter Staff Workspace
+Day 44  Booking + Availability + Rescheduling     COMPLETE / MERGED
+Day 45  Receptionist Workspace                    COMPLETE / MERGED
+Day 46  Counter Staff Workspace                   NEXT
 Day 47  Branch Manager Workspace
 Day 48  System Admin Workspace
 ```
