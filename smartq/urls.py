@@ -44,10 +44,7 @@ urlpatterns = [
     ),
     path(
         "app/reception/",
-        TemplateView.as_view(
-            template_name=APP_TEMPLATE,
-            extra_context={"workspace_title": "Reception workspace", "workspace_role": "receptionist"},
-        ),
+        TemplateView.as_view(template_name="frontend/reception_workspace.html"),
         name="frontend_reception_workspace",
     ),
     path(
