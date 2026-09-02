@@ -1,0 +1,122 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Smart Q customer dashboard for appointments and live queue tracking.">
+    <title>Customer workspace | Smart Q</title>
+    <link rel="stylesheet" href="{% static 'css/smartq.css' %}">
+    <link rel="stylesheet" href="{% static 'css/auth-shell.css' %}">
+    <link rel="stylesheet" href="{% static 'css/customer-dashboard.css' %}">
+    <script type="module" src="{% static 'js/pages/customer-dashboard.js' %}" defer></script>
+</head>
+<body class="app-page" data-customer-dashboard>
+    <a class="skip-link" href="#workspace-main">Skip to workspace</a>
+    <div class="app-layout">
+        <aside class="sidebar" aria-label="Customer workspace navigation">
+            <a class="brand sidebar__brand" href="/" aria-label="Smart Q home">
+                <span class="brand__mark" aria-hidden="true">SQ</span>
+                <span class="brand__text"><strong>Smart Q</strong><small>Where Time Meets Priority</small></span>
+            </a>
+            <div class="sidebar__context">
+                <span class="sidebar__context-label">Signed-in role</span>
+                <strong>Customer</strong>
+                <small data-customer-identity>Verifying session</small>
+            </div>
+            <nav class="side-nav" aria-label="Customer sections">
+                <a class="side-nav__item is-active" href="#overview">Overview</a>
+                <a class="side-nav__item" href="#appointments">Appointments</a>
+                <a class="side-nav__item" href="#history">History</a>
+            </nav>
+            <div class="sidebar__footer"><button class="btn btn--secondary btn--block" type="button" data-logout>Sign out</button></div>
+        </aside>
+
+        <div class="workspace">
+            <header class="workspace-topbar">
+                <div><p class="kicker">Customer workspace</p><h1>My Smart Q</h1></div>
+                <span class="session-chip"><span class="status-dot status-dot--success" aria-hidden="true"></span> Session active</span>
+            </header>
+
+            <main class="workspace-main" id="workspace-main">
+                <div class="notice notice--error" data-dashboard-error hidden role="alert"></div>
+                <div class="customer-loading" data-dashboard-loading role="status">Loading your Smart Q dashboard...</div>
+
+                <div data-dashboard-content hidden>
+                    <section class="workspace-section" id="overview" aria-labelledby="overview-heading">
+                        <div class="customer-heading">
+                            <div>
+                                <p class="eyebrow">Customer dashboard</p>
+                                <h2 id="overview-heading" data-greeting>Your Smart Q overview</h2>
+                                <p>Your next appointment and live queue status, without unnecessary clutter.</p>
+                            </div>
+                            <div class="customer-counts" aria-label="Appointment summary">
+                                <div><span data-upcoming-count>0</span><small>Upcoming</small></div>
+                                <div><span data-history-count>0</span><small>History</small></div>
+                            </div>
+                        </div>
+                        <div class="customer-message" data-dashboard-message hidden role="status" aria-live="polite"></div>
+
+                        <div class="customer-primary-grid">
+                            <article class="panel queue-focus" data-queue-panel hidden>
+                                <div class="panel__header"><div><p class="kicker">Live queue</p><h3 data-queue-heading>Your live queue</h3></div><span class="badge badge--info" data-queue-status>Waiting</span></div>
+                                <div class="queue-focus__number"><span>Queue number</span><strong data-queue-number>—</strong></div>
+                                <div class="queue-focus__metrics">
+                                    <div><span>Position</span><strong data-queue-position>—</strong></div>
+                                    <div><span>People ahead</span><strong data-queue-ahead>—</strong></div>
+                                    <div><span>Estimated wait</span><strong data-queue-wait>—</strong></div>
+                                </div>
+                                <dl class="detail-list detail-list--compact">
+                                    <div><dt>Service</dt><dd data-queue-service>—</dd></div>
+                                    <div><dt>Branch</dt><dd data-queue-branch>—</dd></div>
+                                    <div><dt>Counter</dt><dd data-queue-counter>Waiting for assignment</dd></div>
+                                </dl>
+                            </article>
+                            <article class="panel empty-state" data-queue-empty hidden><p class="kicker">Live queue</p><h3>No active queue right now</h3><p>When you check in for today's appointment, your queue number, position and estimated wait will appear here.</p></article>
+
+                            <article class="panel next-appointment" data-next-panel hidden>
+                                <div class="panel__header"><div><p class="kicker">Next appointment</p><h3 data-next-service>—</h3></div><span class="badge badge--neutral" data-next-status>Confirmed</span></div>
+                                <dl class="detail-list detail-list--compact">
+                                    <div><dt>Date</dt><dd data-next-date>—</dd></div>
+                                    <div><dt>Time</dt><dd data-next-time>—</dd></div>
+                                    <div><dt>Branch</dt><dd data-next-branch>—</dd></div>
+                                    <div><dt>Queue number</dt><dd data-next-queue>—</dd></div>
+                                </dl>
+                                <div class="appointment-actions">
+                                    <button class="btn btn--primary" type="button" data-next-action="check-in">Check in</button>
+                                    <button class="btn btn--secondary" type="button" data-next-action="details">View details</button>
+                                    <button class="btn btn--quiet btn--danger-text" type="button" data-next-action="cancel">Cancel</button>
+                                </div>
+                                <p class="appointment-note">Check-in eligibility is validated by the Smart Q backend. If the window is not open yet, the exact opening time will be shown.</p>
+                            </article>
+                            <article class="panel empty-state" data-next-empty hidden><p class="kicker">Next appointment</p><h3>No upcoming appointment</h3><p>Your future bookings will appear here. The full booking flow is the next customer milestone.</p></article>
+                        </div>
+                    </section>
+
+                    <section class="customer-section" id="appointments" aria-labelledby="appointments-heading">
+                        <div class="customer-section__header"><div><p class="kicker">Appointments</p><h3 id="appointments-heading">Upcoming appointments</h3></div></div>
+                        <div class="panel customer-table-panel" data-upcoming-table><div class="table-wrap"><table class="customer-table"><thead><tr><th>Appointment</th><th>Service</th><th>Branch</th><th>Status</th><th>Queue</th><th>Actions</th></tr></thead><tbody data-upcoming-body></tbody></table></div></div>
+                        <div class="panel empty-state empty-state--compact" data-upcoming-empty hidden><p>No upcoming appointments.</p></div>
+                    </section>
+
+                    <section class="customer-section" id="history" aria-labelledby="history-heading">
+                        <div class="customer-section__header"><div><p class="kicker">History</p><h3 id="history-heading">Past appointments</h3></div></div>
+                        <div class="panel customer-table-panel" data-history-table><div class="table-wrap"><table class="customer-table"><thead><tr><th>Appointment</th><th>Service</th><th>Branch</th><th>Outcome</th><th>Queue</th><th>Details</th></tr></thead><tbody data-history-body></tbody></table></div></div>
+                        <div class="panel empty-state empty-state--compact" data-history-empty hidden><p>No completed, cancelled or no-show appointments yet.</p></div>
+                    </section>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <dialog class="booking-dialog" data-booking-dialog aria-labelledby="booking-dialog-title">
+        <div class="booking-dialog__header"><div><p class="kicker">Booking details</p><h2 id="booking-dialog-title" data-dialog-service>Appointment</h2></div><button class="dialog-close" type="button" data-dialog-close>Close</button></div>
+        <div class="customer-loading customer-loading--dialog" data-dialog-loading>Loading booking history...</div>
+        <div class="notice notice--error dialog-notice" data-dialog-error hidden role="alert"></div>
+        <div class="booking-dialog__body" data-dialog-content hidden>
+            <dl class="dialog-details"><div><dt>Branch</dt><dd data-dialog-branch>—</dd></div><div><dt>Appointment</dt><dd data-dialog-appointment>—</dd></div><div><dt>Booking status</dt><dd data-dialog-status>—</dd></div><div><dt>Queue number</dt><dd data-dialog-queue>—</dd></div></dl>
+            <div class="timeline-block"><h3>Lifecycle history</h3><ol class="timeline" data-dialog-timeline></ol></div>
+        </div>
+    </dialog>
+</body>
+</html>
