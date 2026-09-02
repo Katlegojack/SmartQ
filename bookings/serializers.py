@@ -43,6 +43,21 @@ class BookingCreateSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+
+        # The browser may hide pregnancy input when it is not applicable, but
+        # frontend visibility is not a security boundary. Validate the profile
+        # again on the server before pregnancy can influence queue priority.
+        if attrs.get("is_pregnant"):
+            request = self.context.get("request")
+            try:
+                profile = request.user.profile if request is not None else None
+            except (AttributeError, Profile.DoesNotExist):
+                profile = None
+            if profile is None or profile.gender != Profile.FEMALE:
+                raise serializers.ValidationError(
+                    {"is_pregnant": "Pregnancy priority applies only to a female profile."}
+                )
+
         branch = attrs.get("branch")
         service = attrs.get("service")
         booking_date = attrs.get("booking_date")
