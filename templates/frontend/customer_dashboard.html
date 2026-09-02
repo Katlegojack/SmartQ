@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Smart Q customer dashboard for appointments and live queue tracking.">
+    <meta name="description" content="Smart Q customer dashboard for appointment booking and live queue tracking.">
     <title>Customer workspace | Smart Q</title>
     <link rel="stylesheet" href="{% static 'css/smartq.css' %}">
     <link rel="stylesheet" href="{% static 'css/auth-shell.css' %}">
@@ -27,6 +27,7 @@
             </div>
             <nav class="side-nav" aria-label="Customer sections">
                 <a class="side-nav__item is-active" href="#overview">Overview</a>
+                <a class="side-nav__item" href="#book">Book appointment</a>
                 <a class="side-nav__item" href="#appointments">Appointments</a>
                 <a class="side-nav__item" href="#history">History</a>
             </nav>
@@ -49,11 +50,14 @@
                             <div>
                                 <p class="eyebrow">Customer dashboard</p>
                                 <h2 id="overview-heading" data-greeting>Your Smart Q overview</h2>
-                                <p>Your next appointment and live queue status, without unnecessary clutter.</p>
+                                <p>Book an appointment, check in when eligible, and follow your live queue without standing in line just to hold your place.</p>
                             </div>
-                            <div class="customer-counts" aria-label="Appointment summary">
-                                <div><span data-upcoming-count>0</span><small>Upcoming</small></div>
-                                <div><span data-history-count>0</span><small>History</small></div>
+                            <div class="customer-heading__actions">
+                                <a class="btn btn--primary" href="#book">Book appointment</a>
+                                <div class="customer-counts" aria-label="Appointment summary">
+                                    <div><span data-upcoming-count>0</span><small>Upcoming</small></div>
+                                    <div><span data-history-count>0</span><small>History</small></div>
+                                </div>
                             </div>
                         </div>
                         <div class="customer-message" data-dashboard-message hidden role="status" aria-live="polite"></div>
@@ -86,11 +90,75 @@
                                 <div class="appointment-actions">
                                     <button class="btn btn--primary" type="button" data-next-action="check-in">Check in</button>
                                     <button class="btn btn--secondary" type="button" data-next-action="details">View details</button>
+                                    <button class="btn btn--quiet" type="button" data-next-action="reschedule">Reschedule</button>
                                     <button class="btn btn--quiet btn--danger-text" type="button" data-next-action="cancel">Cancel</button>
                                 </div>
-                                <p class="appointment-note">Check-in eligibility is validated by the Smart Q backend. If the window is not open yet, the exact opening time will be shown.</p>
+                                <p class="appointment-note">Check-in eligibility, rescheduling capacity and queue state are validated by the Smart Q backend.</p>
                             </article>
-                            <article class="panel empty-state" data-next-empty hidden><p class="kicker">Next appointment</p><h3>No upcoming appointment</h3><p>Your future bookings will appear here. The full booking flow is the next customer milestone.</p></article>
+                            <article class="panel empty-state" data-next-empty hidden><p class="kicker">Next appointment</p><h3>No upcoming appointment</h3><p>Use the booking flow below to choose a branch, service, date and backend-available time slot.</p></article>
+                        </div>
+                    </section>
+
+                    <section class="customer-section booking-workflow" id="book" aria-labelledby="booking-heading" data-booking-workflow>
+                        <div class="customer-section__header booking-workflow__header">
+                            <div><p class="kicker" data-booking-kicker>New appointment</p><h3 id="booking-heading" data-booking-heading>Book an appointment</h3></div>
+                            <button class="btn btn--quiet btn--sm" type="button" data-booking-reset hidden>Cancel reschedule</button>
+                        </div>
+                        <div class="panel booking-panel">
+                            <div class="booking-progress" aria-label="Booking steps">
+                                <span data-step-indicator="1" class="is-active">1 Branch</span>
+                                <span data-step-indicator="2">2 Service</span>
+                                <span data-step-indicator="3">3 Date</span>
+                                <span data-step-indicator="4">4 Time</span>
+                                <span data-step-indicator="5">5 Confirm</span>
+                            </div>
+                            <div class="form-message" data-booking-message hidden role="status" aria-live="polite"></div>
+                            <form class="booking-form" data-booking-form novalidate>
+                                <div class="booking-grid">
+                                    <label class="field">
+                                        <span class="field__label">Branch</span>
+                                        <select class="input" name="branch" data-booking-branch required>
+                                            <option value="">Select a branch</option>
+                                        </select>
+                                        <span class="field__help">Only active Smart Q branches are shown.</span>
+                                    </label>
+                                    <label class="field">
+                                        <span class="field__label">Service</span>
+                                        <select class="input" name="service" data-booking-service required disabled>
+                                            <option value="">Select a branch first</option>
+                                        </select>
+                                        <span class="field__help" data-service-help>Services are loaded from the selected branch.</span>
+                                    </label>
+                                    <label class="field">
+                                        <span class="field__label">Appointment date</span>
+                                        <input class="input" type="date" name="booking_date" data-booking-date required disabled>
+                                        <span class="field__help">Past dates are never offered.</span>
+                                    </label>
+                                </div>
+
+                                <fieldset class="slot-fieldset" data-slot-fieldset disabled>
+                                    <legend>Available time</legend>
+                                    <p class="field__help" data-slot-help>Select a branch, service and date to load backend-generated availability.</p>
+                                    <div class="slot-grid" data-slot-grid></div>
+                                </fieldset>
+
+                                <label class="check-field booking-pregnancy" data-pregnancy-field hidden>
+                                    <input type="checkbox" name="is_pregnant" data-booking-pregnant>
+                                    <span><strong>Pregnancy priority applies to this visit</strong><small>This visit-specific value is sent to the backend priority decision logic.</small></span>
+                                </label>
+
+                                <div class="booking-review" data-booking-review hidden>
+                                    <div><span>Branch</span><strong data-review-branch>—</strong></div>
+                                    <div><span>Service</span><strong data-review-service>—</strong></div>
+                                    <div><span>Date</span><strong data-review-date>—</strong></div>
+                                    <div><span>Time</span><strong data-review-time>—</strong></div>
+                                </div>
+
+                                <div class="booking-form__actions">
+                                    <p data-booking-authority>Availability is advisory until the final server write. Smart Q revalidates capacity when you submit.</p>
+                                    <button class="btn btn--primary" type="submit" data-booking-submit disabled>Confirm appointment</button>
+                                </div>
+                            </form>
                         </div>
                     </section>
 
