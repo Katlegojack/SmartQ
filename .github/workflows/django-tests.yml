@@ -80,5 +80,8 @@ jobs:
       - name: Run Day 44 booking experience tests
         run: python manage.py test smartq.test_day44_booking_experience
 
+      - name: Run Day 45 reception workspace tests
+        run: python manage.py test smartq.test_day45_reception_workspace
+
       - name: Run full test suite
         run: python manage.py test
