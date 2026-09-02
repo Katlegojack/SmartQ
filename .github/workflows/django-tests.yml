@@ -74,5 +74,8 @@ jobs:
       - name: Run Day 42 authentication and app shell tests
         run: python manage.py test smartq.test_day42_frontend_auth
 
+      - name: Run Day 43 customer dashboard tests
+        run: python manage.py test smartq.test_day43_customer_dashboard
+
       - name: Run full test suite
         run: python manage.py test
