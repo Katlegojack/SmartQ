@@ -16,11 +16,7 @@ APP_TEMPLATE = "frontend/app_shell.html"
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("", include("queues.urls")),
-
-    # Authentication and current-account endpoints.
     path("api/v1/accounts/", include("accounts.api_urls")),
-
-    # Domain APIs.
     path("api/v1/notifications/", include("notifications.api_urls")),
     path("api/v1/services/", include("services.api_urls")),
     path("api/v1/branches/", include("branches.api_urls")),
@@ -28,20 +24,11 @@ urlpatterns = [
     path("api/v1/queues/", include("queues.api_urls")),
     path("api/v1/counters/", include("counters.api_urls")),
     path("api/v1/rescheduling/", include("rescheduling.api_urls")),
-
-    # Day 34 manager read-model APIs.
     path("api/v1/dashboard/", include("dashboard.api_urls")),
 
-    # Public frontend entry points.
     path("login/", TemplateView.as_view(template_name="frontend/login.html"), name="frontend_login"),
-    path(
-        "register/",
-        TemplateView.as_view(template_name="frontend/register.html"),
-        name="frontend_register",
-    ),
+    path("register/", TemplateView.as_view(template_name="frontend/register.html"), name="frontend_register"),
 
-    # Authenticated frontend shell. JavaScript restores the session through /me/
-    # and redirects /app/ to the route that matches the backend-provided role.
     path(
         "app/",
         TemplateView.as_view(
@@ -52,10 +39,7 @@ urlpatterns = [
     ),
     path(
         "app/customer/",
-        TemplateView.as_view(
-            template_name=APP_TEMPLATE,
-            extra_context={"workspace_title": "Customer workspace", "workspace_role": "customer"},
-        ),
+        TemplateView.as_view(template_name="frontend/customer_dashboard.html"),
         name="frontend_customer_workspace",
     ),
     path(
@@ -90,10 +74,5 @@ urlpatterns = [
         ),
         name="frontend_admin_workspace",
     ),
-
-    path(
-        "",
-        TemplateView.as_view(template_name="frontend/index.html"),
-        name="frontend_home",
-    ),
+    path("", TemplateView.as_view(template_name="frontend/index.html"), name="frontend_home"),
 ]
