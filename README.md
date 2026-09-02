@@ -4,7 +4,7 @@
 
 Smart Q is a Django + Django REST Framework Queue Intelligence Platform designed to make queues more predictable, transparent, fair, and operationally efficient.
 
-> **Current development state:** Days 28-39 are integrated into `main`. Day 40 is complete on `feature/day40-final-backend-audit`, where the final integration, security, stale-state, duplicate-submission, reporting-isolation and ETA-contract audit has passed the complete SQLite3 regression workflow. The Day 40 pull request is the final backend v1 merge before frontend integration begins.
+> **Current development state:** Backend v1 is complete and merged through Day 40. Frontend Days 41-43 are merged into `main`. Day 44 is implemented on `feature/day44-booking-experience`, adding the full customer appointment booking and rescheduling experience on top of the Day 43 customer dashboard.
 
 ## Product principle
 
@@ -82,7 +82,7 @@ SYSTEM_ADMIN
 
 | Role | Current operational scope |
 |---|---|
-| Customer | Own account, bookings, live queue, own disruption options, own booking timeline |
+| Customer | Own account, appointment booking/rescheduling, bookings, live queue, own disruption options, own booking timeline |
 | Receptionist | Branch queue reads, booking search, staff check-in, guest walk-ins |
 | Counter Staff | Branch queue reads + mutations on assigned counter |
 | Branch Manager | Own-branch counter assignment, disruption control, dashboard, branch audit history and historical reports |
@@ -119,6 +119,61 @@ Django session established
 ```
 
 The login endpoint is explicitly CSRF-protected. CORS and CSRF remain separate controls.
+
+## Frontend foundation
+
+The frontend uses Django templates, CSS and vanilla JavaScript ES modules.
+
+```text
+Day 41 -> shared design system + frontend foundation
+Day 42 -> authentication + session restoration + role-aware app shell
+Day 43 -> live Customer Dashboard
+Day 44 -> appointment booking + availability + rescheduling experience
+```
+
+The browser presents backend state and coordinates API requests. It does not recreate Smart Q business rules.
+
+Frontend routes currently include:
+
+```text
+/                       public Smart Q entry
+/login/                 sign in
+/register/              customer registration
+/app/                   role-routing entry
+/app/customer/          customer dashboard + booking workflow
+/app/reception/         receptionist shell
+/app/counter/           counter staff shell
+/app/manager/           branch manager shell
+/app/admin/             system admin shell
+```
+
+### Day 44 customer booking flow
+
+```text
+Customer dashboard
+        ↓
+Choose Branch
+        ↓
+Load branch-specific Services
+        ↓
+Choose Date
+        ↓
+Load backend-generated availability
+        ↓
+Choose available Time
+        ↓
+Review
+        ↓
+POST /api/v1/bookings/
+        ↓
+backend revalidates capacity
+        ↓
+Booking + SCHEDULED QueueTicket
+```
+
+The frontend never generates queue numbers, appointment slots, priority state or capacity. Availability is treated as advisory until the final server write revalidates the slot.
+
+Upcoming customer appointments can also be rescheduled through fresh backend availability. Rescheduling returns the queue ticket to `SCHEDULED`, clears check-in state and requires a fresh check-in.
 
 ## System Admin control plane
 
@@ -193,6 +248,8 @@ PATCH /api/v1/bookings/<id>/reschedule/
 ```
 
 Check-in opens exactly six hours before appointment time.
+
+Pregnancy priority input is validated at the backend boundary: a booking cannot claim pregnancy priority unless the authenticated customer profile is female.
 
 ## Reception APIs
 
@@ -439,7 +496,7 @@ GitHub Actions uses one database path:
 SQLite3 regression
 ```
 
-The job verifies dependencies, missing migrations, Django system checks, app-specific regression suites, QueueEvent audit tests, Day 39 reporting tests, the Day 40 final audit suite and the full Smart Q regression suite.
+The job verifies dependencies, missing migrations, Django system checks, app-specific regression suites, QueueEvent audit tests, Day 39 reporting tests, Day 40 final audit tests, Day 41-44 frontend milestone tests and the complete Smart Q regression suite.
 
 ## Day 40 final backend audit
 
@@ -474,19 +531,19 @@ docs/DAY37_ADMIN_SECURITY.md
 docs/DAY38_PRODUCTION_HARDENING.md
 docs/DAY39_REPORTING_PERFORMANCE.md
 docs/DAY40_FINAL_BACKEND_AUDIT.md
+docs/DAY41_FRONTEND_FOUNDATION.md
+docs/DAY42_AUTH_APP_SHELL.md
+docs/DAY43_CUSTOMER_DASHBOARD.md
+docs/DAY44_BOOKING_EXPERIENCE.md
 ```
 
 ## Backend v1 capabilities
 
 Smart Q backend v1 includes customer registration/session authentication, CSRF-protected browser login, password rotation, role/branch/counter/ownership authorization, System Admin control APIs, branch/service/capacity configuration, booking/check-in, reception walk-ins, General/Priority queues, deterministic ETA, queue-number sequence allocation, counter lifecycle, manager dashboard, disruption/rescheduling, in-app notifications, QueueEvent history, customer timelines, branch audit history, historical operational reporting, environment-driven security settings, SQLite3 persistence guidance and complete SQLite3 regression verification.
 
-## Backend v1 completion status
+## Frontend capabilities through Day 44
 
-Days 28-39 are merged into `main`. Day 40 is complete and green on the final backend feature branch. The final backend v1 integration step is merging the Day 40 pull request into `main` and verifying the resulting main commit.
-
-After that merge, frontend implementation can integrate against the stable backend contract without adding more required backend milestones.
-
-Optional future enhancements such as ML forecasting, SMS/WhatsApp, WebSockets and broader external integrations are separate product milestones and are not required for backend v1.
+Smart Q now includes a public entry page, customer registration/sign-in, CSRF-protected session restoration, role-aware workspace routing, a live Customer Dashboard, customer-owned appointment/history views, live queue position/ETA presentation, lifecycle history, server-authoritative check-in/cancellation, and a full appointment booking/rescheduling workflow driven by real branch/service/availability APIs.
 
 ## Roadmap
 
@@ -498,7 +555,15 @@ Day 36  QueueEvent / Timeline / Audit             COMPLETE / MERGED
 Day 37  Admin + Account/Security Hardening        COMPLETE / MERGED
 Day 38  SQLite3 + Production Hardening            COMPLETE / MERGED
 Day 39  Historical Reporting + Performance        COMPLETE / MERGED
-Day 40  Full Backend Integration + Security Audit COMPLETE / READY FOR PR
+Day 40  Full Backend Integration + Security Audit COMPLETE / MERGED
+Day 41  Frontend Foundation + Design System       COMPLETE / MERGED
+Day 42  Authentication + Role-Aware App Shell     COMPLETE / MERGED
+Day 43  Customer Dashboard                        COMPLETE / MERGED
+Day 44  Booking + Availability + Rescheduling     COMPLETE / PR
+Day 45  Receptionist Workspace                    NEXT
+Day 46  Counter Staff Workspace
+Day 47  Branch Manager Workspace
+Day 48  System Admin Workspace
 ```
 
 ## Technology stack
@@ -507,6 +572,7 @@ Day 40  Full Backend Integration + Security Audit COMPLETE / READY FOR PR
 |---|---|
 | Backend | Django 6 |
 | API | Django REST Framework |
+| Frontend | Django templates + HTML5 + CSS3 + vanilla JavaScript ES modules |
 | Authentication | Django sessions + CSRF |
 | Authorization | Profile roles + branch/counter/ownership scope |
 | Account abuse protection | DRF scoped throttling |
