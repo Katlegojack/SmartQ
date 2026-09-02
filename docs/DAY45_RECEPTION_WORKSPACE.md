@@ -1,73 +1,103 @@
-# Smart Q - Day 45 Engineering Documentation
+# Smart Q - Day 45 Full Engineering Documentation
 
 ## Receptionist Workspace
 
-## 1. Day 45 goal
-
-Day 45 converts the generic receptionist application shell from Day 42 into a real branch-operational workspace.
-
-The target workflow is intentionally narrow:
-
-```text
-Receptionist signs in
-        ↓
-Smart Q restores role + assigned branch
-        ↓
-Search customer / booking
-        ↓
-Inspect appointment + queue state
-        ↓
-Staff-assisted check-in when valid
-        ↓
-QueueTicket becomes WAITING
-        ↓
-Branch queue refreshes
-```
-
-For a person without a Smart Q account or advance appointment:
-
-```text
-Guest arrives
-        ↓
-Reception captures minimum operational details
-        ↓
-Select service offered at receptionist branch
-        ↓
-Backend creates GuestCustomer + WALK_IN booking
-        ↓
-Backend calculates General / Priority
-        ↓
-QueueTicket is created in WAITING
-        ↓
-Reception shows queue confirmation
-```
-
-Day 45 is not a manager dashboard. It contains no branch analytics, reporting controls, staff administration or system configuration.
+**Status:** Complete, merged into `main`, and verified by GitHub Actions  
+**Pull Request:** #35 - Build Day 45 receptionist workspace  
+**Merge Commit:** `7cfe9f9e4eac979fd14d56dc88f608a9217d6f56`  
+**Final CI:** Django Tests run 195 - success
 
 ---
 
-## 2. Starting point
+# Part 1 - Day 45 Context, Scope and Objectives
 
-Before Day 45, Smart Q already had:
+Day 45 transformed the receptionist role from a generic application shell into a real branch-operational workspace. The aim was not to place every queue-management capability on one screen. The aim was to give reception staff the smallest complete toolset needed to identify a customer, inspect a booking, activate a valid booking into the live queue, create a guest walk-in and confirm the branch queue state.
 
-- the Day 41 design system;
-- Day 42 session restoration, CSRF and role routing;
-- Day 43 customer dashboard;
-- Day 44 appointment booking and rescheduling experience;
-- the Day 31 backend reception APIs for search, staff check-in and guest walk-ins;
-- branch-scoped queue visibility from the queue API.
+## 1. Introduction
 
-The `/app/reception/` route still rendered the generic Day 42 shell. Day 45 replaces only that role surface while preserving the shared visual language and the existing backend authority.
+Before Day 45, Smart Q already had the backend queue and booking foundations, the shared frontend design system, session restoration, role routing, the customer dashboard and the customer booking/check-in experience. The receptionist route still rendered a generic Day 42 role shell. Day 45 replaced that placeholder with a dedicated operational workspace.
+
+Reception work is interruption-heavy and speed-sensitive. The workspace therefore revolves around four repeated questions:
+
+1. Who is the person at the desk?
+2. Do they have a booking?
+3. Can the booking enter the live queue now?
+4. If they have no account or booking, can reception create a walk-in ticket?
+
+## 2. Position in the Frontend Roadmap
+
+- Day 41 - design system and shared visual language.
+- Day 42 - authentication, session restoration, role routing and shared shell.
+- Day 43 - customer dashboard.
+- Day 44 - appointment booking, rescheduling and check-in experience.
+- Day 45 - receptionist operational workspace.
+- Day 46 - counter staff serving workspace.
+- Day 47 - branch manager dashboard.
+- Day 48 - system administrator control plane.
+- Day 49 - history, reporting, disruption and rescheduling UX.
+- Day 50 - full integration, responsive and release audit.
+
+## 3. Objectives
+
+- Replace `/app/reception/` with a dedicated receptionist page.
+- Add branch-scoped customer and booking search.
+- Add staff-assisted check-in using the existing backend rules.
+- Show the branch waiting queue for operational confirmation.
+- Allow guest walk-in creation without a customer account.
+- Load only services offered by the assigned branch.
+- Keep branch authority, check-in eligibility, queue priority and queue numbering backend-owned.
+- Add explicit loading, empty, error, conflict and success states.
+- Add focused tests and CI coverage.
+- Preserve strict separation from manager and administrator functionality.
+
+## 4. Acceptance Criteria
+
+A completed Day 45 implementation must allow a receptionist to sign in, restore their assigned branch, search a customer or booking, perform a valid staff-assisted check-in, create a guest walk-in, receive the backend-generated queue number and queue type, and confirm the customer appears in the waiting queue. A normal customer must not be able to use the receptionist write APIs.
+
+## 5. Core Architecture Rule
+
+> Frontend presents and orchestrates. Backend authorizes, validates and decides.
+
+This rule is especially important at reception because the UI touches customer identity, queue activation and priority-sensitive inputs. The browser must not become a second business-logic server.
+
+### Engineering lessons
+
+- Values that affect authority, fairness or allocation belong on the server.
+- A fast UI should reduce operator effort without weakening the permission model.
+
+---
+
+# Part 2 - Receptionist Role Architecture and API Contracts
+
+## 6. Responsibility Boundary
+
+Reception is an operational role, not a management role. Its responsibilities are customer identification, booking lookup, assisted check-in, guest intake and queue confirmation. The workspace intentionally excludes branch analytics, staff administration and system configuration.
+
+This improves both usability and security: the operator sees the tools required for the repeated job and no wider control surface.
+
+## 7. Branch Scope Comes From Identity
+
+The receptionist does not select a branch from a dropdown. Branch scope is restored from:
+
+```http
+GET /api/v1/accounts/me/
+```
+
+Relevant account fields include:
+
+```text
+role
+branch_id
+branch_name
+```
+
+The receptionist profile is therefore the source of truth for branch authority.
 
 ### Engineering lesson
 
-A frontend milestone should integrate proven backend workflows instead of rebuilding their rules in JavaScript.
+Security scope is identity data, not ordinary form input. If the server already knows the authenticated staff member's branch, the client should not be allowed to invent it.
 
----
-
-## 3. Backend contracts reused
-
-Day 45 uses existing APIs:
+## 8. Existing Backend Contracts Reused
 
 ```http
 GET  /api/v1/accounts/me/
@@ -78,15 +108,46 @@ GET  /api/v1/queues/branches/<branch_id>/waiting/
 GET  /api/v1/services/branches/<branch_id>/
 ```
 
-No new queue, booking or priority algorithm was added in the frontend.
+Day 45 did not create a new queue algorithm or duplicate existing booking rules in JavaScript.
+
+## 9. High-Level Data Flow
+
+```text
+Receptionist signs in
+        |
+        v
+GET /api/v1/accounts/me/
+        | role + branch
+        v
+Dedicated Reception Workspace
+        |
+        +--> Search customer / booking
+        |       |
+        |       +--> Staff-assisted check-in
+        |
+        +--> Read branch waiting queue
+        |
+        +--> Load branch services
+                |
+                +--> Create guest walk-in
+                        |
+                        v
+               Backend creates WAITING ticket
+```
+
+## 10. Why Existing Backend Rules Were Reused
+
+Queue numbering, check-in windows, priority policy and branch authorization already existed on the backend. Reimplementing them in the browser would create two sources of truth. Day 45 therefore treats the frontend as an orchestration layer over proven backend contracts.
 
 ### Engineering lesson
 
-The browser should orchestrate backend capabilities, not become a second business-logic server.
+When a rule changes, one authoritative implementation is safer than synchronizing copies across multiple clients.
 
 ---
 
-## 4. Reception route and role boundary
+# Part 3 - Frontend Implementation
+
+## 11. Dedicated Reception Route
 
 `/app/reception/` now renders:
 
@@ -94,40 +155,55 @@ The browser should orchestrate backend capabilities, not become a second busines
 templates/frontend/reception_workspace.html
 ```
 
-instead of the generic `app_shell.html`.
+instead of the generic application shell. Other role routes were left unchanged.
 
-The page declares:
+The template declares:
 
 ```html
 data-expected-role="receptionist"
 ```
 
-The shared session shell and the Day 45 script both verify the authenticated account. A non-receptionist is redirected to the workspace that belongs to their real backend role.
+so the shared session shell and the Day 45 page logic agree on the required role.
 
-The receptionist's `branch_id` comes only from `/api/v1/accounts/me/`. There is no branch selector in the reception UI.
+## 12. Workspace Information Architecture
+
+The receptionist page contains four operational areas:
+
+- **Reception desk** - customer/booking search and assisted check-in.
+- **Branch queue** - current waiting queue and immediate counts.
+- **Guest walk-in** - minimal walk-in intake and queue confirmation.
+- **Security** - shared password and logout controls.
+
+It deliberately contains no manager analytics or administrator settings.
+
+## 13. Search-First Design
+
+Search is the dominant first interaction because reception normally starts with one person standing at the desk. The input accepts identifiers already supported by the backend search endpoint, including booking ID, username, customer name, email, guest name and guest phone number.
+
+The field is focused when the workspace boots. `Ctrl+K` or `Cmd+K` returns focus to search. Queries shorter than two characters are rejected before the API request.
 
 ### Engineering lesson
 
-A branch-scoped operator should not choose their authority scope from a dropdown. Scope is identity data, not form input.
+Operational screens should optimize the repeated task, not maximize the number of widgets visible at once.
 
----
+## 14. Stale Search Response Protection
 
-## 5. Search-first workspace
+The page uses a request sequence counter:
 
-Reception work is interruption-heavy and speed-sensitive, so search is the dominant first interaction.
+```javascript
+const sequence = ++searchRequestSequence;
+const bookings = await apiRequest(searchUrl);
+if (sequence !== searchRequestSequence) return;
+renderSearchResults(bookings);
+```
 
-The lookup accepts the identifiers already supported by the backend:
+If an earlier network request returns after a newer search has started, the stale response is ignored.
 
-- booking ID;
-- username;
-- first or last name;
-- email;
-- guest name;
-- guest phone number.
+### Engineering lesson
 
-The input is automatically focused when the workspace loads. Receptionists can also press `Ctrl+K` or `Cmd+K` to return focus to search.
+Frontend concurrency problems can happen even without threads. Network responses can arrive out of order, so asynchronous UI state sometimes needs a freshness guard.
 
-The frontend enforces the API's minimum two-character rule before sending a request.
+## 15. Search Result Rendering
 
 Results display:
 
@@ -140,15 +216,29 @@ Queue number + queue type/status
 Available action
 ```
 
+Customer and API-derived display values are assigned with `textContent`. Static HTML is used only for known markup containers.
+
 ### Engineering lesson
 
-Operational screens should optimize the repeated task, not maximize the number of widgets visible at once.
+Treat customer-controlled display values as untrusted text. Do not turn names, emails or phone values into executable HTML.
 
----
+## 16. Check-In Button Presentation Logic
 
-## 6. Staff-assisted check-in
+The UI only performs a light presentation check before showing the button:
 
-A valid search result exposes `Check in` only when the booking is not already checked in and is not in a final state.
+```javascript
+function canCheckIn(booking) {
+    const finalStates = new Set([
+        "cancelled", "completed", "no_show"
+    ]);
+    return !booking.is_checked_in
+        && !finalStates.has(booking.status);
+}
+```
+
+This does not replace backend validation. It only avoids presenting an obviously invalid action.
+
+## 17. Staff-Assisted Check-In
 
 The write is sent to:
 
@@ -156,125 +246,94 @@ The write is sent to:
 POST /api/v1/bookings/<id>/staff-check-in/
 ```
 
-The frontend does not decide whether check-in is actually allowed. The backend still decides:
+The backend still decides whether:
 
-- whether the six-hour window is open;
-- whether the appointment expired;
-- whether the booking is already checked in;
-- whether the booking is in a final state;
-- whether the staff member may operate on that branch.
+- the six-hour check-in window is open;
+- the booking expired;
+- the booking is already checked in;
+- the booking is in a final state;
+- the staff member is authorized for the branch.
 
-Important responses are shown directly to reception. For an early check-in, the UI also formats the backend-provided `check_in_opens_at` timestamp.
-
-After success, Smart Q refreshes both the search result and the live branch queue from backend reads.
+The button is disabled while the request is in flight. If the backend provides `check_in_opens_at`, the error is formatted for reception. On success the page refreshes the current search result and waiting queue from the backend.
 
 ### Engineering lessons
 
-A disabled button can prevent accidental double-clicks, but only the backend can guarantee idempotency and state correctness.
+- Disabling a button reduces duplicate clicks; it is not a substitute for backend integrity.
+- After a write, read the authoritative state again instead of manually guessing what the server persisted.
 
-After a state-changing operation, refresh from authoritative read endpoints rather than guessing the new state locally.
+## 18. Branch Queue Visibility
 
----
-
-## 7. Check-in is live-queue activation
-
-Day 45 preserves the Day 31 domain meaning:
-
-```text
-SCHEDULED appointment
-        ↓ valid check-in
-WAITING live queue
-```
-
-Check-in does not mean Smart Q has independently proved physical presence. It means the booking has been activated into the live queue.
-
-This distinction also preserves the difference between:
-
-```text
-CANCELLED = appointment expired before check-in
-NO_SHOW   = customer checked in but later failed to present when called
-```
-
-### Engineering lesson
-
-Status names are domain contracts. If the UI gives them a different meaning from the backend, reporting and user expectations eventually become inconsistent.
-
----
-
-## 8. Branch queue visibility
-
-Receptionists need enough queue visibility to confirm that a successful check-in or walk-in really entered the branch queue.
-
-Day 45 reads:
+The page reads:
 
 ```http
 GET /api/v1/queues/branches/<branch_id>/waiting/
 ```
 
-The table shows:
+and displays queue number, customer, service, check-in time, queue type and status. It also calculates immediate counts for Waiting, Priority and General tickets.
 
-- queue number;
-- customer;
-- service;
-- check-in time;
-- queue type;
-- waiting status.
+These counts are operational confirmation only. They are not manager analytics.
 
-It also summarizes counts for Waiting, Priority and General tickets.
+## 19. Queue Refresh Strategy
 
-This is operational confirmation, not analytics. Day 47 remains responsible for manager-level metrics and historical reporting.
+The queue refreshes after successful check-in or walk-in creation and also provides an explicit **Refresh queue** button.
 
-### Engineering lesson
+Constant polling was deliberately deferred until Smart Q chooses its wider real-time strategy. This avoids introducing continuous network traffic and a temporary pseudo-real-time architecture during the role-by-role frontend build.
 
-The same underlying data can support different roles, but each role should receive only the presentation needed to perform its job.
+## 20. Guest Walk-In Form
 
----
-
-## 9. Guest walk-in flow
-
-The walk-in form collects only the fields supported by the backend contract:
+The form captures only the backend-supported operational fields:
 
 ```text
 full_name
 phone_number (optional)
 date_of_birth
 gender
-disability_status
-is_pregnant (only shown when gender = female)
 service
+disability_status
+is_pregnant
 ```
 
-Services are loaded from:
+Pregnancy is shown only when gender is female. The frontend still relies on backend validation for the final rule.
 
-```http
-GET /api/v1/services/branches/<receptionist_branch_id>/
+## 21. Walk-In Payload
+
+The browser sends customer facts and the selected service:
+
+```javascript
+const payload = {
+    full_name,
+    phone_number,
+    date_of_birth,
+    gender,
+    disability_status,
+    is_pregnant,
+    service
+};
 ```
 
-so reception cannot select a service that is not offered at the assigned branch.
-
-The browser does not send a branch ID to the walk-in creation endpoint. The backend derives branch authority from the receptionist's profile.
-
-### Engineering lesson
-
-Do not ask the client to send a security-sensitive value when the server already knows the correct value from authenticated identity.
-
----
-
-## 10. Priority remains backend-owned
-
-The walk-in UI never offers a General/Priority selector.
-
-Smart Q continues using its existing priority policy:
+It does **not** send:
 
 ```text
-age 55+
-OR disability status
-OR female + pregnant for this visit
+branch_id
+queue_type
+queue_number
 ```
 
-The frontend only captures facts required by that policy. The backend calculates the queue type and returns the final queue number.
+The backend derives branch authority from the receptionist profile, calculates priority and creates the queue number.
 
-On success, the confirmation panel displays the returned:
+## 22. Branch Service Loading
+
+The service selector is populated from:
+
+```http
+GET /api/v1/services/branches/<branch_id>/
+```
+
+This prevents the UI from offering services that are not active at the receptionist's branch. If no active services exist, the selector is disabled and communicates that state.
+
+## 23. Walk-In Confirmation
+
+On success the backend returns the created booking and queue ticket. The confirmation panel displays:
 
 ```text
 queue number
@@ -284,66 +343,217 @@ queue type
 status
 ```
 
-### Engineering lesson
+The browser displays these returned values instead of predicting them.
 
-When a value affects fairness, security or allocation, collect inputs in the frontend but make the final decision on the server.
+## 24. Operational Usability
 
----
+Day 45 includes:
 
-## 11. Error and empty states
+- search autofocus;
+- `Ctrl+K` / `Cmd+K` search focus shortcut;
+- in-flight button states such as `Checking in...` and `Creating ticket...`;
+- a reset/new-walk-in flow that returns focus to full name;
+- responsive layouts for narrower screens.
 
-Day 45 includes explicit states for:
+## 25. Loading, Empty, Error and Success States
+
+The page explicitly handles:
 
 - initial ready state;
 - search loading;
 - no search results;
-- API search errors;
-- branch queue loading;
+- search/API errors;
+- queue loading;
 - empty waiting queue;
-- guest walk-in validation errors;
-- service loading failures;
-- staff check-in conflicts;
+- service loading failure;
+- walk-in validation errors;
+- check-in conflicts;
 - successful check-in;
-- successful walk-in creation.
-
-Mutating buttons are disabled while requests are in flight to reduce duplicate submissions.
+- successful walk-in and queue confirmation.
 
 ### Engineering lesson
 
-Error handling is part of the workflow, not decoration added after the happy path works.
+Error handling is part of workflow design, not decoration added after the happy path works.
 
 ---
 
-## 12. Files added or changed
+# Part 4 - Backend Business Rules Preserved by the Frontend
+
+## 26. Meaning of Check-In
+
+Smart Q keeps the Day 31 domain meaning:
 
 ```text
-templates/frontend/reception_workspace.html
-static/css/reception-workspace.css
-static/js/pages/reception-workspace.js
-smartq/urls.py
-smartq/test_day45_reception_workspace.py
-docs/DAY45_RECEPTION_WORKSPACE.md
+SCHEDULED --valid check-in--> WAITING
 ```
+
+Check-in means activation into the live queue. It does not claim that Smart Q independently proved physical presence.
+
+The status distinction remains:
+
+```text
+Expired before check-in -> CANCELLED
+Checked in but absent when called -> NO_SHOW
+```
+
+### Engineering lesson
+
+Status names are domain contracts. Frontend, backend and reporting must give them the same meaning.
+
+## 27. Check-In Window
+
+The six-hour check-in window remains backend-owned. Reception can display an error and opening time, but it cannot bypass the server rule.
+
+## 28. Walk-In State
+
+A reception-created guest walk-in is immediately checked in and enters the live queue as `WAITING`. No customer account is required.
+
+This differs from an advance appointment, which begins as scheduled and joins the live queue only after valid check-in.
+
+## 29. Priority Calculation
+
+Reception never chooses General or Priority. The backend applies the existing Smart Q priority policy using the factual inputs collected by the form, including age, disability and pregnancy conditions.
+
+### Engineering lesson
+
+Fairness decisions should be rule-driven and centrally enforced rather than delegated to an operator dropdown.
+
+## 30. Queue Number Generation
+
+Queue numbers are generated on the server. The browser never guesses, increments or composes queue numbers locally. This prevents collisions and keeps the numbering contract consistent across customer, reception and counter workflows.
+
+## 31. Booking Search Scope
+
+The reception search endpoint is branch-scoped through authenticated staff identity. Reception can search useful identifiers without exposing unrelated branch data.
 
 ---
 
-## 13. Test coverage
+# Part 5 - Security, Data Integrity and Failure Prevention
 
-Day 45 adds frontend/integration regression checks for:
+## 32. Role Enforcement
 
-- the dedicated reception template route;
-- required reception controls being present;
-- Day 45 CSS and JavaScript discoverability;
-- branch-service lookup for a receptionist;
-- guest walk-in creation;
-- immediate WAITING queue state;
-- queue confirmation data;
-- the guest appearing in branch waiting queue;
-- customer role being forbidden from the reception walk-in API.
+The page calls `getCurrentAccount()` during boot. Unauthenticated users are redirected to login. Authenticated users with a different role are redirected to the workspace for their real backend role.
 
-The existing backend suites remain responsible for deeper branch-isolation, check-in-window and queue-operation rules.
+```javascript
+if (!account) {
+    redirectToLogin();
+}
+if (account.role !== "receptionist") {
+    window.location.replace(routeForRole(account.role));
+}
+```
 
-Recommended verification before merge:
+Backend permissions remain authoritative, so UI routing is not the only security layer.
+
+## 33. Missing Branch Protection
+
+A receptionist without `branch_id` is treated as a configuration error. The workspace fails visibly rather than silently operating with ambiguous scope.
+
+## 34. No Client-Side Authority Expansion
+
+Day 45 deliberately has:
+
+- no branch selector;
+- no `branch_id` in the walk-in payload;
+- no queue-type selector;
+- no queue-number input;
+- no client-side override of check-in time rules;
+- no manager or administrator control surface.
+
+## 35. Write-Then-Read Consistency
+
+After queue-changing operations, the frontend refreshes the relevant backend reads. The user therefore sees what the server actually persisted, not a locally invented state transition.
+
+## 36. Concurrency Safeguards
+
+Sequence counters protect search and queue reads from stale asynchronous responses. Mutating buttons are disabled while requests are in flight. These improve frontend behaviour but do not replace transactional backend rules.
+
+---
+
+# Part 6 - Automated Testing, CI and Verification
+
+## 37. Day 45 Test Module
+
+The new test module is:
+
+```text
+smartq/test_day45_reception_workspace.py
+```
+
+The fixture creates a branch, service, branch-service relationship and receptionist account so the tests exercise the real role and branch contracts.
+
+## 38. Dedicated Route Test
+
+The test verifies that `/app/reception/` renders the dedicated workspace and required hooks:
+
+```python
+self.assertContains(response, "Reception desk")
+self.assertContains(response, "data-reception-workspace")
+self.assertContains(response, "data-search-form")
+self.assertContains(response, "data-queue-refresh")
+self.assertContains(response, "data-walkin-form")
+self.assertNotContains(response, "Manager analytics")
+self.assertNotContains(response, "System administration")
+```
+
+## 39. Static Asset Discovery
+
+The test suite verifies Django staticfiles can find:
+
+```text
+css/reception-workspace.css
+js/pages/reception-workspace.js
+```
+
+This catches template/static integration mistakes before deployment.
+
+## 40. Branch Service Integration
+
+An authenticated receptionist can load the services offered by the assigned branch. This verifies the walk-in service selector has a working backend source.
+
+## 41. Guest Walk-In Integration
+
+The test creates a guest walk-in and verifies:
+
+- HTTP 201;
+- the backend-selected branch matches the receptionist branch;
+- `source == walk_in`;
+- `is_checked_in == true`;
+- queue ticket status is `waiting`;
+- a queue number was generated;
+- the guest appears in the branch waiting queue.
+
+## 42. Authorization Regression Test
+
+A normal customer attempts to use the receptionist walk-in endpoint and receives HTTP 403 Forbidden. This proves the restriction is enforced by the API rather than only hidden in the UI.
+
+## 43. CI Pipeline Update
+
+The Django workflow now contains a named Day 45 step:
+
+```yaml
+- name: Run Day 45 reception workspace tests
+  run: python manage.py test smartq.test_day45_reception_workspace
+
+- name: Run full test suite
+  run: python manage.py test
+```
+
+## 44. Final Verification Result
+
+The Day 45 feature-branch push workflow succeeded. The pull-request workflow succeeded. PR #35 was merged. The post-merge `main` workflow also completed successfully.
+
+```text
+Merge commit:
+7cfe9f9e4eac979fd14d56dc88f608a9217d6f56
+
+Final main workflow:
+Django Tests run 195 - success
+```
+
+Day 45 is therefore verified on the final main-branch state.
+
+## 45. Recommended Local Verification
 
 ```powershell
 python manage.py makemigrations --check --dry-run
@@ -354,51 +564,153 @@ python manage.py test
 
 ---
 
-## 14. Day 45 trade-offs
+# Part 7 - Engineering Trade-Offs and Decisions
 
-### No auto-refresh polling yet
+## 46. Search Instead of a Giant Daily Table
 
-The branch queue has an explicit Refresh button and refreshes after successful mutations. Constant polling is deferred until the broader Day 50 integration audit determines the appropriate update strategy.
+Reception normally needs to identify one person quickly. Targeted lookup has lower cognitive cost than loading and scanning every appointment. The backend already provides a branch-scoped search contract, so the UI uses it directly.
 
-Reason: frontend v1 should not introduce unnecessary network traffic or a second pseudo-real-time mechanism before the real-time strategy is chosen.
+## 47. No Automatic Polling Yet
 
-### Search instead of a giant daily appointment table
+Automatic polling would add continuous traffic and a second temporary real-time mechanism. Day 45 uses explicit refresh plus refresh-after-write until the wider real-time strategy is decided.
 
-Reception starts from lookup rather than loading every appointment for the day.
+## 48. No Receptionist Analytics
 
-Reason: the backend already provides targeted branch search, and the receptionist's repeated task is identifying the person in front of them quickly.
+Immediate waiting/priority/general counts are enough for operational confirmation. Historical branch metrics belong to the manager workspace on Day 47.
 
-### No receptionist analytics
+## 49. No Branch Selector
 
-Queue counts on this page are immediate operational counts only.
+A dropdown would be convenient for demonstrations but wrong for branch-scoped operator authority. The authenticated profile already defines the branch.
 
-Reason: manager analytics belong to Day 47 and would distract from the receptionist's task while widening the role surface unnecessarily.
+## 50. No Manual Priority Selector
+
+Allowing an operator to choose Priority would make a fairness decision subjective. The backend already has the required facts and policy, so the server performs the classification.
+
+## 51. Reuse Instead of Rebuild
+
+Existing reception, queue and branch-service APIs were reused instead of adding new endpoints or copying rules into JavaScript. This reduced risk and kept the milestone focused on frontend integration.
+
+## 52. No Mid-Roadmap Framework Rewrite
+
+Day 45 continued the current focused page-module approach instead of introducing a new JavaScript framework. The trade-off is more manual DOM state management, but it avoids destabilising the codebase during a deadline-driven integration phase.
 
 ---
 
-## 15. Day 45 outcome
+# Part 8 - Engineering Lessons, Final State and Day 46 Handoff
 
-The receptionist role now has a real frontend workspace rather than a placeholder shell.
+## 53. Engineering Lessons Learned
 
-A receptionist can:
+- Design role workspaces around the repeated job, not every database table.
+- Keep queue business rules in one authoritative backend layer.
+- Derive branch scope from authenticated identity.
+- A disabled button is a UX safeguard; backend validation is the integrity guarantee.
+- Re-read authoritative state after writes.
+- Treat statuses as shared domain contracts.
+- Use safe text rendering for user-controlled values.
+- Protect UI state from stale asynchronous responses.
+- Design loading, empty, error, conflict and success states intentionally.
+- Test authorization boundaries as well as successful behaviour.
+- Role separation improves usability and security together.
+- Keep fairness-related decisions rule-driven and server-owned.
+
+## 54. Files Added or Changed
 
 ```text
-restore their branch-scoped session
-search a customer or booking
-inspect appointment and queue state
-perform staff-assisted check-in
-confirm the customer entered WAITING
-see the current branch waiting queue
-create a guest walk-in without an account
-receive the backend-generated queue number and type
-handle clear validation/conflict states
+templates/frontend/reception_workspace.html
+static/css/reception-workspace.css
+static/js/pages/reception-workspace.js
+smartq/urls.py
+smartq/test_day45_reception_workspace.py
+.github/workflows/django-tests.yml
+docs/DAY45_RECEPTION_WORKSPACE.md
 ```
 
-The main architectural rule remains intact:
+## 55. End-to-End Receptionist Workflow
 
 ```text
-Frontend presents and orchestrates.
-Backend authorizes, validates and decides.
+REGISTERED / APPOINTMENT CUSTOMER
+Receptionist login
+        |
+        v
+Restore role + branch
+        |
+        v
+Search customer / booking
+        |
+        v
+Inspect booking + queue state
+        |
+        v
+Backend validates staff check-in
+        |
+        v
+Booking enters WAITING
+        |
+        v
+Branch queue refresh confirms entry
+
+GUEST WALK-IN
+Guest arrives
+        |
+        v
+Capture minimum details
+        |
+        v
+Select branch-offered service
+        |
+        v
+Backend creates walk-in booking
+        |
+        +--> derives branch from staff identity
+        +--> calculates priority
+        +--> generates queue number
+        +--> sets WAITING
+        |
+        v
+Reception displays queue confirmation
 ```
 
-That boundary is especially important for reception because this role touches customer identity, queue activation and priority-sensitive inputs at high operational speed.
+## 56. Deliberately Deferred to Later Days
+
+- Counter serving actions such as call next, complete and no-show - Day 46.
+- Branch performance analytics and staffing metrics - Day 47.
+- System-wide configuration and administration - Day 48.
+- Full reporting/history/disruption UX - Day 49.
+- Final real-time/responsive/release audit - Day 50.
+
+## 57. Day 46 Handoff
+
+Day 46 should build a different task-focused counter staff surface using the same backend-authority principle.
+
+The repeated counter workflow is:
+
+```text
+WAITING QUEUE
+      |
+      v
+CALL NEXT
+      |
+      v
+CURRENT CUSTOMER
+      |
+      +--> COMPLETE
+      |
+      +--> NO-SHOW
+      |
+      v
+NEXT CUSTOMER
+```
+
+Receptionist search, guest intake, manager analytics and administrator controls should not be copied into the counter workspace unless a genuine counter task requires them.
+
+### Engineering lesson
+
+Different roles can use the same queue data while still needing completely different task-focused interfaces.
+
+## 58. Final Day 45 Outcome
+
+Day 45 is complete, merged and verified. Smart Q now has a functional receptionist workspace instead of a placeholder shell.
+
+Reception can identify branch customers, inspect booking and queue state, perform staff-assisted check-in, create guest walk-ins, confirm backend-generated queue tickets and view the current branch waiting queue while preserving server-owned branch scope, check-in rules, priority and queue numbering.
+
+The codebase is ready to move into Day 46 from a known-good, documented baseline.
