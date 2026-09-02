@@ -9,12 +9,12 @@ import {
 
 const shell = document.querySelector("[data-app-shell]");
 const expectedRole = shell?.dataset.expectedRole || "";
-const logoutButton = document.querySelector("[data-logout]");
-const securityForm = document.querySelector("[data-security-form]");
-const securityMessage = document.querySelector("[data-security-message]");
+const logoutButton = shell?.querySelector("[data-logout]") || null;
+const securityForm = shell?.querySelector("[data-security-form]") || null;
+const securityMessage = shell?.querySelector("[data-security-message]") || null;
 
 function setText(selector, value) {
-    const node = document.querySelector(selector);
+    const node = shell?.querySelector(selector);
     if (node) node.textContent = value || "—";
 }
 
@@ -29,7 +29,7 @@ function renderAccount(user) {
 }
 
 function renderRoleNavigation(role) {
-    for (const node of document.querySelectorAll("[data-role-nav]")) {
+    for (const node of shell?.querySelectorAll("[data-role-nav]") || []) {
         node.hidden = node.dataset.roleNav !== role;
     }
 }
@@ -96,7 +96,7 @@ async function bootstrapShell() {
         renderWorkspaceCopy(user.role);
         shell.dataset.ready = "true";
     } catch (error) {
-        const main = document.querySelector("[data-shell-error]");
+        const main = shell.querySelector("[data-shell-error]");
         if (main) {
             main.hidden = false;
             main.textContent = "Smart Q could not restore this session. Refresh the page or sign in again.";
