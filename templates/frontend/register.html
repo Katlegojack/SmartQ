@@ -1,0 +1,64 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Create a Smart Q customer account.">
+    <title>Create account | Smart Q</title>
+    <link rel="stylesheet" href="{% static 'css/smartq.css' %}">
+    <link rel="stylesheet" href="{% static 'css/auth-shell.css' %}">
+    <script type="module" src="{% static 'js/pages/register.js' %}" defer></script>
+</head>
+<body class="auth-page">
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    <header class="topbar">
+        <div class="topbar__inner container">
+            <a class="brand" href="/" aria-label="Smart Q home">
+                <span class="brand__mark" aria-hidden="true">SQ</span>
+                <span class="brand__text"><strong>Smart Q</strong><small>Where Time Meets Priority</small></span>
+            </a>
+            <a class="nav-link" href="/login/">Sign in</a>
+        </div>
+    </header>
+
+    <main class="auth-main auth-main--register" id="main-content">
+        <div class="container auth-layout auth-layout--register">
+            <section class="auth-intro" aria-labelledby="register-heading">
+                <p class="eyebrow">Customer registration</p>
+                <h1 id="register-heading">Create your Smart Q account.</h1>
+                <p>Public registration creates a customer account only. Staff access is provisioned through protected administration workflows.</p>
+                <div class="notice notice--info">Your profile information supports queue eligibility rules and account identification. Operational decisions remain controlled by the backend.</div>
+            </section>
+
+            <section class="auth-card auth-card--wide" aria-label="Registration form">
+                <div class="auth-card__header">
+                    <p class="kicker">Account details</p>
+                    <h2>Customer registration</h2>
+                    <p>Complete the fields below to create and open your customer workspace.</p>
+                </div>
+                <div class="form-message" data-form-message hidden role="status" aria-live="polite"></div>
+                <form class="form-stack" data-register-form novalidate>
+                    <div class="form-grid form-grid--2">
+                        <label class="field"><span class="field__label">First name</span><input class="input" type="text" name="first_name" autocomplete="given-name"><span class="field__error" data-field-error="first_name" hidden></span></label>
+                        <label class="field"><span class="field__label">Last name</span><input class="input" type="text" name="last_name" autocomplete="family-name"><span class="field__error" data-field-error="last_name" hidden></span></label>
+                    </div>
+                    <label class="field"><span class="field__label">Email</span><input class="input" type="email" name="email" autocomplete="email"><span class="field__error" data-field-error="email" hidden></span></label>
+                    <label class="field"><span class="field__label">Username</span><input class="input" type="text" name="username" autocomplete="username" required><span class="field__error" data-field-error="username" hidden></span></label>
+                    <div class="form-grid form-grid--2">
+                        <label class="field"><span class="field__label">Date of birth</span><input class="input" type="date" name="date_of_birth" autocomplete="bday" required><span class="field__error" data-field-error="date_of_birth" hidden></span></label>
+                        <label class="field"><span class="field__label">Gender</span><select class="input" name="gender" required><option value="">Select</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select><span class="field__error" data-field-error="gender" hidden></span></label>
+                    </div>
+                    <label class="check-field"><input type="checkbox" name="disability_status"><span><strong>Disability status</strong><small>Select this when the profile should record disability status.</small></span></label>
+                    <div class="form-grid form-grid--2">
+                        <label class="field"><span class="field__label">Password</span><input class="input" type="password" name="password" autocomplete="new-password" required><span class="field__error" data-field-error="password" hidden></span></label>
+                        <label class="field"><span class="field__label">Confirm password</span><input class="input" type="password" name="confirm_password" autocomplete="new-password" required><span class="field__error" data-field-error="confirm_password" hidden></span></label>
+                    </div>
+                    <button class="btn btn--primary btn--block" type="submit">Create account</button>
+                </form>
+                <p class="auth-card__footer">Already registered? <a href="/login/">Sign in</a>.</p>
+            </section>
+        </div>
+    </main>
+</body>
+</html>

@@ -71,5 +71,8 @@ jobs:
       - name: Run Day 41 frontend foundation tests
         run: python manage.py test smartq.test_frontend
 
+      - name: Run Day 42 authentication and app shell tests
+        run: python manage.py test smartq.test_day42_frontend_auth
+
       - name: Run full test suite
         run: python manage.py test

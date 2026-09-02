@@ -1,0 +1,113 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Smart Q authenticated application workspace.">
+    <title>{{ workspace_title|default:'Workspace' }} | Smart Q</title>
+    <link rel="stylesheet" href="{% static 'css/smartq.css' %}">
+    <link rel="stylesheet" href="{% static 'css/auth-shell.css' %}">
+    <script type="module" src="{% static 'js/pages/app-shell.js' %}" defer></script>
+</head>
+<body class="app-page" data-app-shell data-expected-role="{{ workspace_role|default:'' }}">
+    <a class="skip-link" href="#workspace-main">Skip to workspace</a>
+
+    <div class="app-layout">
+        <aside class="sidebar" aria-label="Smart Q workspace navigation">
+            <a class="brand sidebar__brand" href="/" aria-label="Smart Q home">
+                <span class="brand__mark" aria-hidden="true">SQ</span>
+                <span class="brand__text"><strong>Smart Q</strong><small>Where Time Meets Priority</small></span>
+            </a>
+
+            <div class="sidebar__context">
+                <span class="sidebar__context-label">Signed-in role</span>
+                <strong data-shell-role>Loading...</strong>
+                <small data-shell-branch>Verifying session</small>
+            </div>
+
+            <nav class="side-nav" aria-label="Workspace sections">
+                <a class="side-nav__item is-active" href="#overview">Overview</a>
+                <a class="side-nav__item" href="#account">My account</a>
+                <a class="side-nav__item" href="#security">Security</a>
+                <span class="side-nav__divider" aria-hidden="true"></span>
+                <span class="side-nav__item side-nav__item--muted" data-role-nav="customer" hidden>Customer operations continue Day 43</span>
+                <span class="side-nav__item side-nav__item--muted" data-role-nav="receptionist" hidden>Reception operations continue Day 45</span>
+                <span class="side-nav__item side-nav__item--muted" data-role-nav="counter_staff" hidden>Counter operations continue Day 46</span>
+                <span class="side-nav__item side-nav__item--muted" data-role-nav="branch_manager" hidden>Manager operations continue Day 47</span>
+                <span class="side-nav__item side-nav__item--muted" data-role-nav="system_admin" hidden>Admin operations continue Day 48</span>
+            </nav>
+
+            <div class="sidebar__footer">
+                <button class="btn btn--secondary btn--block" type="button" data-logout>Sign out</button>
+            </div>
+        </aside>
+
+        <div class="workspace">
+            <header class="workspace-topbar">
+                <div>
+                    <p class="kicker">Authenticated workspace</p>
+                    <h1>{{ workspace_title|default:'Smart Q workspace' }}</h1>
+                </div>
+                <span class="session-chip"><span class="status-dot status-dot--success" aria-hidden="true"></span> Session active</span>
+            </header>
+
+            <main class="workspace-main" id="workspace-main">
+                <div class="notice notice--error" data-shell-error hidden role="alert"></div>
+
+                <section class="workspace-section" id="overview" aria-labelledby="workspace-heading">
+                    <div class="section-heading section-heading--compact">
+                        <p class="eyebrow">Day 42 application shell</p>
+                        <h2 id="workspace-heading" data-workspace-title>Restoring your workspace</h2>
+                        <p data-workspace-copy>Smart Q is verifying your account role and branch scope.</p>
+                    </div>
+
+                    <div class="workspace-grid">
+                        <article class="panel summary-panel">
+                            <p class="kicker">Identity</p>
+                            <h3 data-user-name>Loading...</h3>
+                            <dl class="detail-list">
+                                <div><dt>Username</dt><dd data-user-username>—</dd></div>
+                                <div><dt>Role</dt><dd data-user-role>—</dd></div>
+                                <div><dt>Branch scope</dt><dd data-user-branch>—</dd></div>
+                            </dl>
+                        </article>
+                        <article class="panel summary-panel">
+                            <p class="kicker">Frontend contract</p>
+                            <h3>Backend authority preserved</h3>
+                            <p>Role, branch, queue, booking and security rules continue to come from the Smart Q API. The browser presents state; it does not redefine it.</p>
+                            <span class="badge badge--success">Session verified</span>
+                        </article>
+                    </div>
+                </section>
+
+                <section class="workspace-section" id="account" aria-labelledby="account-heading">
+                    <div class="panel">
+                        <div class="panel__header">
+                            <div><p class="kicker">Account</p><h2 id="account-heading">Current profile</h2></div>
+                            <span class="badge badge--info">Read from /me/</span>
+                        </div>
+                        <p class="muted">Profile editing is not introduced on Day 42. This view proves session restoration and account identity against the existing backend contract.</p>
+                    </div>
+                </section>
+
+                <section class="workspace-section" id="security" aria-labelledby="security-heading">
+                    <div class="panel security-panel">
+                        <div class="panel__header">
+                            <div><p class="kicker">Account security</p><h2 id="security-heading">Change password</h2></div>
+                        </div>
+                        <p class="muted">Your current trusted session remains active after a successful password change.</p>
+                        <div class="form-message" data-security-message hidden role="status" aria-live="polite"></div>
+                        <form class="form-stack security-form" data-security-form>
+                            <label class="field"><span class="field__label">Current password</span><input class="input" type="password" name="current_password" autocomplete="current-password" required></label>
+                            <label class="field"><span class="field__label">New password</span><input class="input" type="password" name="new_password" autocomplete="new-password" required></label>
+                            <label class="field"><span class="field__label">Confirm new password</span><input class="input" type="password" name="confirm_password" autocomplete="new-password" required></label>
+                            <div><button class="btn btn--primary" type="submit">Change password</button></div>
+                        </form>
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+</body>
+</html>

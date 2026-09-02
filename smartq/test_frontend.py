@@ -10,7 +10,7 @@ class FrontendFoundationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Smart Q")
         self.assertContains(response, "Queue intelligence platform")
-        self.assertContains(response, "Backend v1 ready for frontend integration")
+        self.assertContains(response, "Backend v1 connected to the frontend authentication shell")
 
     def test_frontend_home_references_shared_assets(self):
         response = self.client.get(reverse("frontend_home"))

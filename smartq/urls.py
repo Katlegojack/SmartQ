@@ -2,12 +2,16 @@
 URL configuration for Smart Q.
 
 API routes are grouped by Django app so each domain owns its own endpoint paths.
+Frontend routes remain thin Django template entry points; authentication, role and
+branch authority continue to come from the existing API contract.
 """
 
 from django.contrib import admin
 from django.urls import include, path
 from django.views.generic import TemplateView
 
+
+APP_TEMPLATE = "frontend/app_shell.html"
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -28,7 +32,65 @@ urlpatterns = [
     # Day 34 manager read-model APIs.
     path("api/v1/dashboard/", include("dashboard.api_urls")),
 
-    # Frontend foundation. Role-aware screens are added from Day 42 onward.
+    # Public frontend entry points.
+    path("login/", TemplateView.as_view(template_name="frontend/login.html"), name="frontend_login"),
+    path(
+        "register/",
+        TemplateView.as_view(template_name="frontend/register.html"),
+        name="frontend_register",
+    ),
+
+    # Authenticated frontend shell. JavaScript restores the session through /me/
+    # and redirects /app/ to the route that matches the backend-provided role.
+    path(
+        "app/",
+        TemplateView.as_view(
+            template_name=APP_TEMPLATE,
+            extra_context={"workspace_title": "Smart Q workspace", "workspace_role": ""},
+        ),
+        name="frontend_app",
+    ),
+    path(
+        "app/customer/",
+        TemplateView.as_view(
+            template_name=APP_TEMPLATE,
+            extra_context={"workspace_title": "Customer workspace", "workspace_role": "customer"},
+        ),
+        name="frontend_customer_workspace",
+    ),
+    path(
+        "app/reception/",
+        TemplateView.as_view(
+            template_name=APP_TEMPLATE,
+            extra_context={"workspace_title": "Reception workspace", "workspace_role": "receptionist"},
+        ),
+        name="frontend_reception_workspace",
+    ),
+    path(
+        "app/counter/",
+        TemplateView.as_view(
+            template_name=APP_TEMPLATE,
+            extra_context={"workspace_title": "Counter workspace", "workspace_role": "counter_staff"},
+        ),
+        name="frontend_counter_workspace",
+    ),
+    path(
+        "app/manager/",
+        TemplateView.as_view(
+            template_name=APP_TEMPLATE,
+            extra_context={"workspace_title": "Branch management workspace", "workspace_role": "branch_manager"},
+        ),
+        name="frontend_manager_workspace",
+    ),
+    path(
+        "app/admin/",
+        TemplateView.as_view(
+            template_name=APP_TEMPLATE,
+            extra_context={"workspace_title": "System administration workspace", "workspace_role": "system_admin"},
+        ),
+        name="frontend_admin_workspace",
+    ),
+
     path(
         "",
         TemplateView.as_view(template_name="frontend/index.html"),
