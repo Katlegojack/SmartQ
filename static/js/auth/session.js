@@ -16,6 +16,8 @@ export const ROLE_LABELS = Object.freeze({
     system_admin: "System Administrator",
 });
 
+let currentAccountPromise = null;
+
 export function routeForRole(role) {
     return ROLE_ROUTES[role] || "/";
 }
@@ -24,15 +26,21 @@ export function roleLabel(role) {
     return ROLE_LABELS[role] || "Smart Q user";
 }
 
-export async function getCurrentAccount() {
-    try {
-        return await apiRequest("/api/v1/accounts/me/");
-    } catch (error) {
-        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
-            return null;
-        }
-        throw error;
+export function clearCurrentAccountCache() {
+    currentAccountPromise = null;
+}
+
+export function getCurrentAccount({ refresh = false } = {}) {
+    if (refresh || !currentAccountPromise) {
+        currentAccountPromise = apiRequest("/api/v1/accounts/me/").catch(error => {
+            if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+                return null;
+            }
+            currentAccountPromise = null;
+            throw error;
+        });
     }
+    return currentAccountPromise;
 }
 
 export async function loginAccount(username, password) {
@@ -41,6 +49,7 @@ export async function loginAccount(username, password) {
         body: { username, password },
     });
     clearCsrfToken();
+    currentAccountPromise = Promise.resolve(data.user);
     return data.user;
 }
 
@@ -52,8 +61,12 @@ export async function registerCustomer(payload) {
 }
 
 export async function logoutAccount() {
-    await apiRequest("/api/v1/accounts/logout/", { method: "POST" });
-    clearCsrfToken();
+    try {
+        await apiRequest("/api/v1/accounts/logout/", { method: "POST" });
+    } finally {
+        clearCurrentAccountCache();
+        clearCsrfToken();
+    }
 }
 
 export async function changePassword(currentPassword, newPassword) {
