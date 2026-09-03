@@ -90,15 +90,14 @@ class Day50FrontendReleaseAuditTests(TestCase):
         self.assertIn(".sidebar {\n        position: static;", shell_css)
 
     def test_every_workspace_stylesheet_has_a_phone_breakpoint(self):
-        phone_breakpoint = re.compile(r"@media\s*\(max-width\s*:\s*760px\)")
-        compact_phone_breakpoint = re.compile(r"@media\s*\(max-width\s*:\s*760px\)", re.I)
+        phone_breakpoint = re.compile(r"@media\s*\(max-width\s*:\s*760px\)", re.I)
         for path in self.WORKSPACE_CSS:
             with self.subTest(path=path):
                 css = self.static_text(path)
                 normalized = css.replace("@media(max-width:760px)", "@media (max-width: 760px)")
-                self.assertTrue(
-                    phone_breakpoint.search(normalized)
-                    or compact_phone_breakpoint.search(normalized),
+                self.assertRegex(
+                    normalized,
+                    phone_breakpoint,
                     f"{path} must define a <=760px release breakpoint",
                 )
 
@@ -120,6 +119,29 @@ class Day50FrontendReleaseAuditTests(TestCase):
         self.assertIn("if (refresh || !currentAccountPromise)", session_js)
         self.assertIn("return currentAccountPromise", session_js)
         self.assertIn("clearCurrentAccountCache()", session_js)
+
+    def test_login_return_routes_are_role_allowlisted(self):
+        session_js = self.static_text("js/auth/session.js")
+        login_js = self.static_text("js/pages/login.js")
+
+        self.assertIn(
+            'customer: Object.freeze(["/app/customer/", "/app/recovery/"])',
+            session_js,
+        )
+        self.assertIn(
+            'branch_manager: Object.freeze(["/app/manager/", "/app/history/"])',
+            session_js,
+        )
+        self.assertIn(
+            'system_admin: Object.freeze(["/app/admin/", "/app/history/"])',
+            session_js,
+        )
+        self.assertIn("export function safeNextRoute", session_js)
+        self.assertIn('normalized.startsWith("//")', session_js)
+        self.assertIn("safeNextRoute", login_js)
+        self.assertIn('new URLSearchParams(window.location.search).get("next")', login_js)
+        self.assertIn("window.location.replace(safeRoute)", login_js)
+        self.assertNotIn("window.location.replace(requested)", login_js)
 
     def test_customer_dashboard_release_navigation_and_security_contract(self):
         response = self.client.get(reverse("frontend_customer_workspace"))
