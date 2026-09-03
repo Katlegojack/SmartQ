@@ -4,7 +4,7 @@
 
 Smart Q is a Django + Django REST Framework Queue Intelligence Platform designed to make queues more predictable, transparent, fair, and operationally efficient.
 
-> **Current development state:** Backend v1 is complete and merged through Day 40. Frontend Days 41-46 are complete and merged into `main`. Day 46 replaces the generic Counter Staff shell with an assigned-counter serving workspace for lifecycle controls, backend-owned Call Next, current-customer resolution and queue-type-specific waiting visibility. Day 47 Branch Manager Workspace is the next frontend milestone.
+> **Current development state:** Backend v1 is complete and merged through Day 40. Frontend Days 41-47 are complete. Day 47 replaces the generic Branch Manager shell with an own-branch operations workspace for daily queue visibility, service demand, live counter state and safe Counter Staff assignment. Day 48 System Admin Workspace is the next frontend milestone.
 
 ## Product principle
 
@@ -85,7 +85,7 @@ SYSTEM_ADMIN
 | Customer | Own account, appointment booking/rescheduling, bookings, live queue, own disruption options, own booking timeline |
 | Receptionist | Branch queue reads, booking search, staff check-in, guest walk-ins |
 | Counter Staff | Assigned-counter lifecycle, matching waiting queue visibility, Call Next, Complete and No-show |
-| Branch Manager | Own-branch counter assignment, disruption control, dashboard, branch audit history and historical reports |
+| Branch Manager | Own-branch daily dashboard, queue/service visibility, live counters, Counter Staff assignment, disruption control, audit history and reports |
 | System Admin | Global operational/audit/reporting access plus staff, branch, service and BranchService configuration |
 
 Smart Q's `SYSTEM_ADMIN` business role is intentionally separate from Django `is_superuser`.
@@ -131,6 +131,7 @@ Day 43 -> live Customer Dashboard
 Day 44 -> appointment booking + availability + rescheduling experience
 Day 45 -> live Receptionist Workspace
 Day 46 -> assigned-counter Counter Staff serving workspace
+Day 47 -> own-branch Branch Manager operations workspace
 ```
 
 The browser presents backend state and coordinates API requests. It does not recreate Smart Q business rules.
@@ -145,7 +146,7 @@ Frontend routes currently include:
 /app/customer/          customer dashboard + booking workflow
 /app/reception/         receptionist operations workspace
 /app/counter/           Counter Staff serving workspace
-/app/manager/           branch manager shell
+/app/manager/           Branch Manager operations workspace
 /app/admin/             system admin shell
 ```
 
@@ -228,6 +229,30 @@ Counter free -> CALL NEXT
 ```
 
 Counter Staff never choose their own counter, branch, queue type or a specific waiting customer. The waiting table is a read-only preview; the backend Call Next service owns allocation. A paused counter cannot call another customer, but it may finish the customer already in service.
+
+### Day 47 Branch Manager operations flow
+
+```text
+Branch Manager session
+        ↓
+Assigned branch from /accounts/me/
+        ↓
+Select dashboard date
+        ↓
+Read daily customer + queue + service metrics
+        ↓
+Inspect live current counter state
+        ↓
+Closed/free counter needs staff?
+        ↓
+Load own-branch active Counter Staff
+        ↓
+Backend validates assignment
+        ↓
+Refresh manager dashboard + staffing directory
+```
+
+The manager has no branch selector and cannot use the Day 47 screen to override queue priority, call customers, complete service, mark no-shows or administer staff accounts. Counter state remains explicitly live/current even when customer metrics are viewed for a historical date.
 
 ## System Admin control plane
 
@@ -337,6 +362,7 @@ Rules include one staff -> one counter, same-branch assignment, no self-assignme
 ```http
 GET  /api/v1/counters/my/
 GET  /api/v1/counters/branches/<branch_id>/
+GET  /api/v1/counters/branches/<branch_id>/counter-staff/
 POST /api/v1/counters/<counter_id>/assign/
 POST /api/v1/counters/<counter_id>/unassign/
 POST /api/v1/counters/<counter_id>/open/
@@ -344,6 +370,8 @@ POST /api/v1/counters/<counter_id>/pause/
 POST /api/v1/counters/<counter_id>/resume/
 POST /api/v1/counters/<counter_id>/close/
 ```
+
+The Counter Staff directory is a narrow Day 47 read contract for authorised Branch Managers/System Admins. It returns active Counter Staff in the authorised branch and current assignment metadata; it does not widen access to the System Admin staff-management API.
 
 ## Live queue APIs
 
@@ -393,7 +421,7 @@ GET /api/v1/dashboard/branches/<branch_id>/
 GET /api/v1/dashboard/branches/<branch_id>/?date=YYYY-MM-DD
 ```
 
-Branch Manager sees only the assigned branch. System Admin can inspect any active branch.
+Branch Manager sees only the assigned branch. System Admin can inspect any active branch. Day 47 now presents this read model as a dedicated own-branch frontend with customer activity, lifecycle totals, queue-type comparison, booking/check-in context, service demand and live counter state.
 
 ## Historical operational reporting
 
@@ -552,7 +580,7 @@ GitHub Actions uses one database path:
 SQLite3 regression
 ```
 
-The job verifies dependencies, missing migrations, Django system checks, app-specific regression suites, QueueEvent audit tests, Day 39 reporting tests, Day 40 final audit tests, Day 41-46 frontend milestone tests and the complete Smart Q regression suite.
+The job verifies dependencies, missing migrations, Django system checks, app-specific regression suites, QueueEvent audit tests, Day 39 reporting tests, Day 40 final audit tests, Day 41-47 frontend milestone tests and the complete Smart Q regression suite.
 
 ## Day 40 final backend audit
 
@@ -593,15 +621,16 @@ docs/DAY43_CUSTOMER_DASHBOARD.md
 docs/DAY44_BOOKING_EXPERIENCE.md
 docs/DAY45_RECEPTION_WORKSPACE.md
 docs/DAY46_COUNTER_STAFF_WORKSPACE.md
+docs/DAY47_BRANCH_MANAGER_WORKSPACE.md
 ```
 
 ## Backend v1 capabilities
 
 Smart Q backend v1 includes customer registration/session authentication, CSRF-protected browser login, password rotation, role/branch/counter/ownership authorization, System Admin control APIs, branch/service/capacity configuration, booking/check-in, reception walk-ins, General/Priority queues, deterministic ETA, queue-number sequence allocation, counter lifecycle, manager dashboard, disruption/rescheduling, in-app notifications, QueueEvent history, customer timelines, branch audit history, historical operational reporting, environment-driven security settings, SQLite3 persistence guidance and complete SQLite3 regression verification.
 
-## Frontend capabilities through Day 46
+## Frontend capabilities through Day 47
 
-Smart Q now includes a public entry page, customer registration/sign-in, CSRF-protected session restoration, role-aware workspace routing, a live Customer Dashboard, customer-owned appointment/history views, live queue position/ETA presentation, lifecycle history, server-authoritative check-in/cancellation, a full appointment booking/rescheduling workflow, a branch-scoped Receptionist Workspace, and an assigned-counter Counter Staff Workspace for lifecycle control, matching waiting visibility, backend-owned Call Next, Complete and No-show.
+Smart Q now includes a public entry page, customer registration/sign-in, CSRF-protected session restoration, role-aware workspace routing, a live Customer Dashboard, customer-owned appointment/history views, live queue position/ETA presentation, lifecycle history, server-authoritative check-in/cancellation, a full appointment booking/rescheduling workflow, a branch-scoped Receptionist Workspace, an assigned-counter Counter Staff Workspace, and an own-branch Branch Manager Workspace for daily operational metrics, service demand, live counter visibility and safe Counter Staff assignment.
 
 ## Roadmap
 
@@ -620,8 +649,10 @@ Day 43  Customer Dashboard                        COMPLETE / MERGED
 Day 44  Booking + Availability + Rescheduling     COMPLETE / MERGED
 Day 45  Receptionist Workspace                    COMPLETE / MERGED
 Day 46  Counter Staff Workspace                   COMPLETE / MERGED
-Day 47  Branch Manager Workspace                  NEXT
-Day 48  System Admin Workspace
+Day 47  Branch Manager Workspace                  COMPLETE
+Day 48  System Admin Workspace                    NEXT
+Day 49  Reporting + Disruption/Rescheduling UX
+Day 50  Full Frontend Integration + Release Audit
 ```
 
 ## Technology stack
