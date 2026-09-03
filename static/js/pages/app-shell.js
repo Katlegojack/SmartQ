@@ -9,7 +9,8 @@ import {
 
 const shell = document.querySelector("[data-app-shell]");
 const expectedRole = shell?.dataset.expectedRole || "";
-const logoutButton = shell?.querySelector("[data-logout]") || null;
+const customerDashboardOwnsLogout = shell?.matches("[data-customer-dashboard]") || false;
+const logoutButton = customerDashboardOwnsLogout ? null : shell?.querySelector("[data-logout]") || null;
 const securityForm = shell?.querySelector("[data-security-form]") || null;
 const securityMessage = shell?.querySelector("[data-security-message]") || null;
 
@@ -64,7 +65,7 @@ function ensureCustomerRecoveryNavigation() {
     link.href = "/app/recovery/";
     link.dataset.day49RecoveryNav = "recovery";
     link.textContent = "Service recovery";
-    nav.append(link);
+    insertBeforeDivider(nav, link);
 }
 
 function renderWorkspaceCopy(role) {
