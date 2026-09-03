@@ -1,0 +1,250 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Smart Q historical reporting, audit and disruption workspace for authorised management.">
+    <title>History & reporting | Smart Q</title>
+    <link rel="stylesheet" href="{% static 'css/smartq.css' %}">
+    <link rel="stylesheet" href="{% static 'css/auth-shell.css' %}">
+    <link rel="stylesheet" href="{% static 'css/day49-workflows.css' %}">
+    <script type="module" src="{% static 'js/pages/app-shell.js' %}" defer></script>
+    <script type="module" src="{% static 'js/pages/history-reporting-workspace.js' %}" defer></script>
+</head>
+<body class="app-page" data-app-shell data-history-workspace>
+    <a class="skip-link" href="#workspace-main">Skip to historical reporting</a>
+
+    <div class="app-layout">
+        <aside class="sidebar" aria-label="History and reporting navigation">
+            <a class="brand sidebar__brand" href="/" aria-label="Smart Q home">
+                <span class="brand__mark" aria-hidden="true">SQ</span>
+                <span class="brand__text"><strong>Smart Q</strong><small>Where Time Meets Priority</small></span>
+            </a>
+
+            <div class="sidebar__context">
+                <span class="sidebar__context-label">Signed-in role</span>
+                <strong data-shell-role>Management</strong>
+                <small data-shell-branch>Verifying scope</small>
+            </div>
+
+            <nav class="side-nav" aria-label="History workspace sections">
+                <a class="side-nav__item" href="/app/manager/" data-history-back>Back to operations</a>
+                <a class="side-nav__item is-active" href="#reporting">Historical report</a>
+                <a class="side-nav__item" href="#audit">Audit trail</a>
+                <a class="side-nav__item" href="#disruptions" data-manager-only hidden>Disruptions</a>
+                <span class="side-nav__divider" aria-hidden="true"></span>
+                <a class="side-nav__item" href="#security">Security</a>
+            </nav>
+
+            <div class="sidebar__footer">
+                <button class="btn btn--secondary btn--block" type="button" data-logout>Sign out</button>
+            </div>
+        </aside>
+
+        <div class="workspace">
+            <header class="workspace-topbar day49-topbar">
+                <div>
+                    <p class="kicker">Day 49 history & recovery</p>
+                    <h1 data-history-title>Historical operations</h1>
+                </div>
+                <div class="day49-topbar__meta">
+                    <span class="day49-scope-chip" data-history-scope>Verifying access...</span>
+                    <button class="btn btn--secondary btn--sm" type="button" data-history-refresh>Refresh</button>
+                </div>
+            </header>
+
+            <main class="workspace-main day49-main" id="workspace-main">
+                <div class="notice notice--error" data-shell-error hidden role="alert"></div>
+                <div class="day49-message" data-history-message hidden role="status" aria-live="polite"></div>
+                <div class="day49-loading" data-history-loading role="status">Loading historical operations...</div>
+
+                <div data-history-content hidden>
+                    <section class="day49-section" id="reporting" aria-labelledby="reporting-heading">
+                        <div class="section-row day49-section__heading">
+                            <div>
+                                <p class="eyebrow">Append-only QueueEvent reporting</p>
+                                <h2 id="reporting-heading">Historical operational report</h2>
+                                <p>Actual wait and service time are reconstructed from lifecycle events. They remain separate from Smart Q's live ETA formula.</p>
+                            </div>
+                            <span class="day49-scope-chip" data-report-branch-label>Branch</span>
+                        </div>
+
+                        <div class="panel day49-filter-panel">
+                            <label class="field" data-admin-only hidden>
+                                <span class="field__label">Branch</span>
+                                <select class="input" data-history-branch><option value="">Choose active branch</option></select>
+                            </label>
+                            <label class="field">
+                                <span class="field__label">Start date</span>
+                                <input class="input" type="date" data-report-start required>
+                            </label>
+                            <label class="field">
+                                <span class="field__label">End date</span>
+                                <input class="input" type="date" data-report-end required>
+                            </label>
+                            <button class="btn btn--primary" type="button" data-load-report>Load report</button>
+                        </div>
+                        <p class="day49-footnote">Default period is the most recent 30 days. The backend accepts a maximum inclusive range of 366 days.</p>
+
+                        <div class="day49-metric-grid">
+                            <article class="metric-card"><span>Lifecycle events</span><strong data-report-events>0</strong><small>Reportable QueueEvent records</small></article>
+                            <article class="metric-card"><span>Completed</span><strong data-report-completed>0</strong><small>Completed outcomes</small></article>
+                            <article class="metric-card"><span>Avg actual wait</span><strong data-report-wait>—</strong><small data-report-wait-sample>0 measured waits</small></article>
+                            <article class="metric-card"><span>Avg service time</span><strong data-report-service-time>—</strong><small data-report-service-sample>0 measured services</small></article>
+                            <article class="metric-card"><span>Completion rate</span><strong data-report-completion-rate>—</strong><small>Completed / completed + no-show</small></article>
+                            <article class="metric-card"><span>No-show rate</span><strong data-report-no-show-rate>—</strong><small>Historical outcome rate</small></article>
+                        </div>
+
+                        <div class="day49-split">
+                            <article class="panel day49-mix-card">
+                                <div class="day49-card-heading"><div><p class="kicker">Check-in mix</p><h3>Queue types</h3></div></div>
+                                <div class="day49-chip-list" data-queue-type-mix></div>
+                                <div class="day49-empty-inline" data-queue-type-empty hidden>No check-ins recorded in this period.</div>
+                            </article>
+                            <article class="panel day49-mix-card">
+                                <div class="day49-card-heading"><div><p class="kicker">Check-in source</p><h3>Online vs walk-in</h3></div></div>
+                                <div class="day49-chip-list" data-source-mix></div>
+                                <div class="day49-empty-inline" data-source-empty hidden>No source data recorded in this period.</div>
+                            </article>
+                        </div>
+
+                        <div class="day49-split day49-split--wide">
+                            <article class="panel day49-table-panel">
+                                <div class="day49-card-heading"><div><p class="kicker">Daily activity</p><h3>Lifecycle by day</h3></div></div>
+                                <div class="table-wrap">
+                                    <table class="day49-table">
+                                        <thead><tr><th>Date</th><th>Checked in</th><th>Called</th><th>Completed</th><th>No-show</th><th>Cancelled</th></tr></thead>
+                                        <tbody data-daily-body></tbody>
+                                    </table>
+                                </div>
+                                <div class="day49-empty-inline" data-daily-empty hidden>No daily activity in this period.</div>
+                            </article>
+                            <article class="panel day49-table-panel">
+                                <div class="day49-card-heading"><div><p class="kicker">Service outcomes</p><h3>Activity by service</h3></div></div>
+                                <div class="table-wrap">
+                                    <table class="day49-table">
+                                        <thead><tr><th>Service</th><th>Checked in</th><th>Completed</th><th>No-show</th><th>Cancelled</th></tr></thead>
+                                        <tbody data-report-service-body></tbody>
+                                    </table>
+                                </div>
+                                <div class="day49-empty-inline" data-report-service-empty hidden>No service activity in this period.</div>
+                            </article>
+                        </div>
+                    </section>
+
+                    <section class="day49-section" id="audit" aria-labelledby="audit-heading">
+                        <div class="section-row day49-section__heading">
+                            <div>
+                                <p class="kicker">Append-only operational evidence</p>
+                                <h2 id="audit-heading">Branch audit trail</h2>
+                                <p>Recent QueueEvent records show who acted, what changed and when. Filters change only presentation; the event log remains append-only.</p>
+                            </div>
+                        </div>
+
+                        <div class="panel day49-filter-panel day49-filter-panel--audit">
+                            <label class="field">
+                                <span class="field__label">Event type</span>
+                                <select class="input" data-audit-event-filter>
+                                    <option value="">All events</option>
+                                    <option value="ticket_scheduled">Ticket scheduled</option>
+                                    <option value="checked_in">Checked in</option>
+                                    <option value="called">Called</option>
+                                    <option value="completed">Completed</option>
+                                    <option value="no_show">No-show</option>
+                                    <option value="cancelled">Cancelled</option>
+                                    <option value="rescheduled">Rescheduled</option>
+                                    <option value="disruption_rescheduled">Disruption rescheduled</option>
+                                    <option value="counter_staff_assigned">Counter staff assigned</option>
+                                    <option value="counter_staff_unassigned">Counter staff unassigned</option>
+                                    <option value="counter_opened">Counter opened</option>
+                                    <option value="counter_paused">Counter paused</option>
+                                    <option value="counter_resumed">Counter resumed</option>
+                                    <option value="counter_closed">Counter closed</option>
+                                </select>
+                            </label>
+                            <label class="field day49-search-field">
+                                <span class="field__label">Search actor / queue / booking</span>
+                                <input class="input" type="search" data-audit-search placeholder="e.g. P004, receptionist1, 132">
+                            </label>
+                            <button class="btn btn--secondary" type="button" data-refresh-audit>Refresh audit</button>
+                        </div>
+
+                        <p class="day49-footnote" data-audit-summary>0 events</p>
+                        <div class="panel day49-table-panel">
+                            <div class="table-wrap">
+                                <table class="day49-table day49-table--audit">
+                                    <thead><tr><th>Time</th><th>Event</th><th>Subject</th><th>Transition</th><th>Actor</th></tr></thead>
+                                    <tbody data-audit-body></tbody>
+                                </table>
+                            </div>
+                            <div class="day49-empty-inline" data-audit-empty hidden>No audit events match these filters.</div>
+                        </div>
+                    </section>
+
+                    <section class="day49-section" id="disruptions" data-manager-only hidden aria-labelledby="disruptions-heading">
+                        <div class="section-row day49-section__heading">
+                            <div>
+                                <p class="kicker">Branch service recovery</p>
+                                <h2 id="disruptions-heading">Disruption control</h2>
+                                <p>Pause one offered service for one booking date. Smart Q calculates impact while paused; resuming finalises impact records, notifications and customer reschedule recommendations.</p>
+                            </div>
+                            <span class="day49-scope-chip">Own branch only</span>
+                        </div>
+
+                        <div class="day49-split day49-split--disruption">
+                            <form class="panel day49-form" data-pause-form>
+                                <div class="day49-card-heading"><div><p class="kicker">New disruption</p><h3>Pause a service queue</h3></div></div>
+                                <div class="form-message" data-pause-message hidden role="status"></div>
+                                <label class="field"><span class="field__label">Service</span><select class="input" name="service_id" data-pause-service required><option value="">Choose branch service</option></select></label>
+                                <label class="field"><span class="field__label">Booking date affected</span><input class="input" type="date" name="booking_date" data-pause-date required></label>
+                                <label class="field"><span class="field__label">Reason</span><textarea class="input day49-textarea" name="reason" maxlength="500" placeholder="Operational reason for the interruption"></textarea></label>
+                                <p class="day49-footnote">Starting the same branch/service/date pause again reuses the existing active pause instead of duplicating it.</p>
+                                <button class="btn btn--primary" type="submit" data-pause-submit>Pause service</button>
+                            </form>
+
+                            <article class="panel day49-pause-detail" data-pause-detail hidden>
+                                <div class="day49-card-heading"><div><p class="kicker">Selected disruption</p><h3 data-pause-detail-title>Pause</h3></div><span class="day49-status" data-pause-detail-status>—</span></div>
+                                <dl class="day49-detail-list">
+                                    <div><dt>Booking date</dt><dd data-pause-detail-date>—</dd></div>
+                                    <div><dt>Duration</dt><dd data-pause-detail-duration>—</dd></div>
+                                    <div><dt>Lost capacity</dt><dd data-pause-detail-capacity>—</dd></div>
+                                    <div><dt>Affected waiting</dt><dd data-pause-detail-affected>—</dd></div>
+                                    <div><dt>Reschedule risk</dt><dd data-pause-detail-risk>—</dd></div>
+                                    <div><dt>Reason</dt><dd data-pause-detail-reason>—</dd></div>
+                                </dl>
+                                <div class="day49-risk-block"><span>Risk queue numbers</span><strong data-pause-detail-risk-tickets>None currently</strong></div>
+                            </article>
+                        </div>
+
+                        <div class="panel day49-table-panel">
+                            <div class="day49-card-heading"><div><p class="kicker">Persistent disruption state</p><h3>Current & recent pauses</h3></div><button class="btn btn--secondary btn--sm" type="button" data-refresh-pauses>Refresh pauses</button></div>
+                            <div class="table-wrap">
+                                <table class="day49-table">
+                                    <thead><tr><th>Service / date</th><th>Status</th><th>Duration</th><th>Affected</th><th>At risk</th><th>Action</th></tr></thead>
+                                    <tbody data-pause-body></tbody>
+                                </table>
+                            </div>
+                            <div class="day49-empty-inline" data-pause-empty hidden>No queue pauses recorded for this branch.</div>
+                        </div>
+                    </section>
+
+                    <section class="day49-section" id="security" aria-labelledby="security-heading">
+                        <div class="panel security-panel">
+                            <div class="panel__header"><div><p class="kicker">Account security</p><h2 id="security-heading">Change password</h2></div></div>
+                            <p class="muted">Your current trusted session remains active after a successful password change.</p>
+                            <div class="form-message" data-security-message hidden role="status" aria-live="polite"></div>
+                            <form class="form-stack security-form" data-security-form>
+                                <label class="field"><span class="field__label">Current password</span><input class="input" type="password" name="current_password" autocomplete="current-password" required></label>
+                                <label class="field"><span class="field__label">New password</span><input class="input" type="password" name="new_password" autocomplete="new-password" required></label>
+                                <label class="field"><span class="field__label">Confirm new password</span><input class="input" type="password" name="confirm_password" autocomplete="new-password" required></label>
+                                <div><button class="btn btn--primary" type="submit">Change password</button></div>
+                            </form>
+                        </div>
+                    </section>
+                </div>
+            </main>
+        </div>
+    </div>
+</body>
+</html>
