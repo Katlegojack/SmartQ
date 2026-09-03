@@ -8,6 +8,14 @@ export const ROLE_ROUTES = Object.freeze({
     system_admin: "/app/admin/",
 });
 
+export const ROLE_RETURN_ROUTES = Object.freeze({
+    customer: Object.freeze(["/app/customer/", "/app/recovery/"]),
+    receptionist: Object.freeze(["/app/reception/"]),
+    counter_staff: Object.freeze(["/app/counter/"]),
+    branch_manager: Object.freeze(["/app/manager/", "/app/history/"]),
+    system_admin: Object.freeze(["/app/admin/", "/app/history/"]),
+});
+
 export const ROLE_LABELS = Object.freeze({
     customer: "Customer",
     receptionist: "Receptionist",
@@ -20,6 +28,12 @@ let currentAccountPromise = null;
 
 export function routeForRole(role) {
     return ROLE_ROUTES[role] || "/";
+}
+
+export function safeNextRoute(role, candidate) {
+    const normalized = typeof candidate === "string" ? candidate.trim() : "";
+    if (!normalized || normalized.startsWith("//")) return "";
+    return ROLE_RETURN_ROUTES[role]?.includes(normalized) ? normalized : "";
 }
 
 export function roleLabel(role) {
