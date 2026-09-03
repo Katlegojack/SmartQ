@@ -1,0 +1,161 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Smart Q branch manager workspace for branch operations, queue visibility and counter staffing.">
+    <title>Branch manager | Smart Q</title>
+    <link rel="stylesheet" href="{% static 'css/smartq.css' %}">
+    <link rel="stylesheet" href="{% static 'css/auth-shell.css' %}">
+    <link rel="stylesheet" href="{% static 'css/manager-workspace.css' %}">
+    <script type="module" src="{% static 'js/pages/app-shell.js' %}" defer></script>
+    <script type="module" src="{% static 'js/pages/manager-workspace.js' %}" defer></script>
+</head>
+<body class="app-page" data-app-shell data-manager-workspace data-expected-role="branch_manager">
+    <a class="skip-link" href="#workspace-main">Skip to branch dashboard</a>
+
+    <div class="app-layout">
+        <aside class="sidebar" aria-label="Branch manager navigation">
+            <a class="brand sidebar__brand" href="/" aria-label="Smart Q home">
+                <span class="brand__mark" aria-hidden="true">SQ</span>
+                <span class="brand__text"><strong>Smart Q</strong><small>Where Time Meets Priority</small></span>
+            </a>
+
+            <div class="sidebar__context">
+                <span class="sidebar__context-label">Signed-in role</span>
+                <strong data-shell-role>Branch Manager</strong>
+                <small data-shell-branch>Verifying branch</small>
+            </div>
+
+            <nav class="side-nav" aria-label="Manager workspace sections">
+                <a class="side-nav__item is-active" href="#overview">Branch overview</a>
+                <a class="side-nav__item" href="#queues">Queue activity</a>
+                <a class="side-nav__item" href="#services">Service demand</a>
+                <a class="side-nav__item" href="#counters">Counters & staffing</a>
+                <span class="side-nav__divider" aria-hidden="true"></span>
+                <a class="side-nav__item" href="#security">Security</a>
+            </nav>
+
+            <div class="sidebar__footer">
+                <button class="btn btn--secondary btn--block" type="button" data-logout>Sign out</button>
+            </div>
+        </aside>
+
+        <div class="workspace">
+            <header class="workspace-topbar manager-topbar">
+                <div>
+                    <p class="kicker">Branch manager workspace</p>
+                    <h1 data-manager-title>Branch operations</h1>
+                </div>
+                <div class="manager-topbar__actions">
+                    <label class="date-control">
+                        <span>Dashboard date</span>
+                        <input class="input" type="date" data-dashboard-date>
+                    </label>
+                    <button class="btn btn--secondary btn--sm" type="button" data-refresh-dashboard>Refresh</button>
+                </div>
+            </header>
+
+            <main class="workspace-main manager-main" id="workspace-main">
+                <div class="notice notice--error" data-shell-error hidden role="alert"></div>
+                <div class="manager-message" data-manager-message hidden role="status" aria-live="polite"></div>
+                <div class="manager-loading" data-manager-loading role="status">Loading branch operations...</div>
+
+                <div data-manager-content hidden>
+                    <section class="manager-section" id="overview" aria-labelledby="overview-heading">
+                        <div class="section-row manager-section__heading">
+                            <div>
+                                <p class="eyebrow">Operational overview</p>
+                                <h2 id="overview-heading" data-branch-name>Branch</h2>
+                                <p><span data-branch-city>—</span> · <span data-branch-hours>—</span> · customer metrics for <strong data-report-date>—</strong>.</p>
+                            </div>
+                            <span class="scope-chip">Own branch only</span>
+                        </div>
+
+                        <div class="metric-grid">
+                            <article class="metric-card"><span>Total customers</span><strong data-metric-total>0</strong><small>Scheduled + active + resolved</small></article>
+                            <article class="metric-card"><span>Active now</span><strong data-metric-active>0</strong><small>Waiting + serving</small></article>
+                            <article class="metric-card"><span>Completed</span><strong data-metric-completed>0</strong><small>Completed tickets for selected date</small></article>
+                            <article class="metric-card"><span>Checked in</span><strong data-metric-checked-in>0</strong><small>Entered the live queue</small></article>
+                        </div>
+                    </section>
+
+                    <section class="manager-section" id="queues" aria-labelledby="queues-heading">
+                        <div class="section-row manager-section__heading">
+                            <div><p class="kicker">Queue activity</p><h3 id="queues-heading">Lifecycle and queue mix</h3><p>General and Priority are shown separately, while allocation rules remain backend-owned.</p></div>
+                        </div>
+
+                        <div class="manager-split">
+                            <article class="panel lifecycle-panel">
+                                <div class="panel-title-row"><h4>Combined lifecycle</h4><span data-lifecycle-total>0 tickets</span></div>
+                                <div class="lifecycle-grid">
+                                    <div><span>Scheduled</span><strong data-life-scheduled>0</strong></div>
+                                    <div><span>Waiting</span><strong data-life-waiting>0</strong></div>
+                                    <div><span>Serving</span><strong data-life-serving>0</strong></div>
+                                    <div><span>Completed</span><strong data-life-completed>0</strong></div>
+                                    <div><span>No-show</span><strong data-life-no-show>0</strong></div>
+                                    <div><span>Cancelled</span><strong data-life-cancelled>0</strong></div>
+                                </div>
+                            </article>
+
+                            <article class="panel queue-mix-panel">
+                                <div class="panel-title-row"><h4>Queue type comparison</h4><span>Selected date</span></div>
+                                <div class="queue-type-card"><div><strong>Priority</strong><small>Backend-classified</small></div><div class="queue-type-values"><span><b data-priority-waiting>0</b> waiting</span><span><b data-priority-serving>0</b> serving</span><span><b data-priority-completed>0</b> completed</span></div></div>
+                                <div class="queue-type-card"><div><strong>General</strong><small>Standard queue</small></div><div class="queue-type-values"><span><b data-general-waiting>0</b> waiting</span><span><b data-general-serving>0</b> serving</span><span><b data-general-completed>0</b> completed</span></div></div>
+                            </article>
+                        </div>
+
+                        <div class="manager-split manager-split--compact">
+                            <article class="panel mini-summary"><span>Online bookings</span><strong data-source-online>0</strong></article>
+                            <article class="panel mini-summary"><span>Walk-ins</span><strong data-source-walkin>0</strong></article>
+                            <article class="panel mini-summary"><span>Not checked in</span><strong data-not-checked-in>0</strong></article>
+                        </div>
+                    </section>
+
+                    <section class="manager-section" id="services" aria-labelledby="services-heading">
+                        <div class="section-row manager-section__heading">
+                            <div><p class="kicker">Service demand</p><h3 id="services-heading">Customers by service</h3><p>Demand is derived from bookings for the selected date rather than stored as duplicate dashboard state.</p></div>
+                        </div>
+                        <div class="panel service-demand-panel">
+                            <div class="service-demand-list" data-service-list></div>
+                            <div class="empty-inline" data-service-empty hidden>No service demand recorded for this date.</div>
+                        </div>
+                    </section>
+
+                    <section class="manager-section" id="counters" aria-labelledby="counters-heading">
+                        <div class="section-row manager-section__heading">
+                            <div><p class="kicker">Live current state</p><h3 id="counters-heading">Counters & staffing</h3><p>Counter state is live even when the selected dashboard date is historical. Staff assignment changes are allowed only while a counter is closed and free.</p></div>
+                            <div class="counter-summary"><span><b data-counter-open>0</b> open</span><span><b data-counter-busy>0</b> busy</span><span><b data-counter-free>0</b> free</span><span><b data-counter-unstaffed>0</b> unstaffed</span></div>
+                        </div>
+
+                        <div class="panel manager-table-panel">
+                            <div class="table-wrap">
+                                <table class="manager-table">
+                                    <thead><tr><th>Counter</th><th>Queue</th><th>Status</th><th>Assigned staff</th><th>Current customer</th><th>Staffing action</th></tr></thead>
+                                    <tbody data-counter-body></tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <p class="manager-footnote">Managers assign staff; Counter Staff operate their own assigned counter. Day 47 does not let managers impersonate a counter operator from this screen.</p>
+                    </section>
+
+                    <section class="manager-section" id="security" aria-labelledby="security-heading">
+                        <div class="panel security-panel">
+                            <div class="panel__header"><div><p class="kicker">Account security</p><h2 id="security-heading">Change password</h2></div></div>
+                            <p class="muted">Your current trusted session remains active after a successful password change.</p>
+                            <div class="form-message" data-security-message hidden role="status" aria-live="polite"></div>
+                            <form class="form-stack security-form" data-security-form>
+                                <label class="field"><span class="field__label">Current password</span><input class="input" type="password" name="current_password" autocomplete="current-password" required></label>
+                                <label class="field"><span class="field__label">New password</span><input class="input" type="password" name="new_password" autocomplete="new-password" required></label>
+                                <label class="field"><span class="field__label">Confirm new password</span><input class="input" type="password" name="confirm_password" autocomplete="new-password" required></label>
+                                <div><button class="btn btn--primary" type="submit">Change password</button></div>
+                            </form>
+                        </div>
+                    </section>
+                </div>
+            </main>
+        </div>
+    </div>
+</body>
+</html>
