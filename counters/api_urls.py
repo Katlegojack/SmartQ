@@ -10,6 +10,7 @@ from .api_views import (
     CounterUnassignStaffAPIView,
     MyAssignedCounterAPIView,
 )
+from .manager_api import BranchCounterStaffListAPIView
 
 
 urlpatterns = [
@@ -18,6 +19,11 @@ urlpatterns = [
         "branches/<int:branch_id>/",
         BranchCounterListAPIView.as_view(),
         name="api_branch_counter_list",
+    ),
+    path(
+        "branches/<int:branch_id>/counter-staff/",
+        BranchCounterStaffListAPIView.as_view(),
+        name="api_branch_counter_staff_list",
     ),
     path(
         "<int:counter_id>/assign/",
