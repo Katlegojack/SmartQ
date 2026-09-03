@@ -157,6 +157,21 @@ REST_FRAMEWORK = {
 CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS")
 CORS_ALLOW_CREDENTIALS = env_bool("CORS_ALLOW_CREDENTIALS", default=True)
 CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS")
+
+# Local development may be opened through either HTTP or an HTTPS localhost
+# proxy/preview. Trust only these explicit loopback origins and only outside
+# production. This keeps local/Codespaces smoke tests usable without weakening
+# the production origin policy.
+if not IS_PRODUCTION:
+    for local_origin in [
+        f"http://localhost:{SMARTQ_DEV_PORT}",
+        f"https://localhost:{SMARTQ_DEV_PORT}",
+        f"http://127.0.0.1:{SMARTQ_DEV_PORT}",
+        f"https://127.0.0.1:{SMARTQ_DEV_PORT}",
+    ]:
+        if local_origin not in CSRF_TRUSTED_ORIGINS:
+            CSRF_TRUSTED_ORIGINS.append(local_origin)
+
 if CODESPACE_HOST:
     codespace_origin = f"https://{CODESPACE_HOST}"
     if codespace_origin not in CSRF_TRUSTED_ORIGINS:
