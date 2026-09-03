@@ -48,6 +48,21 @@ ALLOWED_HOSTS = env_list(
 if IS_PRODUCTION and not ALLOWED_HOSTS:
     raise ImproperlyConfigured("ALLOWED_HOSTS is required in production.")
 
+# GitHub Codespaces exposes Django through an HTTPS forwarded hostname rather
+# than localhost. In development only, trust the current Codespace host
+# automatically so a fresh Codespace can log in without manual CSRF exports.
+CODESPACE_NAME = os.getenv("CODESPACE_NAME", "").strip()
+CODESPACES_DOMAIN = os.getenv(
+    "GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN",
+    "app.github.dev",
+).strip()
+SMARTQ_DEV_PORT = os.getenv("SMARTQ_DEV_PORT", "8000").strip()
+CODESPACE_HOST = ""
+if not IS_PRODUCTION and CODESPACE_NAME and CODESPACES_DOMAIN:
+    CODESPACE_HOST = f"{CODESPACE_NAME}-{SMARTQ_DEV_PORT}.{CODESPACES_DOMAIN}"
+    if CODESPACE_HOST not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(CODESPACE_HOST)
+
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -142,6 +157,10 @@ REST_FRAMEWORK = {
 CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS")
 CORS_ALLOW_CREDENTIALS = env_bool("CORS_ALLOW_CREDENTIALS", default=True)
 CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS")
+if CODESPACE_HOST:
+    codespace_origin = f"https://{CODESPACE_HOST}"
+    if codespace_origin not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(codespace_origin)
 
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SECURE = IS_PRODUCTION
