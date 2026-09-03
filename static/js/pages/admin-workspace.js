@@ -346,6 +346,7 @@ async function submitStaff(event) {
     const restore = setBusy(submit);
     setFormMessage("staff", "");
 
+    const editingId = state.staffEditId;
     const branchValue = form.elements.branch.value;
     const payload = {
         first_name: form.elements.first_name.value.trim(),
@@ -354,7 +355,7 @@ async function submitStaff(event) {
         role: form.elements.role.value,
         branch: branchValue ? Number(branchValue) : null,
     };
-    if (!state.staffEditId) {
+    if (!editingId) {
         Object.assign(payload, {
             username: form.elements.username.value.trim(),
             password: form.elements.password.value,
@@ -366,10 +367,20 @@ async function submitStaff(event) {
 
     try {
         await apiRequest(
-            state.staffEditId ? `/api/v1/accounts/admin/staff/${state.staffEditId}/` : "/api/v1/accounts/admin/staff/",
-            { method: state.staffEditId ? "PATCH" : "POST", body: payload },
+            editingId ? `/api/v1/accounts/admin/staff/${editingId}/` : "/api/v1/accounts/admin/staff/",
+            { method: editingId ? "PATCH" : "POST", body: payload },
         );
-        setMessage(state.staffEditId ? "Staff account updated." : "Staff account created.", "success");
+
+        if (editingId && editingId === state.account?.id) {
+            const refreshedAccount = await getCurrentAccount({ refresh: true });
+            state.account = refreshedAccount;
+            if (!refreshedAccount || refreshedAccount.role !== "system_admin") {
+                window.location.replace(routeForRole(refreshedAccount?.role));
+                return;
+            }
+        }
+
+        setMessage(editingId ? "Staff account updated." : "Staff account created.", "success");
         resetStaffForm();
         await refreshCatalogues({ silent: true });
     } catch (error) {
@@ -526,29 +537,14 @@ function editMapping(id) {
     resetMappingForm();
     state.mappingEditId = mapping.id;
     const form = one("[data-mapping-form]");
-    // Inactive branch/service options may no longer be in active-only selects. Add their current values when needed.
-    const branch = state.branches.find((item) => item.id === mapping.branch);
-    const service = state.services.find((item) => item.id === mapping.service);
-    if (branch && ![...form.elements.branch.options].some((o) => Number(o.value) === branch.id)) {
-        const option = document.createElement("option");
-        option.value = String(branch.id);
-        option.textContent = `${branch.name} (${branch.branch_code}) · inactive`;
-        form.elements.branch.append(option);
-    }
-    if (service && ![...form.elements.service.options].some((o) => Number(o.value) === service.id)) {
-        const option = document.createElement("option");
-        option.value = String(service.id);
-        option.textContent = `${service.name} (${service.service_code}) · inactive`;
-        form.elements.service.append(option);
-    }
     form.elements.branch.value = String(mapping.branch);
     form.elements.service.value = String(mapping.service);
-    form.elements.branch.disabled = true;
-    form.elements.service.disabled = true;
     form.elements.max_bookings_per_slot.value = mapping.max_bookings_per_slot;
     form.elements.is_active.checked = Boolean(mapping.is_active);
+    form.elements.branch.disabled = true;
+    form.elements.service.disabled = true;
     one("[data-mapping-form-mode]").textContent = "Edit";
-    one("[data-mapping-form-title]").textContent = `${mapping.branch_name} · ${mapping.service_name}`;
+    one("[data-mapping-form-title]").textContent = `${mapping.branch_name} / ${mapping.service_name}`;
     form.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -571,42 +567,39 @@ async function submitMapping(event) {
             state.mappingEditId ? `/api/v1/services/admin/branch-services/${state.mappingEditId}/` : "/api/v1/services/admin/branch-services/",
             { method: state.mappingEditId ? "PATCH" : "POST", body: payload },
         );
-        setMessage(state.mappingEditId ? "Branch capacity updated." : "Branch/service mapping created.", "success");
+        setMessage(state.mappingEditId ? "Branch capacity mapping updated." : "Branch capacity mapping created.", "success");
         resetMappingForm();
         await refreshCatalogues({ silent: true });
     } catch (error) {
-        setFormMessage("mapping", errorText(error, "Smart Q could not save this branch/service mapping."));
+        setFormMessage("mapping", errorText(error, "Smart Q could not save this branch capacity mapping."));
     } finally {
         restore();
     }
 }
 
-async function inspectBranch(button) {
+async function inspectBranch(event) {
+    event?.preventDefault();
     const branchId = one("[data-inspection-branch]").value;
-    const date = one("[data-inspection-date]").value || localDateValue();
+    const dateValue = one("[data-inspection-date]").value;
     if (!branchId) {
-        setMessage("Choose an active branch before loading operational data.");
+        setMessage("Choose an active branch to inspect.");
         return;
     }
-    const restore = setBusy(button, "Loading...");
-    setMessage("");
+    const button = one("[data-inspection-submit]");
+    const restore = setBusy(button, "Inspecting...");
+    one("[data-inspection-empty]").hidden = true;
+    one("[data-inspection-result]").hidden = true;
     try {
-        const dashboard = await apiRequest(`/api/v1/dashboard/branches/${branchId}/?date=${encodeURIComponent(date)}`);
-        const totals = dashboard.lifecycle_totals || {};
-        const counters = dashboard.counters || {};
-        one("[data-inspection-empty]").hidden = true;
+        const dashboard = await apiRequest(`/api/v1/dashboard/branches/${branchId}/?date=${encodeURIComponent(dateValue)}`);
+        one("[data-inspection-title]").textContent = `${dashboard.branch.name} · ${dashboard.dashboard_date}`;
+        one("[data-inspection-customers]").textContent = dashboard.customers.total;
+        one("[data-inspection-waiting]").textContent = dashboard.queue.combined.waiting;
+        one("[data-inspection-serving]").textContent = dashboard.queue.combined.serving;
+        one("[data-inspection-counters]").textContent = dashboard.counters.total;
+        one("[data-inspection-open]").textContent = dashboard.counters.open;
+        one("[data-inspection-busy]").textContent = dashboard.counters.busy;
+        one("[data-inspection-unstaffed]").textContent = dashboard.counters.unstaffed;
         one("[data-inspection-result]").hidden = false;
-        one("[data-inspect-total]").textContent = dashboard.customers?.total_customers ?? 0;
-        one("[data-inspect-date]").textContent = dashboard.date || date;
-        one("[data-inspect-waiting]").textContent = totals.waiting ?? 0;
-        one("[data-inspect-serving]").textContent = totals.serving ?? 0;
-        one("[data-inspect-counters]").textContent = counters.summary?.total ?? 0;
-        one("[data-inspect-counter-note]").textContent = "Live current state";
-        one("[data-inspect-branch-name]").textContent = dashboard.branch?.name || "Branch";
-        one("[data-inspect-city]").textContent = dashboard.branch?.city || "—";
-        one("[data-inspect-open]").textContent = `${counters.summary?.open ?? 0} open`;
-        one("[data-inspect-busy]").textContent = `${counters.summary?.busy ?? 0} busy`;
-        one("[data-inspect-unstaffed]").textContent = `${counters.summary?.unstaffed ?? 0} unstaffed`;
     } catch (error) {
         setMessage(errorText(error, "Smart Q could not inspect this branch."));
     } finally {
@@ -614,54 +607,12 @@ async function inspectBranch(button) {
     }
 }
 
-function bindEvents() {
-    one("[data-refresh-admin]")?.addEventListener("click", () => refreshCatalogues());
-    one("[data-staff-role]")?.addEventListener("change", syncStaffRoleBranch);
-    one("[data-staff-form]")?.addEventListener("submit", submitStaff);
-    one("[data-branch-form]")?.addEventListener("submit", submitBranch);
-    one("[data-service-form]")?.addEventListener("submit", submitService);
-    one("[data-mapping-form]")?.addEventListener("submit", submitMapping);
-    one("[data-inspect-branch]")?.addEventListener("click", (event) => inspectBranch(event.currentTarget));
-
-    for (const button of root.querySelectorAll("[data-reset-staff-form]")) button.addEventListener("click", resetStaffForm);
-    for (const button of root.querySelectorAll("[data-reset-branch-form]")) button.addEventListener("click", resetBranchForm);
-    for (const button of root.querySelectorAll("[data-reset-service-form]")) button.addEventListener("click", resetServiceForm);
-    for (const button of root.querySelectorAll("[data-reset-mapping-form]")) button.addEventListener("click", resetMappingForm);
-
-    one("[data-staff-body]")?.addEventListener("click", async (event) => {
-        const edit = event.target.closest("[data-edit-staff]");
-        if (edit) return editStaff(edit.dataset.editStaff);
-        const activation = event.target.closest("[data-activate-staff]");
-        if (activation) await toggleStaffActivation(activation.dataset.activateStaff, activation);
-    });
-    one("[data-branch-body]")?.addEventListener("click", (event) => {
-        const button = event.target.closest("[data-edit-branch]");
-        if (button) editBranch(button.dataset.editBranch);
-    });
-    one("[data-service-body]")?.addEventListener("click", (event) => {
-        const button = event.target.closest("[data-edit-service]");
-        if (button) editService(button.dataset.editService);
-    });
-    one("[data-mapping-body]")?.addEventListener("click", (event) => {
-        const button = event.target.closest("[data-edit-mapping]");
-        if (button) editMapping(button.dataset.editMapping);
-    });
-}
-
 async function bootstrap() {
     if (!root) return;
-    one("[data-inspection-date]").value = localDateValue();
-    bindEvents();
-    resetStaffForm();
-    resetBranchForm();
-    resetServiceForm();
-    resetMappingForm();
-
     try {
         const account = await getCurrentAccount();
         if (!account) {
-            const next = encodeURIComponent(window.location.pathname);
-            window.location.replace(`/login/?next=${next}`);
+            window.location.replace(`/login/?next=${encodeURIComponent(window.location.pathname)}`);
             return;
         }
         if (account.role !== "system_admin") {
@@ -669,11 +620,38 @@ async function bootstrap() {
             return;
         }
         state.account = account;
+        one("[data-admin-scope]").textContent = `${account.username} · global configuration`;
+        one("[data-inspection-date]").value = localDateValue();
         await refreshCatalogues();
     } catch (error) {
         one("[data-admin-loading]").hidden = true;
-        setMessage(errorText(error, "Smart Q could not initialise the System Admin workspace."));
+        setMessage(errorText(error, "Smart Q could not restore the System Admin workspace."));
     }
 }
+
+root?.addEventListener("click", (event) => {
+    const editStaffButton = event.target.closest("[data-edit-staff]");
+    if (editStaffButton) return editStaff(editStaffButton.dataset.editStaff);
+    const activateStaffButton = event.target.closest("[data-activate-staff]");
+    if (activateStaffButton) return toggleStaffActivation(activateStaffButton.dataset.activateStaff, activateStaffButton);
+    const editBranchButton = event.target.closest("[data-edit-branch]");
+    if (editBranchButton) return editBranch(editBranchButton.dataset.editBranch);
+    const editServiceButton = event.target.closest("[data-edit-service]");
+    if (editServiceButton) return editService(editServiceButton.dataset.editService);
+    const editMappingButton = event.target.closest("[data-edit-mapping]");
+    if (editMappingButton) return editMapping(editMappingButton.dataset.editMapping);
+});
+
+one("[data-refresh-admin]")?.addEventListener("click", () => refreshCatalogues());
+for (const button of root?.querySelectorAll("[data-reset-staff-form]") || []) button.addEventListener("click", resetStaffForm);
+for (const button of root?.querySelectorAll("[data-reset-branch-form]") || []) button.addEventListener("click", resetBranchForm);
+for (const button of root?.querySelectorAll("[data-reset-service-form]") || []) button.addEventListener("click", resetServiceForm);
+for (const button of root?.querySelectorAll("[data-reset-mapping-form]") || []) button.addEventListener("click", resetMappingForm);
+one("[data-staff-role]")?.addEventListener("change", syncStaffRoleBranch);
+one("[data-staff-form]")?.addEventListener("submit", submitStaff);
+one("[data-branch-form]")?.addEventListener("submit", submitBranch);
+one("[data-service-form]")?.addEventListener("submit", submitService);
+one("[data-mapping-form]")?.addEventListener("submit", submitMapping);
+one("[data-inspection-controls]")?.addEventListener("submit", inspectBranch);
 
 bootstrap();
