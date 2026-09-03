@@ -102,7 +102,7 @@ class BranchQueuePauseCreateAPIView(APIView):
         pauses = QueuePause.objects.filter(branch=branch).select_related(
             "branch",
             "service",
-        ).order_by("-started_at", "-id")
+        ).order_by("-is_active", "-started_at", "-id")
         return Response(
             {
                 "branch_id": branch.id,
