@@ -1,0 +1,76 @@
+from io import StringIO
+
+from django.contrib.auth import authenticate
+from django.contrib.auth.models import User
+from django.core.management import call_command
+from django.core.management.base import CommandError
+from django.test import TestCase, override_settings
+
+from accounts.models import Profile
+from branches.models import Branch
+from counters.models import Counter
+from services.models import BranchService, Service
+
+
+class LiveSmokeDemoBootstrapTests(TestCase):
+    def test_bootstrap_demo_creates_complete_role_and_operational_setup(self):
+        output = StringIO()
+        call_command("bootstrap_demo", stdout=output)
+
+        self.assertEqual(Branch.objects.filter(is_active=True).count(), 2)
+        self.assertEqual(Service.objects.filter(is_active=True).count(), 3)
+        self.assertEqual(BranchService.objects.filter(is_active=True).count(), 6)
+        self.assertEqual(Counter.objects.count(), 5)
+
+        expected_roles = {
+            "customer_demo": Profile.CUSTOMER,
+            "reception_demo": Profile.RECEPTIONIST,
+            "counter_demo": Profile.COUNTER_STAFF,
+            "manager_demo": Profile.BRANCH_MANAGER,
+            "admin_demo": Profile.SYSTEM_ADMIN,
+        }
+        for username, role in expected_roles.items():
+            with self.subTest(username=username):
+                user = User.objects.select_related("profile").get(username=username)
+                self.assertTrue(user.is_active)
+                self.assertEqual(user.profile.role, role)
+                self.assertIsNotNone(
+                    authenticate(username=username, password="SmartQDemo2026!")
+                )
+
+        self.assertIsNone(User.objects.get(username="customer_demo").profile.branch_id)
+        self.assertIsNone(User.objects.get(username="admin_demo").profile.branch_id)
+        self.assertIsNotNone(User.objects.get(username="reception_demo").profile.branch_id)
+        self.assertIsNotNone(User.objects.get(username="counter_demo").profile.branch_id)
+        self.assertIsNotNone(User.objects.get(username="manager_demo").profile.branch_id)
+
+        assigned = Counter.objects.get(
+            branch__branch_code="PTA01",
+            counter_number="1",
+        )
+        self.assertEqual(assigned.assigned_staff.username, "counter_demo")
+        self.assertIn("Smart Q demo environment is ready", output.getvalue())
+
+    def test_bootstrap_demo_is_idempotent(self):
+        call_command("bootstrap_demo", stdout=StringIO())
+        call_command("bootstrap_demo", stdout=StringIO())
+
+        self.assertEqual(Branch.objects.count(), 2)
+        self.assertEqual(Service.objects.count(), 3)
+        self.assertEqual(BranchService.objects.count(), 6)
+        self.assertEqual(Counter.objects.count(), 5)
+        self.assertEqual(
+            User.objects.filter(username__in=[
+                "customer_demo",
+                "reception_demo",
+                "counter_demo",
+                "manager_demo",
+                "admin_demo",
+            ]).count(),
+            5,
+        )
+
+    @override_settings(IS_PRODUCTION=True)
+    def test_bootstrap_demo_refuses_to_run_in_production(self):
+        with self.assertRaises(CommandError):
+            call_command("bootstrap_demo", stdout=StringIO())
