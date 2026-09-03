@@ -7,7 +7,8 @@ Day 48 replaces the generic System Admin application shell with a protected glob
 **Branch:** `feature/day48-system-admin-workspace`  
 **Primary role:** `SYSTEM_ADMIN`  
 **Frontend route:** `/app/admin/`  
-**Verification:** GitHub Actions pending at the time this engineering record is first written.
+**Pull request:** #43 — Build Day 48 system admin workspace  
+**Initial integrated PR verification:** Django Tests run **242** completed successfully on implementation/documentation head `4043e8625cb220f5c7dfcca38c1ac24bf8938dde`. The focused Day 48 suite and complete Smart Q regression suite both passed. README/documentation closeout commits must pass the same gate again before merge.
 
 ---
 
@@ -15,7 +16,7 @@ Day 48 replaces the generic System Admin application shell with a protected glob
 
 ## 1. Day 48 objective
 
-The Day 48 workspace must let a System Admin perform the global configuration work that should not belong to a branch-scoped operator.
+The Day 48 workspace gives a Smart Q System Admin one global configuration console for work that should not belong to a branch-scoped operator.
 
 The control plane covers five responsibilities:
 
@@ -44,13 +45,13 @@ Day 49  History / reporting / disruption UX
 Day 50  Full integration / responsive / release audit
 ```
 
-Day 48 is intentionally about **global configuration and oversight**. It does not absorb the historical reporting/disruption milestone planned for Day 49.
+Day 48 is intentionally about **global configuration and oversight**. Historical reporting and disruption/rescheduling presentation remain Day 49 responsibilities.
 
 ## 3. Day 48 acceptance criteria
 
-A valid System Admin should be able to:
+A valid System Admin must be able to:
 
-1. restore the authenticated System Admin session;
+1. restore an authenticated `SYSTEM_ADMIN` session;
 2. list operational staff accounts;
 3. create branch-scoped staff or another System Admin using backend role/branch rules;
 4. update safe staff profile fields;
@@ -59,7 +60,7 @@ A valid System Admin should be able to:
 7. create and edit services;
 8. create and edit BranchService capacity mappings;
 9. inspect any active branch through the existing manager dashboard read model;
-10. see useful loading, empty, validation and conflict states;
+10. see clear loading, empty, validation and conflict states;
 11. remain blocked from unsafe shortcuts such as self-deactivation or invalid role/branch combinations.
 
 ---
@@ -88,13 +89,13 @@ Day 48 Admin Workspace
 
 No new business endpoint was required for the main Day 48 workflow.
 
-## 5. Why no new backend control plane was added
+## 5. Why no duplicate backend control plane was added
 
 Smart Q already had protected APIs for staff, branches, services and BranchService mappings.
 
-Building another `/admin/dashboard/` persistence layer would duplicate state and create new synchronization responsibilities.
+Building another `/admin/dashboard/` persistence or workflow layer would duplicate state and create new synchronization responsibilities.
 
-The frontend therefore orchestrates existing contracts.
+The Day 48 frontend therefore orchestrates existing contracts.
 
 ### Engineering lesson
 
@@ -114,7 +115,7 @@ PATCH /api/v1/accounts/admin/staff/<id>/
 PATCH /api/v1/accounts/admin/staff/<id>/activation/
 ```
 
-All of these APIs remain protected by `IsSystemAdmin`.
+Every endpoint remains protected by `IsSystemAdmin`.
 
 ## 7. Staff roles managed by System Admin
 
@@ -140,15 +141,15 @@ System Admin   -> branch must be null
 
 The Day 48 form mirrors this rule by disabling and clearing the branch selector when System Admin is selected.
 
-The serializer remains the final authority if a caller forges a request.
+The serializer remains the final authority against a forged request.
 
 ### Engineering lesson
 
-A frontend can guide valid input, but it must never become the only location where authorization/configuration invariants exist.
+Frontend guidance improves usability. Backend validation guarantees integrity.
 
 ## 9. Staff creation fields
 
-Creating staff requires:
+Creation includes:
 
 ```text
 username
@@ -162,13 +163,13 @@ role
 branch where required
 ```
 
-The page labels the password as a temporary password because the created user should rotate credentials through the normal authenticated security flow.
+The UI labels the initial credential as a temporary password. Password strength remains enforced by Django password validators.
 
 ## 10. Staff editing boundary
 
-The existing staff list/detail representation exposes operational identity fields such as name, email, role, branch and activation state.
+The existing staff read model exposes operational identity and assignment fields but not every profile field required at creation.
 
-Day 48 therefore edits only fields the UI can restore truthfully from that read model:
+Day 48 therefore edits only fields it can restore truthfully from the existing read contract:
 
 ```text
 first_name
@@ -178,7 +179,7 @@ role
 branch
 ```
 
-It does not pretend to know hidden profile fields during edit.
+It does not fabricate hidden profile values during edit.
 
 ## 11. Staff activation safety
 
@@ -191,12 +192,12 @@ PATCH /api/v1/accounts/admin/staff/<id>/activation/
 }
 ```
 
-The backend protects two important cases:
+Backend protections include:
 
 - a System Admin cannot deactivate the account backing their own current active session;
 - Smart Q must retain at least one active System Admin.
 
-The frontend disables the current admin's deactivate button for clarity, while the backend still enforces the rule.
+The UI disables the current admin's deactivate button for clarity, while the backend independently enforces the rule.
 
 ---
 
@@ -211,7 +212,7 @@ GET   /api/v1/branches/admin/<id>/
 PATCH /api/v1/branches/admin/<id>/
 ```
 
-The catalogue includes inactive branches so configuration history remains visible.
+The administration catalogue includes inactive branches.
 
 ## 13. Branch fields
 
@@ -233,17 +234,17 @@ The backend validates:
 opening_time < closing_time
 ```
 
-The browser uses native time inputs for usability, but it does not replace server validation.
+Native time inputs improve the browser experience but do not replace serializer validation.
 
 ## 15. Deactivation instead of destructive delete
 
-Day 48 exposes `is_active` rather than a hard-delete control.
+Day 48 exposes active-state configuration rather than hard deletion.
 
 This preserves historical bookings, queue events and operational references.
 
 ### Engineering lesson
 
-Operational systems often need deactivation rather than deletion because configuration records become part of historical evidence.
+Operational configuration becomes part of historical evidence. Deactivation is often safer than deletion.
 
 ---
 
@@ -270,13 +271,9 @@ is_active
 
 ## 18. Average service time remains domain data
 
-`average_service_time` is not merely display text.
+`average_service_time` influences backend appointment slot duration and operational calculations.
 
-It influences backend appointment slot duration and operational time calculations.
-
-The serializer requires a value greater than zero.
-
-The Day 48 UI uses a positive number input but the backend remains authoritative.
+The serializer requires a value greater than zero. Day 48 provides a positive number input, while the backend remains authoritative.
 
 ---
 
@@ -293,7 +290,7 @@ PATCH /api/v1/services/admin/branch-services/<id>/
 
 ## 20. What BranchService represents
 
-A BranchService record answers two configuration questions:
+A mapping answers two configuration questions:
 
 ```text
 Does this branch offer this service?
@@ -325,22 +322,20 @@ AND
 active service
 ```
 
-The Day 48 create selectors therefore list active branches/services only.
+Create selectors therefore show active branches and services only. The serializer still validates the invariant for every write.
 
-The serializer still rejects forged active mappings against inactive records.
+## 24. Mapping identity is locked during edit
 
-## 24. Why branch and service are locked during edit
-
-For an existing mapping, Day 48 allows changing:
+For an existing mapping, Day 48 edits:
 
 ```text
 max_bookings_per_slot
 is_active
 ```
 
-The branch/service pair is displayed but locked in edit mode.
+The branch/service pair remains visible but locked.
 
-Reason: changing identity can accidentally collide with the database uniqueness constraint and makes audit meaning less clear. Creating a new mapping is the clearer operation when the pair itself should change.
+Changing the pair itself can collide with the database uniqueness rule and weakens the meaning of an existing configuration record. Creating a new mapping is clearer when the relationship identity must change.
 
 ---
 
@@ -348,7 +343,7 @@ Reason: changing identity can accidentally collide with the database uniqueness 
 
 ## 25. Existing global access reused
 
-The manager dashboard permission class intentionally allows:
+The manager dashboard permission model intentionally allows:
 
 ```text
 BRANCH_MANAGER -> own branch only
@@ -361,9 +356,9 @@ Day 48 reuses:
 GET /api/v1/dashboard/branches/<branch_id>/?date=YYYY-MM-DD
 ```
 
-## 26. Why this is inspection rather than duplicated analytics
+## 26. Inspection instead of manager-screen duplication
 
-The System Admin page does not copy Day 47's full manager UI.
+The System Admin page does not copy the entire Day 47 manager interface.
 
 It provides a compact global inspection surface showing:
 
@@ -379,15 +374,15 @@ busy counters
 unstaffed counters
 ```
 
-This is enough for global oversight while keeping the detailed branch-operations interface in Day 47.
+Detailed branch coordination remains the Branch Manager workspace.
 
 ## 27. Temporal semantics remain truthful
 
 The selected date applies to customer/queue activity.
 
-Counter state remains the manager dashboard's explicitly labelled live current state.
+Counter status is still the manager dashboard's explicitly live current-state section.
 
-Day 48 displays that distinction rather than implying historical counter state exists.
+Day 48 does not pretend current counter assignment/status is historical data.
 
 ---
 
@@ -426,7 +421,7 @@ Security
 
 Day 48 intentionally uses table + form pairings.
 
-Each domain shows:
+Each administration domain displays:
 
 ```text
 current catalogue state
@@ -434,11 +429,11 @@ current catalogue state
 controlled create/edit form
 ```
 
-This is denser than the Customer or Counter Staff experiences because configuration work benefits from comparison and direct editing.
+Configuration work benefits from denser comparison than the task-focused Customer, Receptionist and Counter Staff screens.
 
 ## 31. Platform overview metrics
 
-The overview derives counts from the four protected catalogues:
+The overview derives counts from the protected catalogues:
 
 ```text
 active staff / total staff
@@ -447,7 +442,7 @@ active services / total services
 active mappings / total mappings
 ```
 
-No extra dashboard database state is created.
+No additional dashboard state is persisted.
 
 ---
 
@@ -464,34 +459,36 @@ services
 branch-service mappings
 ```
 
-with `Promise.all`.
+using `Promise.all`.
 
-All four are required to render the complete configuration console and populate valid relationship selectors.
+These catalogues also populate relationship selectors.
 
 ## 33. Refresh sequence guard
 
-A monotonically increasing sequence prevents an older Refresh All request from overwriting a newer response.
+A monotonically increasing request sequence prevents an older Refresh All response from overwriting a newer one.
 
 ## 34. Refresh-after-write
 
-After any successful create/edit/activation operation, the protected catalogues are re-read from the backend.
+After successful create/edit/activation operations, the protected catalogues are re-read.
 
-This is especially important because:
+This matters because configuration changes can alter valid options elsewhere in the same control plane.
 
-- deactivating a branch changes which branch choices are valid;
-- deactivating a service changes mapping choices;
-- staff role/branch changes affect staff tables;
-- mapping changes affect capacity summary counts.
+Examples:
 
-## 35. Form modes
+- deactivating a branch changes valid staff/mapping branch choices;
+- deactivating a service changes valid mapping choices;
+- role/branch updates change staff scope;
+- mapping writes change capacity summary counts.
 
-Staff, Branch, Service and Mapping forms each support explicit create/edit state.
+## 35. Explicit create/edit form modes
 
-The form title and button copy change so the operator knows whether the next request will create or patch a resource.
+Staff, Branch, Service and Mapping forms each track create versus edit state.
+
+Titles and action buttons change so the administrator knows whether the next write is POST or PATCH.
 
 ## 36. Safe DOM rendering
 
-API-derived names, usernames, service labels and branch labels are rendered with DOM text nodes / `textContent` rather than HTML string interpolation.
+API-derived names, usernames, service labels and branch labels are rendered through DOM text nodes / `textContent` rather than executable HTML strings.
 
 ---
 
@@ -507,13 +504,13 @@ account.role == system_admin
 
 Other authenticated roles are redirected to their own workspace.
 
-Backend permissions remain the true security boundary.
+This is a UX boundary. Protected APIs remain the security boundary.
 
-## 38. System Admin is global but still constrained
+## 38. Global permission still has rules
 
-Global scope does not mean unrestricted mutation.
+System Admin global scope does not mean invalid state is accepted.
 
-Serializers/services still enforce:
+Serializers/services continue to enforce:
 
 ```text
 role/branch invariants
@@ -527,11 +524,9 @@ at-least-one-active-admin safety
 
 ## 39. No hard-delete controls
 
-Day 48 uses activation/deactivation for staff, branches, services and mappings where the backend supports it.
+Day 48 uses activation/deactivation where the backend supports it, preserving historical context.
 
-Historical context remains intact.
-
-## 40. CSRF and session security reused
+## 40. Session and CSRF security are reused
 
 All non-safe browser writes use the shared API client, which obtains and sends the CSRF token for Django session-authenticated writes.
 
@@ -547,9 +542,9 @@ smartq/test_day48_admin_workspace.py
 
 ## 42. Dedicated route test
 
-The route test proves `/app/admin/` renders Day 48 administration hooks for staff, branch, service, capacity and branch inspection.
+The route test proves `/app/admin/` renders Day 48 hooks for staff, branch, service, capacity and branch inspection.
 
-It also verifies Counter Staff and Receptionist-specific serving/intake copy is absent.
+It also checks that Counter Staff and Receptionist-specific serving/intake copy is absent.
 
 ## 43. Static asset test
 
@@ -573,7 +568,7 @@ BranchService catalogue
 
 ## 45. Cross-domain create workflow test
 
-The test exercises the control-plane chain:
+The focused integration suite exercises:
 
 ```text
 create branch
@@ -582,12 +577,12 @@ create service
     |
 create BranchService capacity
     |
-create branch-scoped receptionist
+create branch-scoped Receptionist
     |
 inspect new branch dashboard globally
 ```
 
-This proves the separate admin contracts cooperate as one usable workflow.
+This proves the separate protected APIs cooperate as one admin workflow.
 
 ## 46. Role/branch invariant test
 
@@ -598,7 +593,7 @@ Receptionist + no branch
 System Admin + branch
 ```
 
-even though the frontend also guides the user away from those inputs.
+even though the UI guides the administrator away from those invalid inputs.
 
 ## 47. Self-deactivation safety test
 
@@ -606,7 +601,7 @@ The active System Admin attempts to deactivate their own session account and rec
 
 ## 48. Non-admin denial test
 
-A normal Customer attempts to read each administration catalogue and receives HTTP 403.
+A normal Customer attempts to read each protected administration catalogue and receives HTTP 403.
 
 ## 49. CI integration
 
@@ -617,79 +612,102 @@ GitHub Actions includes:
   run: python manage.py test smartq.test_day48_admin_workspace
 ```
 
-The complete Smart Q regression suite still runs afterward.
+The complete Smart Q regression suite runs afterward.
+
+## 50. Initial integrated CI result
+
+PR #43 run **242** completed successfully on head:
+
+```text
+4043e8625cb220f5c7dfcca38c1ac24bf8938dde
+```
+
+Verified in that run:
+
+```text
+missing migrations check                success
+Django system check                    success
+all backend app suites                 success
+Day 41-47 frontend milestone tests     success
+Day 48 system admin workspace tests    success
+full Smart Q regression suite          success
+```
+
+README and documentation closeout commits occur after this proof, so the final PR head must re-run the same workflow before merge. No merge should be performed while the final head is unverified.
 
 ---
 
 # Part 12 — Trade-Offs
 
-## 50. No new admin backend aggregate
+## 51. No new admin backend aggregate
 
-Reason: the protected domain APIs already exist and are sufficient.
+**Reason:** protected domain APIs already exist and are sufficient.
 
-Trade-off: the browser makes four initial catalogue requests instead of one aggregate request.
+**Trade-off:** the browser makes four initial catalogue reads instead of one aggregate request.
 
-Benefit: no duplicated API/data ownership and each domain remains independently reusable.
+**Benefit:** no duplicated API/data ownership; each domain remains independently reusable.
 
-## 51. No destructive delete
+## 52. No destructive delete
 
-Reason: historical operational references must remain understandable.
+**Reason:** historical operational references must remain understandable.
 
-Trade-off: inactive records remain visible in admin catalogues.
+**Trade-off:** inactive records remain visible in admin catalogues.
 
-Benefit: stronger audit/history integrity.
+**Benefit:** stronger audit and history integrity.
 
-## 52. No full Day 47 manager dashboard duplication
+## 53. No full Day 47 manager dashboard duplication
 
-Reason: System Admin needs global inspection, not a second copy of the full branch manager workspace.
+**Reason:** System Admin needs global inspection, not a second copy of the complete branch-manager surface.
 
-Trade-off: detailed branch work still requires the appropriate dedicated view/workflow.
+**Benefit:** clear role boundaries and less frontend duplication.
 
-Benefit: clear role surfaces and less duplicated frontend logic.
+## 54. No Day 49 reporting/disruption UI
 
-## 53. No Day 49 reporting/disruption UI
+**Reason:** roadmap scope discipline.
 
-Reason: frontend roadmap scope discipline.
+**Benefit:** Day 48 remains a global configuration control plane instead of an overloaded universal admin screen.
 
-Benefit: Day 48 remains a configuration control plane rather than an overloaded universal admin screen.
+## 55. Mapping identity locked during edit
 
-## 54. Mapping identity locked during edit
+**Reason:** preserve `(branch, service)` identity and avoid uniqueness collisions.
 
-Reason: preserving `(branch, service)` identity avoids uniqueness collisions and ambiguous historical meaning.
-
-Trade-off: changing the pair requires a new mapping.
+**Trade-off:** changing the pair requires a new mapping.
 
 ---
 
 # Part 13 — Engineering Lessons
 
-## 55. A control plane is an orchestrator
+## 56. A control plane is an orchestrator
 
-The best admin frontend does not need to own the domain rules. It coordinates protected domain APIs and makes their state understandable.
+The admin frontend coordinates protected domain APIs; it does not need to become a new owner of domain rules.
 
-## 56. Global permission still needs invariants
+## 57. Global permission still needs invariants
 
 A System Admin has broader scope, not permission to create invalid state.
 
-## 57. Least destructive operations preserve history
+## 58. Least-destructive operations preserve history
 
-Deactivation is safer than deletion in operational systems where configuration is referenced by historical records.
+Deactivation is safer than deletion where configuration is referenced by historical records.
 
-## 58. Relationship selectors depend on other catalogues
+## 59. Relationship selectors depend on other catalogues
 
-Branch/service/staff forms demonstrate why configuration UIs often require several read models at once.
+Staff, branch and BranchService forms demonstrate why configuration UIs often need several read models at the same time.
 
-## 59. Refresh authoritative state after configuration writes
+## 60. Refresh authoritative state after configuration writes
 
-A configuration mutation can change what is valid elsewhere in the same control plane. Re-reading avoids stale relationship choices.
+A configuration write can change which options are valid elsewhere. Re-reading avoids stale relationship choices.
 
-## 60. Frontend validation and backend validation have different jobs
+## 61. Frontend and backend validation have different jobs
 
-Frontend validation improves usability. Backend validation guarantees integrity.
+Frontend validation makes mistakes harder. Backend validation makes invalid state impossible for every client.
 
-## 61. Role-specific interfaces should remain distinct
+## 62. Role-specific interfaces should remain distinct
 
-System Admin configures globally. Branch Manager coordinates a branch. Counter Staff serve. Reception activates customers. The product becomes safer and easier to learn when these surfaces stay distinct.
+System Admin configures globally. Branch Manager coordinates a branch. Counter Staff serve. Reception activates customers. Distinct role surfaces improve safety and learnability.
+
+## 63. Reusing a read model is often better than duplicating a dashboard
+
+Day 48's global branch inspection reuses the Day 34/47 dashboard contract rather than creating a second analytics definition.
 
 ---
 
@@ -703,34 +721,36 @@ smartq/urls.py
 smartq/test_day48_admin_workspace.py
 .github/workflows/django-tests.yml
 docs/DAY48_SYSTEM_ADMIN_WORKSPACE.md
-README.md                  (final milestone sync before merge)
+README.md
 ```
 
 No new main Day 48 business API was required.
 
 ---
 
-# Part 15 — Verification Gate
+# Part 15 — Final Merge Gate
 
-Day 48 is not considered closed until the final merge-candidate head passes:
+Day 48 is complete at the implementation level and the initial integrated head passed CI.
+
+The final merge candidate — including README and documentation synchronization — must still satisfy:
 
 ```text
 missing-migration check
 Django system check
 all backend app suites
-Day 41–48 focused frontend suites
+Day 41-48 focused frontend suites
 full Smart Q regression suite
 ```
 
-After that result is known, this section must be updated with the exact CI run and merge state.
+Only after that exact final head is green should PR #43 merge into `main`.
 
 ---
 
 # Part 16 — Day 49 Handoff
 
-Day 49 should build the dedicated history/reporting/disruption experience on top of existing QueueEvent, reporting and rescheduling APIs.
+Day 49 should build the dedicated history/reporting/disruption experience on top of the existing QueueEvent, reporting and rescheduling APIs.
 
-Day 48's lesson carries forward:
+Day 48's core architectural lesson carries forward:
 
 ```text
 frontend presents and orchestrates
