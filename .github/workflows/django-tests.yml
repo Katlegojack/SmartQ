@@ -86,5 +86,8 @@ jobs:
       - name: Run Day 46 counter staff workspace tests
         run: python manage.py test smartq.test_day46_counter_workspace
 
+      - name: Run Day 47 branch manager workspace tests
+        run: python manage.py test smartq.test_day47_manager_workspace
+
       - name: Run full test suite
         run: python manage.py test
