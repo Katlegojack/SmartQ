@@ -27,7 +27,7 @@
             </div>
             <nav class="side-nav" aria-label="Customer sections">
                 <a class="side-nav__item is-active" href="#overview">Overview</a>
-                <a class="side-nav__item" href="#book">Book appointment</a>
+                <a class="side-nav__item" href="#book">Book</a>
                 <a class="side-nav__item" href="#appointments">Appointments</a>
                 <a class="side-nav__item" href="#history">History</a>
                 <span class="side-nav__divider" aria-hidden="true"></span>
@@ -38,21 +38,21 @@
 
         <div class="workspace">
             <header class="workspace-topbar">
-                <div><p class="kicker">Customer workspace</p><h1>My Smart Q</h1></div>
-                <span class="session-chip"><span class="status-dot status-dot--success" aria-hidden="true"></span> Session active</span>
+                <div><p class="kicker">Customer</p><h1>My Smart Q</h1></div>
+                <span class="session-chip"><span class="status-dot status-dot--success" aria-hidden="true"></span> Online</span>
             </header>
 
             <main class="workspace-main" id="workspace-main">
                 <div class="notice notice--error" data-dashboard-error data-shell-error hidden role="alert"></div>
-                <div class="customer-loading" data-dashboard-loading role="status">Loading your Smart Q dashboard...</div>
+                <div class="customer-loading" data-dashboard-loading role="status">Loading...</div>
 
                 <div data-dashboard-content hidden>
                     <section class="workspace-section" id="overview" aria-labelledby="overview-heading">
                         <div class="customer-heading">
                             <div>
-                                <p class="eyebrow">Customer dashboard</p>
-                                <h2 id="overview-heading" data-greeting>Your Smart Q overview</h2>
-                                <p>Book an appointment, check in when eligible, and follow your live queue without standing in line just to hold your place.</p>
+                                <p class="eyebrow">Overview</p>
+                                <h2 id="overview-heading" data-greeting>Your Smart Q</h2>
+                                <p>Book, check in and track your place.</p>
                             </div>
                             <div class="customer-heading__actions">
                                 <a class="btn btn--primary" href="#book">Book appointment</a>
@@ -70,16 +70,16 @@
                                 <div class="queue-focus__number"><span>Queue number</span><strong data-queue-number>—</strong></div>
                                 <div class="queue-focus__metrics">
                                     <div><span>Position</span><strong data-queue-position>—</strong></div>
-                                    <div><span>People ahead</span><strong data-queue-ahead>—</strong></div>
-                                    <div><span>Estimated wait</span><strong data-queue-wait>—</strong></div>
+                                    <div><span>Ahead</span><strong data-queue-ahead>—</strong></div>
+                                    <div><span>Wait</span><strong data-queue-wait>—</strong></div>
                                 </div>
                                 <dl class="detail-list detail-list--compact">
                                     <div><dt>Service</dt><dd data-queue-service>—</dd></div>
                                     <div><dt>Branch</dt><dd data-queue-branch>—</dd></div>
-                                    <div><dt>Counter</dt><dd data-queue-counter>Waiting for assignment</dd></div>
+                                    <div><dt>Counter</dt><dd data-queue-counter>Waiting</dd></div>
                                 </dl>
                             </article>
-                            <article class="panel empty-state" data-queue-empty hidden><p class="kicker">Live queue</p><h3>No active queue right now</h3><p>When you check in for today's appointment, your queue number, position and estimated wait will appear here.</p></article>
+                            <article class="panel empty-state" data-queue-empty hidden><p class="kicker">Live queue</p><h3>No active queue</h3><p>Check in to see your position.</p></article>
 
                             <article class="panel next-appointment" data-next-panel hidden>
                                 <div class="panel__header"><div><p class="kicker">Next appointment</p><h3 data-next-service>—</h3></div><span class="badge badge--neutral" data-next-status>Confirmed</span></div>
@@ -87,32 +87,31 @@
                                     <div><dt>Date</dt><dd data-next-date>—</dd></div>
                                     <div><dt>Time</dt><dd data-next-time>—</dd></div>
                                     <div><dt>Branch</dt><dd data-next-branch>—</dd></div>
-                                    <div><dt>Queue number</dt><dd data-next-queue>—</dd></div>
+                                    <div><dt>Queue</dt><dd data-next-queue>—</dd></div>
                                 </dl>
                                 <div class="appointment-actions">
                                     <button class="btn btn--primary" type="button" data-next-action="check-in">Check in</button>
-                                    <button class="btn btn--secondary" type="button" data-next-action="details">View details</button>
+                                    <button class="btn btn--secondary" type="button" data-next-action="details">Details</button>
                                     <button class="btn btn--quiet" type="button" data-next-action="reschedule">Reschedule</button>
                                     <button class="btn btn--quiet btn--danger-text" type="button" data-next-action="cancel">Cancel</button>
                                 </div>
-                                <p class="appointment-note">Check-in eligibility, rescheduling capacity and queue state are validated by the Smart Q backend.</p>
                             </article>
-                            <article class="panel empty-state" data-next-empty hidden><p class="kicker">Next appointment</p><h3>No upcoming appointment</h3><p>Use the booking flow below to choose a branch, service, date and backend-available time slot.</p></article>
+                            <article class="panel empty-state" data-next-empty hidden><p class="kicker">Next appointment</p><h3>Nothing booked</h3><p>Book your next appointment below.</p></article>
                         </div>
                     </section>
 
                     <section class="customer-section booking-workflow" id="book" aria-labelledby="booking-heading" data-booking-workflow>
                         <div class="customer-section__header booking-workflow__header">
-                            <div><p class="kicker" data-booking-kicker>New appointment</p><h3 id="booking-heading" data-booking-heading>Book an appointment</h3></div>
+                            <div><p class="kicker" data-booking-kicker>Appointment</p><h3 id="booking-heading" data-booking-heading>Book an appointment</h3></div>
                             <button class="btn btn--quiet btn--sm" type="button" data-booking-reset hidden>Cancel reschedule</button>
                         </div>
                         <div class="panel booking-panel">
                             <div class="booking-progress" aria-label="Booking steps">
-                                <span data-step-indicator="1" class="is-active">1 Branch</span>
-                                <span data-step-indicator="2">2 Service</span>
-                                <span data-step-indicator="3">3 Date</span>
-                                <span data-step-indicator="4">4 Time</span>
-                                <span data-step-indicator="5">5 Confirm</span>
+                                <span data-step-indicator="1" class="is-active">Branch</span>
+                                <span data-step-indicator="2">Service</span>
+                                <span data-step-indicator="3">Date</span>
+                                <span data-step-indicator="4">Time</span>
+                                <span data-step-indicator="5">Confirm</span>
                             </div>
                             <div class="form-message" data-booking-message hidden role="status" aria-live="polite"></div>
                             <form class="booking-form" data-booking-form novalidate>
@@ -122,31 +121,28 @@
                                         <select class="input" name="branch" data-booking-branch required>
                                             <option value="">Select a branch</option>
                                         </select>
-                                        <span class="field__help">Only active Smart Q branches are shown.</span>
                                     </label>
                                     <label class="field">
                                         <span class="field__label">Service</span>
                                         <select class="input" name="service" data-booking-service required disabled>
                                             <option value="">Select a branch first</option>
                                         </select>
-                                        <span class="field__help" data-service-help>Services are loaded from the selected branch.</span>
                                     </label>
                                     <label class="field">
-                                        <span class="field__label">Appointment date</span>
+                                        <span class="field__label">Date</span>
                                         <input class="input" type="date" name="booking_date" data-booking-date required disabled>
-                                        <span class="field__help">Past dates are never offered.</span>
                                     </label>
                                 </div>
 
                                 <fieldset class="slot-fieldset" data-slot-fieldset disabled>
-                                    <legend>Available time</legend>
-                                    <p class="field__help" data-slot-help>Select a branch, service and date to load backend-generated availability.</p>
+                                    <legend>Time</legend>
+                                    <p class="field__help" data-slot-help>Choose a branch, service and date.</p>
                                     <div class="slot-grid" data-slot-grid></div>
                                 </fieldset>
 
                                 <label class="check-field booking-pregnancy" data-pregnancy-field hidden>
                                     <input type="checkbox" name="is_pregnant" data-booking-pregnant>
-                                    <span><strong>Pregnancy priority applies to this visit</strong><small>This visit-specific value is sent to the backend priority decision logic.</small></span>
+                                    <span><strong>Pregnancy applies to this visit</strong></span>
                                 </label>
 
                                 <div class="booking-review" data-booking-review hidden>
@@ -157,7 +153,6 @@
                                 </div>
 
                                 <div class="booking-form__actions">
-                                    <p data-booking-authority>Availability is advisory until the final server write. Smart Q revalidates capacity when you submit.</p>
                                     <button class="btn btn--primary" type="submit" data-booking-submit disabled>Confirm appointment</button>
                                 </div>
                             </form>
@@ -165,7 +160,7 @@
                     </section>
 
                     <section class="customer-section" id="appointments" aria-labelledby="appointments-heading">
-                        <div class="customer-section__header"><div><p class="kicker">Appointments</p><h3 id="appointments-heading">Upcoming appointments</h3></div></div>
+                        <div class="customer-section__header"><div><p class="kicker">Appointments</p><h3 id="appointments-heading">Upcoming</h3></div></div>
                         <div class="panel customer-table-panel" data-upcoming-table><div class="table-wrap"><table class="customer-table"><thead><tr><th>Appointment</th><th>Service</th><th>Branch</th><th>Status</th><th>Queue</th><th>Actions</th></tr></thead><tbody data-upcoming-body></tbody></table></div></div>
                         <div class="panel empty-state empty-state--compact" data-upcoming-empty hidden><p>No upcoming appointments.</p></div>
                     </section>
@@ -173,18 +168,17 @@
                     <section class="customer-section" id="history" aria-labelledby="history-heading">
                         <div class="customer-section__header"><div><p class="kicker">History</p><h3 id="history-heading">Past appointments</h3></div></div>
                         <div class="panel customer-table-panel" data-history-table><div class="table-wrap"><table class="customer-table"><thead><tr><th>Appointment</th><th>Service</th><th>Branch</th><th>Outcome</th><th>Queue</th><th>Details</th></tr></thead><tbody data-history-body></tbody></table></div></div>
-                        <div class="panel empty-state empty-state--compact" data-history-empty hidden><p>No completed, cancelled or no-show appointments yet.</p></div>
+                        <div class="panel empty-state empty-state--compact" data-history-empty hidden><p>No appointment history yet.</p></div>
                     </section>
 
                     <section class="customer-section" id="security" aria-labelledby="security-heading">
                         <div class="panel security-panel">
-                            <div class="panel__header"><div><p class="kicker">Account security</p><h2 id="security-heading">Change password</h2></div></div>
-                            <p class="muted">Your current trusted session remains active after a successful password change.</p>
+                            <div class="panel__header"><div><p class="kicker">Security</p><h2 id="security-heading">Change password</h2></div></div>
                             <div class="form-message" data-security-message hidden role="status" aria-live="polite"></div>
                             <form class="form-stack security-form" data-security-form>
                                 <label class="field"><span class="field__label">Current password</span><input class="input" type="password" name="current_password" autocomplete="current-password" required></label>
                                 <label class="field"><span class="field__label">New password</span><input class="input" type="password" name="new_password" autocomplete="new-password" required></label>
-                                <label class="field"><span class="field__label">Confirm new password</span><input class="input" type="password" name="confirm_password" autocomplete="new-password" required></label>
+                                <label class="field"><span class="field__label">Confirm password</span><input class="input" type="password" name="confirm_password" autocomplete="new-password" required></label>
                                 <div><button class="btn btn--primary" type="submit">Change password</button></div>
                             </form>
                         </div>
@@ -195,12 +189,12 @@
     </div>
 
     <dialog class="booking-dialog" data-booking-dialog aria-labelledby="booking-dialog-title">
-        <div class="booking-dialog__header"><div><p class="kicker">Booking details</p><h2 id="booking-dialog-title" data-dialog-service>Appointment</h2></div><button class="dialog-close" type="button" data-dialog-close>Close</button></div>
-        <div class="customer-loading customer-loading--dialog" data-dialog-loading>Loading booking history...</div>
+        <div class="booking-dialog__header"><div><p class="kicker">Booking</p><h2 id="booking-dialog-title" data-dialog-service>Appointment</h2></div><button class="dialog-close" type="button" data-dialog-close>Close</button></div>
+        <div class="customer-loading customer-loading--dialog" data-dialog-loading>Loading...</div>
         <div class="notice notice--error dialog-notice" data-dialog-error hidden role="alert"></div>
         <div class="booking-dialog__body" data-dialog-content hidden>
-            <dl class="dialog-details"><div><dt>Branch</dt><dd data-dialog-branch>—</dd></div><div><dt>Appointment</dt><dd data-dialog-appointment>—</dd></div><div><dt>Booking status</dt><dd data-dialog-status>—</dd></div><div><dt>Queue number</dt><dd data-dialog-queue>—</dd></div></dl>
-            <div class="timeline-block"><h3>Lifecycle history</h3><ol class="timeline" data-dialog-timeline></ol></div>
+            <dl class="dialog-details"><div><dt>Branch</dt><dd data-dialog-branch>—</dd></div><div><dt>Appointment</dt><dd data-dialog-appointment>—</dd></div><div><dt>Status</dt><dd data-dialog-status>—</dd></div><div><dt>Queue</dt><dd data-dialog-queue>—</dd></div></dl>
+            <div class="timeline-block"><h3>History</h3><ol class="timeline" data-dialog-timeline></ol></div>
         </div>
     </dialog>
 </body>
