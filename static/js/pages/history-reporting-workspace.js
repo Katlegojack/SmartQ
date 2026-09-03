@@ -15,6 +15,10 @@ const state = {
     services: [],
     pauses: [],
     refreshSequence: 0,
+    reportSequence: 0,
+    auditSequence: 0,
+    serviceSequence: 0,
+    pauseSequence: 0,
 };
 
 function titleCase(value) {
@@ -237,6 +241,7 @@ function renderReport() {
 }
 
 async function loadReport({ quiet = false } = {}) {
+    const requestSequence = ++state.reportSequence;
     if (!state.branchId) {
         state.report = null;
         renderReport();
@@ -249,16 +254,21 @@ async function loadReport({ quiet = false } = {}) {
         return;
     }
 
+    const branchId = state.branchId;
     const button = one("[data-load-report]");
     const restore = quiet ? () => {} : setBusy(button, "Loading...");
     try {
-        state.report = await apiRequest(
-            `/api/v1/queues/branches/${state.branchId}/reports/operational/?start_date=${encodeURIComponent(start)}&end_date=${encodeURIComponent(end)}`,
+        const report = await apiRequest(
+            `/api/v1/queues/branches/${branchId}/reports/operational/?start_date=${encodeURIComponent(start)}&end_date=${encodeURIComponent(end)}`,
         );
+        if (requestSequence !== state.reportSequence) return;
+        state.report = report;
         renderReport();
         if (!quiet) setMessage(`Historical report loaded for ${currentBranchName()}.`, "success");
     } catch (error) {
-        setMessage(errorText(error, "Smart Q could not load this historical report."));
+        if (requestSequence === state.reportSequence) {
+            setMessage(errorText(error, "Smart Q could not load this historical report."));
+        }
     } finally {
         restore();
     }
@@ -329,19 +339,24 @@ function renderAudit() {
 }
 
 async function loadAudit({ quiet = false } = {}) {
+    const requestSequence = ++state.auditSequence;
     if (!state.branchId) {
         state.auditEvents = [];
         renderAudit();
         return;
     }
+    const branchId = state.branchId;
     const button = one("[data-refresh-audit]");
     const restore = quiet ? () => {} : setBusy(button, "Refreshing...");
     try {
-        const data = await apiRequest(`/api/v1/queues/branches/${state.branchId}/events/`);
+        const data = await apiRequest(`/api/v1/queues/branches/${branchId}/events/`);
+        if (requestSequence !== state.auditSequence) return;
         state.auditEvents = Array.isArray(data?.events) ? data.events : [];
         renderAudit();
     } catch (error) {
-        setMessage(errorText(error, "Smart Q could not load the branch audit trail."));
+        if (requestSequence === state.auditSequence) {
+            setMessage(errorText(error, "Smart Q could not load the branch audit trail."));
+        }
     } finally {
         restore();
     }
@@ -365,12 +380,17 @@ function fillPauseServices() {
 
 async function loadPauseServices() {
     if (state.role !== "branch_manager" || !state.branchId) return;
+    const requestSequence = ++state.serviceSequence;
+    const branchId = state.branchId;
     try {
-        const data = await apiRequest(`/api/v1/services/branches/${state.branchId}/`);
+        const data = await apiRequest(`/api/v1/services/branches/${branchId}/`);
+        if (requestSequence !== state.serviceSequence) return;
         state.services = Array.isArray(data) ? data : [];
         fillPauseServices();
     } catch (error) {
-        setPauseMessage(errorText(error, "Smart Q could not load branch services."));
+        if (requestSequence === state.serviceSequence) {
+            setPauseMessage(errorText(error, "Smart Q could not load branch services."));
+        }
     }
 }
 
@@ -451,14 +471,19 @@ function renderPauses() {
 
 async function loadPauses({ quiet = false } = {}) {
     if (state.role !== "branch_manager" || !state.branchId) return;
+    const requestSequence = ++state.pauseSequence;
+    const branchId = state.branchId;
     const button = one("[data-refresh-pauses]");
     const restore = quiet ? () => {} : setBusy(button, "Refreshing...");
     try {
-        const data = await apiRequest(`/api/v1/rescheduling/branches/${state.branchId}/pauses/`);
+        const data = await apiRequest(`/api/v1/rescheduling/branches/${branchId}/pauses/`);
+        if (requestSequence !== state.pauseSequence) return;
         state.pauses = Array.isArray(data?.pauses) ? data.pauses : [];
         renderPauses();
     } catch (error) {
-        setPauseMessage(errorText(error, "Smart Q could not restore disruption state."));
+        if (requestSequence === state.pauseSequence) {
+            setPauseMessage(errorText(error, "Smart Q could not restore disruption state."));
+        }
     } finally {
         restore();
     }
