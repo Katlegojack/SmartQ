@@ -1,3 +1,7 @@
+import json
+import os
+import subprocess
+import sys
 from io import StringIO
 
 from django.contrib.auth import authenticate
@@ -74,3 +78,39 @@ class LiveSmokeDemoBootstrapTests(TestCase):
     def test_bootstrap_demo_refuses_to_run_in_production(self):
         with self.assertRaises(CommandError):
             call_command("bootstrap_demo", stdout=StringIO())
+
+    def test_codespaces_development_origin_is_trusted_automatically(self):
+        env = os.environ.copy()
+        env.update(
+            {
+                "SMARTQ_ENV": "development",
+                "CODESPACE_NAME": "smartq-demo-space",
+                "GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN": "app.github.dev",
+                "SMARTQ_DEV_PORT": "8000",
+            }
+        )
+        env.pop("ALLOWED_HOSTS", None)
+        env.pop("CSRF_TRUSTED_ORIGINS", None)
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import json; "
+                    "from smartq import settings; "
+                    "print(json.dumps({"
+                    "'hosts': settings.ALLOWED_HOSTS, "
+                    "'csrf': settings.CSRF_TRUSTED_ORIGINS"
+                    "}))"
+                ),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        payload = json.loads(result.stdout.strip())
+        host = "smartq-demo-space-8000.app.github.dev"
+        self.assertIn(host, payload["hosts"])
+        self.assertIn(f"https://{host}", payload["csrf"])
