@@ -4,7 +4,7 @@
 
 Smart Q is a Django + Django REST Framework Queue Intelligence Platform designed to make queues more predictable, transparent, fair, and operationally efficient.
 
-> **Current development state:** Backend v1 is complete and merged through Day 40. Frontend Days 41-49 are implemented. Day 49 adds historical reporting, QueueEvent audit visibility, branch disruption controls, persistent disruption restoration, and customer disruption-recovery/rescheduling UX. Day 50 is the final frontend integration, responsive and release audit milestone.
+> **Current development state:** Backend v1 is complete through Day 40 and the frontend roadmap is implemented through Day 50. Day 50 closes the frontend milestone with cross-role integration, responsive/accessibility contract verification, safer session-return behavior, last-System-Admin protection, a JavaScript syntax gate, and a dedicated release-audit regression suite.
 
 ## Product principle
 
@@ -72,7 +72,7 @@ dashboard
 
 | Role | Operational scope |
 |---|---|
-| Customer | Own account, booking/rescheduling, live queue, booking history, disruption recovery options |
+| Customer | Own account, booking/rescheduling, live queue, booking history, security, disruption recovery options |
 | Receptionist | Own-branch booking search, assisted check-in, guest walk-ins, branch queue visibility |
 | Counter Staff | Assigned-counter serving lifecycle and matching waiting queue visibility |
 | Branch Manager | Own-branch dashboard, staffing, historical reporting, audit history and disruption control |
@@ -92,6 +92,8 @@ POST /api/v1/accounts/change-password/
 ```
 
 Public registration always creates a Customer account. Browser login is CSRF-protected, password changes reuse Django password validators, and the current trusted session is preserved after successful password rotation.
+
+Day 50 shares one in-flight `/accounts/me/` restoration result across page modules, clears/refetches that cache at explicit identity boundaries, and safely returns users to approved secondary workspaces after sign-in.
 
 ## Frontend roadmap and workspaces
 
@@ -125,6 +127,32 @@ Frontend routes:
 ```
 
 The browser presents backend state and coordinates requests. It does not recreate server-owned rules such as queue priority, queue numbering, slot generation, capacity, disruption impact or rescheduling validity.
+
+## Day 50 release integration safeguards
+
+The final frontend audit adds cross-product protections rather than another feature surface.
+
+```text
+Shared account restoration
+        ↓
+Role-aware primary + secondary workspace routing
+        ↓
+Safe allowlisted login return paths
+        ↓
+Mid-session-expiry redirect through shared shell
+        ↓
+Primary role security/password-change parity
+        ↓
+Last active System Admin protected across deactivation AND role demotion
+        ↓
+JavaScript syntax gate + Day 50 integration regression suite
+```
+
+Approved secondary login-return routes are role constrained. For example, Customer may return to `/app/recovery/`, while Branch Manager or System Admin may return to `/app/history/`. Arbitrary external `next` destinations are not accepted.
+
+When an authenticated session expires after a workspace has already loaded, the shared API client distinguishes the explicit unauthenticated DRF response from an ordinary permission-denied 403 and sends the user back to sign-in with the current workspace path preserved.
+
+The System Admin invariant now applies to every relevant mutation path: Smart Q rejects both deactivation and role demotion when either would remove the last active System Admin. If another active admin remains and an admin legitimately changes their own role, the browser refreshes `/accounts/me/` and immediately routes away from the admin control plane.
 
 ## Customer booking and check-in
 
@@ -372,17 +400,43 @@ SECURE_SSL_REDIRECT
 
 SQLite3 must live on persistent storage in deployment, with regular backup copies and a tested restore process.
 
+## Responsive and accessibility release contract
+
+Day 50 verified the shared shell and every shipped role/workflow stylesheet retain phone-width responsive rules. Dense management tables remain readable by preserving minimum widths inside horizontal `.table-wrap` overflow instead of compressing columns into unusable layouts.
+
+The shared design system retains:
+
+```text
+visible :focus-visible outlines
+keyboard skip links
+prefers-reduced-motion handling
+semantic main targets
+status/error live regions in operational workflows
+```
+
+This is a verified engineering baseline, not a claim of formal WCAG certification.
+
 ## Automated verification
 
-GitHub Actions uses the SQLite3 regression path. The pipeline runs missing-migration checks, Django system checks, app-specific suites, historical reporting/audit tests, frontend milestone suites and the complete Smart Q test suite.
+GitHub Actions uses the SQLite3 regression path. The pipeline runs missing-migration checks, Django system checks, app-specific suites, historical reporting/audit tests, frontend milestone suites, JavaScript syntax validation and the complete Smart Q test suite.
 
-Day 49 has its own named CI gate:
+Day 49 retains its focused gate:
 
 ```powershell
 python manage.py test smartq.test_day49_history_recovery
 ```
 
-The Day 49 integration suite covers frontend route/static presence, branch pause restoration and branch isolation, manager/admin historical report/audit scope, the full manager-disruption-to-customer-recovery journey, and the BranchService `service_id` browser contract.
+Day 50 adds two release gates:
+
+```bash
+find static/js -name '*.js' -print0 | xargs -0 -n1 node --check
+```
+
+```powershell
+python manage.py test smartq.test_day50_frontend_release
+```
+
+The Day 50 release suite covers all frontend entry routes, viewport contracts, skip-link/main targets, primary-role shell/security parity, responsive/accessibility CSS contracts, role-route registry, shared identity restoration, safe secondary return routing, mid-session expiry, router-shell stale-copy prevention, Customer recovery navigation placement, System Admin self-role convergence and the last-active-System-Admin backend invariant.
 
 ## Permanent engineering documentation
 
@@ -409,11 +463,12 @@ docs/DAY46_COUNTER_STAFF_WORKSPACE.md
 docs/DAY47_BRANCH_MANAGER_WORKSPACE.md
 docs/DAY48_SYSTEM_ADMIN_WORKSPACE.md
 docs/DAY49_HISTORY_REPORTING_RECOVERY.md
+docs/DAY50_FRONTEND_RELEASE_AUDIT.md
 ```
 
-## Frontend capabilities through Day 49
+## Frontend capabilities through Day 50
 
-Smart Q now includes a public entry page, customer registration/sign-in, CSRF-protected session restoration, role-aware workspace routing, live customer queue tracking, server-authoritative booking/check-in/cancellation/rescheduling, a branch-scoped Receptionist Workspace, an assigned-counter Counter Staff Workspace, an own-branch Branch Manager Workspace, a global System Admin control plane, a historical reporting/audit workspace, branch disruption controls with refresh-safe restoration, and a customer-owned disruption recovery experience.
+Smart Q now includes a public entry page, customer registration/sign-in, CSRF-protected session restoration, role-aware primary and approved-secondary workspace routing, live customer queue tracking, server-authoritative booking/check-in/cancellation/rescheduling, a branch-scoped Receptionist Workspace, an assigned-counter Counter Staff Workspace, an own-branch Branch Manager Workspace, a global System Admin control plane, a historical reporting/audit workspace, branch disruption controls with refresh-safe restoration, customer-owned disruption recovery, unified account-security access across primary role workspaces, and final integration safeguards for session expiry, role transitions and release regression detection.
 
 ## Roadmap
 
@@ -434,8 +489,8 @@ Day 45  Receptionist Workspace                    COMPLETE / MERGED
 Day 46  Counter Staff Workspace                   COMPLETE / MERGED
 Day 47  Branch Manager Workspace                  COMPLETE / MERGED
 Day 48  System Admin Workspace                    COMPLETE / MERGED
-Day 49  Reporting + Disruption/Rescheduling UX    COMPLETE / PR VERIFICATION
-Day 50  Full Frontend Integration + Release Audit NEXT
+Day 49  Reporting + Disruption/Rescheduling UX    COMPLETE / MERGED
+Day 50  Full Frontend Integration + Release Audit COMPLETE
 ```
 
 ## Technology stack
@@ -450,7 +505,7 @@ Day 50  Full Frontend Integration + Release Audit NEXT
 | Database | SQLite3 |
 | Browser origin policy | django-cors-headers + Django CSRF |
 | Tests | Django + DRF APITestCase/TransactionTestCase |
-| CI | GitHub Actions: SQLite3 regression |
+| CI | GitHub Actions: SQLite3 regression + frontend JavaScript syntax/release gates |
 
 ## Local setup
 
@@ -470,6 +525,12 @@ Local verification:
 python manage.py makemigrations --check --dry-run
 python manage.py check
 python manage.py test
+```
+
+Optional frontend parse verification when Node.js is installed:
+
+```bash
+find static/js -name '*.js' -print0 | xargs -0 -n1 node --check
 ```
 
 ## Final project statement
