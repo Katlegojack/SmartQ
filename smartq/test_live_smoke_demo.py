@@ -3,9 +3,11 @@ import os
 import subprocess
 import sys
 from io import StringIO
+from pathlib import Path
 
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
+from django.contrib.staticfiles import finders
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase, override_settings
@@ -114,3 +116,14 @@ class LiveSmokeDemoBootstrapTests(TestCase):
         host = "smartq-demo-space-8000.app.github.dev"
         self.assertIn(host, payload["hosts"])
         self.assertIn(f"https://{host}", payload["csrf"])
+
+    def test_customer_booking_ui_does_not_expose_engineering_rule_copy(self):
+        resolved = finders.find("js/pages/customer-dashboard.js")
+        self.assertIsNotNone(resolved)
+        source = Path(resolved).read_text(encoding="utf-8")
+
+        self.assertNotIn("backend-generated availability", source)
+        self.assertNotIn("Capacity is revalidated", source)
+        self.assertNotIn("Slot duration follows that backend service time", source)
+        self.assertIn("No branches are configured yet", source)
+        self.assertIn("No times available. Try another date.", source)
