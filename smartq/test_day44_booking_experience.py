@@ -77,7 +77,10 @@ class Day44AppointmentBookingExperienceTests(APITestCase):
         self.assertContains(response, "data-booking-service")
         self.assertContains(response, "data-booking-date")
         self.assertContains(response, "data-slot-grid")
-        self.assertContains(response, "Availability is advisory until the final server write")
+        self.assertNotContains(response, "Availability is advisory until the final server write")
+        self.assertNotContains(response, "Past dates are never offered")
+        self.assertNotContains(response, "Only active Smart Q branches are shown")
+        self.assertNotContains(response, "Services are loaded from the selected branch")
 
     def test_day44_customer_assets_remain_discoverable(self):
         self.assertIsNotNone(finders.find("css/customer-dashboard.css"))
