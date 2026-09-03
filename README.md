@@ -4,7 +4,7 @@
 
 Smart Q is a Django + Django REST Framework Queue Intelligence Platform designed to make queues more predictable, transparent, fair, and operationally efficient.
 
-> **Current development state:** Backend v1 is complete and merged through Day 40. Frontend Days 41-45 are complete and merged into `main`. Day 46 is implemented on `feature/day46-counter-staff-workspace` in PR #39, replacing the generic Counter Staff shell with an assigned-counter serving workspace for lifecycle controls, Call Next, current-customer resolution and queue-type-specific waiting visibility. Day 46 is currently at the CI verification gate before merge.
+> **Current development state:** Backend v1 is complete and merged through Day 40. Frontend Days 41-46 are complete and merged into `main`. Day 46 replaces the generic Counter Staff shell with an assigned-counter serving workspace for lifecycle controls, backend-owned Call Next, current-customer resolution and queue-type-specific waiting visibility. Day 47 Branch Manager Workspace is the next frontend milestone.
 
 ## Product principle
 
@@ -619,8 +619,8 @@ Day 42  Authentication + Role-Aware App Shell     COMPLETE / MERGED
 Day 43  Customer Dashboard                        COMPLETE / MERGED
 Day 44  Booking + Availability + Rescheduling     COMPLETE / MERGED
 Day 45  Receptionist Workspace                    COMPLETE / MERGED
-Day 46  Counter Staff Workspace                   COMPLETE / PR #39 VERIFYING
-Day 47  Branch Manager Workspace                  NEXT AFTER DAY 46 MERGE
+Day 46  Counter Staff Workspace                   COMPLETE / MERGED
+Day 47  Branch Manager Workspace                  NEXT
 Day 48  System Admin Workspace
 ```
 
