@@ -4,7 +4,7 @@
 
 Smart Q is a Django + Django REST Framework Queue Intelligence Platform designed to make queues more predictable, transparent, fair, and operationally efficient.
 
-> **Current development state:** Backend v1 is complete and merged through Day 40. Frontend Days 41-48 are complete. Day 48 replaces the generic System Admin shell with a global control plane for staff, branch, service and BranchService capacity management plus compact global branch inspection. Day 49 Reporting + Disruption/Rescheduling UX is the next frontend milestone.
+> **Current development state:** Backend v1 is complete and merged through Day 40. Frontend Days 41-49 are implemented. Day 49 adds historical reporting, QueueEvent audit visibility, branch disruption controls, persistent disruption restoration, and customer disruption-recovery/rescheduling UX. Day 50 is the final frontend integration, responsive and release audit milestone.
 
 ## Product principle
 
@@ -34,12 +34,10 @@ SERVING
 
 If appointment time passes without check-in, the booking becomes `CANCELLED` because the customer never entered the live queue.
 
-If a branch opens at 08:00, customer service starts at 08:00. Smart Q does not add an artificial staff-preparation buffer before branch opening time.
-
 ## Architecture
 
 ```text
-Frontend / API Client
+Django Templates + Vanilla JS ES Modules
         ↓
 HTTPS + CORS/CSRF/session security
         ↓
@@ -72,21 +70,13 @@ dashboard
 
 ## Roles
 
-```text
-CUSTOMER
-RECEPTIONIST
-COUNTER_STAFF
-BRANCH_MANAGER
-SYSTEM_ADMIN
-```
-
-| Role | Current operational scope |
+| Role | Operational scope |
 |---|---|
-| Customer | Own account, appointment booking/rescheduling, bookings, live queue, own disruption options, own booking timeline |
-| Receptionist | Branch queue reads, booking search, staff check-in, guest walk-ins |
-| Counter Staff | Assigned-counter lifecycle, matching waiting queue visibility, Call Next, Complete and No-show |
-| Branch Manager | Own-branch daily dashboard, queue/service visibility, live counters, Counter Staff assignment, disruption control, audit history and reports |
-| System Admin | Global staff, branch, service and BranchService configuration plus global operational/audit/reporting access |
+| Customer | Own account, booking/rescheduling, live queue, booking history, disruption recovery options |
+| Receptionist | Own-branch booking search, assisted check-in, guest walk-ins, branch queue visibility |
+| Counter Staff | Assigned-counter serving lifecycle and matching waiting queue visibility |
+| Branch Manager | Own-branch dashboard, staffing, historical reporting, audit history and disruption control |
+| System Admin | Global staff/branch/service/capacity administration plus global branch reporting/audit inspection |
 
 Smart Q's `SYSTEM_ADMIN` business role is intentionally separate from Django `is_superuser`.
 
@@ -101,43 +91,24 @@ GET  /api/v1/accounts/me/
 POST /api/v1/accounts/change-password/
 ```
 
-Public registration always creates a normal Customer account. Password changes reuse Django password validators and preserve the current trusted session after successful rotation.
+Public registration always creates a Customer account. Browser login is CSRF-protected, password changes reuse Django password validators, and the current trusted session is preserved after successful password rotation.
 
-Login and password-security endpoints use scoped DRF throttling.
-
-### Browser session login / CSRF flow
-
-```text
-GET /api/v1/accounts/csrf/
-        ↓
-CSRF cookie + token
-        ↓
-POST /api/v1/accounts/login/
-with X-CSRFToken
-        ↓
-Django session established
-```
-
-The login endpoint is explicitly CSRF-protected. CORS and CSRF remain separate controls.
-
-## Frontend foundation
-
-The frontend uses Django templates, CSS and vanilla JavaScript ES modules.
+## Frontend roadmap and workspaces
 
 ```text
 Day 41 -> shared design system + frontend foundation
 Day 42 -> authentication + session restoration + role-aware app shell
 Day 43 -> live Customer Dashboard
-Day 44 -> appointment booking + availability + rescheduling experience
-Day 45 -> live Receptionist Workspace
-Day 46 -> assigned-counter Counter Staff serving workspace
-Day 47 -> own-branch Branch Manager operations workspace
-Day 48 -> global System Admin configuration control plane
+Day 44 -> booking + availability + normal rescheduling
+Day 45 -> Receptionist Workspace
+Day 46 -> Counter Staff Workspace
+Day 47 -> Branch Manager Workspace
+Day 48 -> System Admin control plane
+Day 49 -> historical reporting + audit + disruption/recovery UX
+Day 50 -> full frontend integration + responsive/release audit
 ```
 
-The browser presents backend state and coordinates API requests. It does not recreate Smart Q business rules.
-
-Frontend routes currently include:
+Frontend routes:
 
 ```text
 /                       public Smart Q entry
@@ -149,203 +120,13 @@ Frontend routes currently include:
 /app/counter/           Counter Staff serving workspace
 /app/manager/           Branch Manager operations workspace
 /app/admin/             System Admin control plane
+/app/history/           Manager/Admin history and reporting workspace
+/app/recovery/          Customer disruption recovery workspace
 ```
 
-### Day 44 customer booking flow
+The browser presents backend state and coordinates requests. It does not recreate server-owned rules such as queue priority, queue numbering, slot generation, capacity, disruption impact or rescheduling validity.
 
-```text
-Customer dashboard
-        ↓
-Choose Branch
-        ↓
-Load branch-specific Services
-        ↓
-Choose Date
-        ↓
-Load backend-generated availability
-        ↓
-Choose available Time
-        ↓
-Review
-        ↓
-POST /api/v1/bookings/
-        ↓
-backend revalidates capacity
-        ↓
-Booking + SCHEDULED QueueTicket
-```
-
-The frontend never generates queue numbers, appointment slots, priority state or capacity. Availability is treated as advisory until the final server write revalidates the slot.
-
-Upcoming customer appointments can also be rescheduled through fresh backend availability. Rescheduling returns the queue ticket to `SCHEDULED`, clears check-in state and requires a fresh check-in.
-
-### Day 45 receptionist flow
-
-```text
-Receptionist session
-        ↓
-Assigned branch from /accounts/me/
-        ↓
-Search branch bookings
-        ↓
-Staff-assisted check-in when backend allows it
-        ↓
-WAITING live queue refresh
-
-or
-
-Register guest walk-in
-        ↓
-Choose branch-offered service
-        ↓
-Backend derives General/Priority
-        ↓
-Backend allocates queue number
-        ↓
-WAITING immediately
-```
-
-Reception never selects another branch, queue type, queue number or live-queue state. Those values remain authenticated/backend-owned.
-
-### Day 46 Counter Staff serving flow
-
-```text
-Counter Staff session
-        ↓
-GET /api/v1/counters/my/
-        ↓
-Assigned counter only
-        ↓
-CLOSED -> OPEN
-        ↓
-CALL NEXT
-        ↓
-Backend selects next matching waiting ticket
-        ↓
-SERVING
-   ├── COMPLETE -> COMPLETED
-   └── NO-SHOW  -> NO_SHOW
-        ↓
-Counter free -> CALL NEXT
-```
-
-Counter Staff never choose their own counter, branch, queue type or a specific waiting customer. The waiting table is a read-only preview; the backend Call Next service owns allocation. A paused counter cannot call another customer, but it may finish the customer already in service.
-
-### Day 47 Branch Manager operations flow
-
-```text
-Branch Manager session
-        ↓
-Assigned branch from /accounts/me/
-        ↓
-Select dashboard date
-        ↓
-Read daily customer + queue + service metrics
-        ↓
-Inspect live current counter state
-        ↓
-Closed/free counter needs staff?
-        ↓
-Load own-branch active Counter Staff
-        ↓
-Backend validates assignment
-        ↓
-Refresh manager dashboard + staffing directory
-```
-
-The manager has no branch selector and cannot use the Day 47 screen to override queue priority, call customers, complete service, mark no-shows or administer staff accounts. Counter state remains explicitly live/current even when customer metrics are viewed for a historical date.
-
-### Day 48 System Admin control-plane flow
-
-```text
-System Admin session
-        ↓
-Exact role restoration
-        ↓
-Load protected catalogues in parallel
-        ├── staff
-        ├── branches
-        ├── services
-        └── BranchService mappings
-        ↓
-Create / edit / activate configuration
-        ↓
-Backend serializers + permissions validate every write
-        ↓
-Refresh authoritative catalogues
-
-Global inspection
-        ↓
-Choose any active branch + date
-        ↓
-Reuse manager dashboard read model
-        ↓
-Compact customer / queue / live-counter overview
-```
-
-Day 48 creates no duplicate administration backend. The frontend orchestrates the existing protected APIs. Staff role/branch invariants, operating-hour validation, service-duration validation, capacity rules, self-deactivation protection and global authorization remain backend-owned.
-
-## System Admin control plane
-
-### Staff management
-
-```http
-GET  /api/v1/accounts/admin/staff/
-POST /api/v1/accounts/admin/staff/
-GET  /api/v1/accounts/admin/staff/<id>/
-PATCH /api/v1/accounts/admin/staff/<id>/
-PATCH /api/v1/accounts/admin/staff/<id>/activation/
-```
-
-### Branch management
-
-```http
-GET  /api/v1/branches/admin/
-POST /api/v1/branches/admin/
-GET  /api/v1/branches/admin/<id>/
-PATCH /api/v1/branches/admin/<id>/
-```
-
-### Service management
-
-```http
-GET  /api/v1/services/admin/
-POST /api/v1/services/admin/
-GET  /api/v1/services/admin/<id>/
-PATCH /api/v1/services/admin/<id>/
-```
-
-### BranchService/capacity management
-
-```http
-GET  /api/v1/services/admin/branch-services/
-POST /api/v1/services/admin/branch-services/
-GET  /api/v1/services/admin/branch-services/<id>/
-PATCH /api/v1/services/admin/branch-services/<id>/
-```
-
-Core operational configuration uses deactivation rather than destructive hard delete so historical context remains intact. Day 48 presents these contracts in one dedicated global control plane and reuses the manager dashboard API for compact branch inspection.
-
-## Branch-service mapping and capacity
-
-A service must be explicitly offered by a branch through `BranchService`.
-
-```text
-slot duration = Service.average_service_time
-capacity = BranchService.max_bookings_per_slot
-```
-
-### Public service APIs
-
-```http
-GET /api/v1/services/
-GET /api/v1/services/branches/<branch_id>/
-GET /api/v1/services/branches/<branch_id>/<service_id>/availability/?date=YYYY-MM-DD
-```
-
-The backend rejects unoffered services, invalid generated times, past slots and fully-booked slots. Guest walk-ins do not consume scheduled appointment capacity.
-
-## Booking and check-in APIs
+## Customer booking and check-in
 
 ```http
 POST  /api/v1/bookings/
@@ -357,20 +138,7 @@ PATCH /api/v1/bookings/<id>/cancel/
 PATCH /api/v1/bookings/<id>/reschedule/
 ```
 
-Check-in opens exactly six hours before appointment time.
-
-Pregnancy priority input is validated at the backend boundary: a booking cannot claim pregnancy priority unless the authenticated customer profile is female.
-
-## Reception APIs
-
-```http
-GET  /api/v1/bookings/reception/search/?q=<query>
-POST /api/v1/bookings/reception/walk-ins/
-POST /api/v1/bookings/<id>/staff-check-in/
-GET  /api/v1/queues/branches/<branch_id>/waiting/
-```
-
-Guest walk-ins require no Smart Q account and enter `WAITING` immediately. Reception search, check-in and waiting-queue visibility remain branch-scoped.
+Availability is generated by the backend and revalidated on the final write. Check-in opens exactly six hours before appointment time. Rescheduling returns the ticket to `SCHEDULED`, clears check-in state and requires a fresh check-in.
 
 ## Priority policy
 
@@ -382,13 +150,20 @@ OR disability status
 OR female + pregnancy for the visit
 ```
 
-The same rules apply to registered customers and guest walk-ins.
+The same policy applies to registered customers and guest walk-ins. Reception and customers never manually select General/Priority.
+
+## Reception APIs
+
+```http
+GET  /api/v1/bookings/reception/search/?q=<query>
+POST /api/v1/bookings/reception/walk-ins/
+POST /api/v1/bookings/<id>/staff-check-in/
+GET  /api/v1/queues/branches/<branch_id>/waiting/
+```
+
+Reception remains branch-scoped. Guest walk-ins do not need a Smart Q account and enter `WAITING` immediately after the backend determines queue type and queue number.
 
 ## Counter lifecycle
-
-Rules include one staff -> one counter, same-branch assignment, no self-assignment, staffed counter required before opening, PAUSE blocks Call Next, CLOSE blocked while serving, and assignment-aware Counter Staff mutations.
-
-### Counter APIs
 
 ```http
 GET  /api/v1/counters/my/
@@ -402,42 +177,26 @@ POST /api/v1/counters/<counter_id>/resume/
 POST /api/v1/counters/<counter_id>/close/
 ```
 
-The Counter Staff directory is a narrow Day 47 read contract for authorised Branch Managers/System Admins. It returns active Counter Staff in the authorised branch and current assignment metadata; it does not widen access to the System Admin staff-management API.
-
-## Live queue APIs
+Serving APIs:
 
 ```http
-GET  /api/v1/queues/my-current/
-GET  /api/v1/queues/branches/<branch_id>/waiting/
 GET  /api/v1/queues/counters/<counter_id>/current/
 POST /api/v1/queues/counters/<counter_id>/call-next/
 POST /api/v1/queues/counters/<counter_id>/complete/
 POST /api/v1/queues/counters/<counter_id>/no-show/
 ```
 
-## Queue-number allocation
+Counter Staff operate only their assigned counter. The waiting table is read-only; the backend chooses the next eligible customer.
 
-Queue numbers are scoped by:
+## Queue number and live ETA contracts
+
+Queue numbers are allocated by the database-backed sequence scoped by:
 
 ```text
 branch + booking date + queue type
 ```
 
-`QueueNumberSequence` is the database-backed allocation record for each scope.
-
-```text
-QueueNumberSequence
-├── branch
-├── booking_date
-├── queue_type
-└── last_number
-```
-
-The migration seeds sequence state from historical tickets so existing data does not restart from `A001` or `P001`. Verified SQLite3 behavior covers sequential numbering, date reset, separate General/Priority sequences, existing sequence state, and historical seeding.
-
-## Waiting-time estimate
-
-Smart Q's live ETA is deterministic, not ML.
+The live wait estimate remains deterministic:
 
 ```text
 Estimated Wait = People Ahead × Service.average_service_time
@@ -445,68 +204,28 @@ Estimated Wait = People Ahead × Service.average_service_time
 
 Counter count does **not** divide the ETA formula.
 
-## Manager dashboard
+## Branch Manager dashboard
 
 ```http
 GET /api/v1/dashboard/branches/<branch_id>/
 GET /api/v1/dashboard/branches/<branch_id>/?date=YYYY-MM-DD
 ```
 
-Branch Manager sees only the assigned branch. System Admin can inspect any active branch. Day 47 presents this read model as a dedicated own-branch frontend; Day 48 reuses the same authoritative read model for compact global branch inspection.
+Branch Manager sees only the assigned branch. System Admin may inspect any active branch. Historical customer metrics and live counter state remain explicitly separate concepts.
 
-## Historical operational reporting
+## Historical reporting and QueueEvent audit — Day 49
+
+Historical reporting reads append-only `QueueEvent` facts rather than live dashboard state.
 
 ```http
 GET /api/v1/queues/branches/<branch_id>/reports/operational/
 GET /api/v1/queues/branches/<branch_id>/reports/operational/?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
+GET /api/v1/queues/branches/<branch_id>/events/
 ```
 
-Reporting reads the append-only `QueueEvent` history and returns historical operational facts such as check-ins, calls, completions, no-shows, cancellations, actual wait time, actual service time, completion/no-show rates, and service/daily/queue-type/source breakdowns.
+Reports include check-ins, calls, completions, no-shows, cancellations, actual wait time, actual service time, completion/no-show rates, service breakdowns, daily activity, queue-type mix and source mix. The default period is 30 days and the maximum accepted range is 366 days.
 
-The default period is the most recent 30 days and the maximum accepted range is 366 days. Branch Managers can read only their own branch; System Admin can inspect any active branch.
-
-Historical actual wait is kept separate from the live ETA contract.
-
-## Disruption and rescheduling
-
-```text
-Branch Manager pauses service
-        ↓
-Live impact preview
-        ↓
-Manager resumes service
-        ↓
-Finalize affected/risk records
-        ↓
-Generate up to 5 future options
-        ↓
-Affected customer chooses option
-        ↓
-Fresh capacity validation
-        ↓
-PENDING booking + SCHEDULED Priority ticket
-        ↓
-Fresh check-in required
-```
-
-### Manager disruption APIs
-
-```http
-POST /api/v1/rescheduling/branches/<branch_id>/pauses/
-GET  /api/v1/rescheduling/pauses/<pause_id>/
-POST /api/v1/rescheduling/pauses/<pause_id>/resume/
-```
-
-### Customer disruption APIs
-
-```http
-GET  /api/v1/rescheduling/recommendations/my/
-POST /api/v1/rescheduling/options/<option_id>/select/
-```
-
-## QueueEvent lifecycle audit
-
-Smart Q has append-only history for queue, booking and counter transitions.
+`QueueEvent` remains the historical source of truth for lifecycle/audit facts including:
 
 ```text
 TICKET_SCHEDULED
@@ -525,19 +244,104 @@ COUNTER_RESUMED
 COUNTER_CLOSED
 ```
 
-### Customer timeline
+Customer-owned lifecycle history is available at:
 
 ```http
 GET /api/v1/queues/bookings/<booking_id>/timeline/
 ```
 
-### Branch audit
+## Disruption and customer recovery — Day 49
 
-```http
-GET /api/v1/queues/branches/<branch_id>/events/
+```text
+Branch Manager pauses a service
+        ↓
+Pause is persisted and can be restored after refresh
+        ↓
+Backend reports current impact
+        ↓
+Manager resumes the service
+        ↓
+Backend finalizes affected/risk records
+        ↓
+Notifications + future replacement options are generated
+        ↓
+Affected customer reviews own recommendation
+        ↓
+Customer chooses a replacement slot
+        ↓
+Backend revalidates slot/capacity atomically
+        ↓
+Booking becomes PENDING
+Ticket becomes SCHEDULED + Priority
+        ↓
+Fresh check-in required
 ```
 
-Access remains ownership/role/branch scoped.
+Manager disruption APIs:
+
+```http
+GET  /api/v1/rescheduling/branches/<branch_id>/pauses/
+POST /api/v1/rescheduling/branches/<branch_id>/pauses/
+GET  /api/v1/rescheduling/pauses/<pause_id>/
+POST /api/v1/rescheduling/pauses/<pause_id>/resume/
+```
+
+The branch-scoped pause `GET` is the Day 49 restoration contract that makes persistent disruption state recoverable after page refresh. Active pauses are returned before ended history.
+
+Customer disruption APIs:
+
+```http
+GET  /api/v1/rescheduling/recommendations/my/
+POST /api/v1/rescheduling/options/<option_id>/select/
+```
+
+A stale/full/invalid replacement slot is rejected by the server. The browser cannot force an outdated option through.
+
+## Day 49 frontend engineering safeguards
+
+The history workspace uses independent request sequence guards for reports, audit events, branch services and pause history. An older asynchronous response cannot overwrite a newer branch/date selection.
+
+The branch-service serializer exposes both a mapping `id` and the actual `service_id`. Day 49 deliberately sends `service_id` when creating a disruption and has regression coverage protecting that contract.
+
+The audit table displays at most the most recent 100 matching rows after client-side filtering so a large event history does not produce an uncontrolled DOM render.
+
+## System Admin control plane
+
+Protected System Admin APIs include:
+
+```http
+GET/POST   /api/v1/accounts/admin/staff/
+GET/PATCH  /api/v1/accounts/admin/staff/<id>/
+PATCH      /api/v1/accounts/admin/staff/<id>/activation/
+
+GET/POST   /api/v1/branches/admin/
+GET/PATCH  /api/v1/branches/admin/<id>/
+
+GET/POST   /api/v1/services/admin/
+GET/PATCH  /api/v1/services/admin/<id>/
+
+GET/POST   /api/v1/services/admin/branch-services/
+GET/PATCH  /api/v1/services/admin/branch-services/<id>/
+```
+
+Core operational configuration uses deactivation rather than destructive hard delete so historical references remain intact.
+
+## Branch-service mapping and capacity
+
+```text
+slot duration = Service.average_service_time
+capacity = BranchService.max_bookings_per_slot
+```
+
+Public service APIs:
+
+```http
+GET /api/v1/services/
+GET /api/v1/services/branches/<branch_id>/
+GET /api/v1/services/branches/<branch_id>/<service_id>/availability/?date=YYYY-MM-DD
+```
+
+The backend rejects unoffered services, invalid generated times, past slots and fully-booked slots.
 
 ## Check-in reminders
 
@@ -547,88 +351,38 @@ Advance online appointments receive hourly in-app reminders during the six-hour 
 python manage.py process_check_in_reminders
 ```
 
-The same processor cancels unchecked appointments after appointment time passes. Deployment can invoke the command hourly using the platform scheduler/cron facility.
+The processor also cancels unchecked appointments after appointment time passes.
 
-## SQLite3 production hardening
+## Production and SQLite3 hardening
 
-Smart Q uses SQLite3 as the project database in development, testing and the current deployment scope.
+Smart Q currently uses SQLite3 for development, testing and the current deployment scope.
 
-```text
-SMARTQ_ENV=development or production
-        ↓
-SQLite3
-```
-
-Production mode requires:
+Production mode requires environment-driven settings such as:
 
 ```text
+SMARTQ_ENV=production
 DJANGO_SECRET_KEY
 DJANGO_DEBUG=false
 ALLOWED_HOSTS
-```
-
-Optional persistent database path:
-
-```text
 SMARTQ_SQLITE_PATH=/app/data/db.sqlite3
-```
-
-### CORS, CSRF and cookies
-
-Supported variables:
-
-```text
 CORS_ALLOWED_ORIGINS
-CORS_ALLOW_CREDENTIALS
 CSRF_TRUSTED_ORIGINS
-SESSION_COOKIE_SAMESITE
-CSRF_COOKIE_SAMESITE
-```
-
-Session and CSRF cookies are `Secure` in production; the session cookie is `HttpOnly`.
-
-### HTTPS / reverse proxy
-
-Supported variables:
-
-```text
 SECURE_SSL_REDIRECT
-USE_X_FORWARDED_PROTO
-SECURE_HSTS_SECONDS
-SECURE_HSTS_INCLUDE_SUBDOMAINS
-SECURE_HSTS_PRELOAD
 ```
 
-### Logging and persistence
-
-Smart Q emits console logs for deployment collection. SQLite3 must be stored on persistent storage for deployment. Keep regular backup copies, a known retention period and a tested restore procedure for important data.
+SQLite3 must live on persistent storage in deployment, with regular backup copies and a tested restore process.
 
 ## Automated verification
 
-GitHub Actions uses one database path:
+GitHub Actions uses the SQLite3 regression path. The pipeline runs missing-migration checks, Django system checks, app-specific suites, historical reporting/audit tests, frontend milestone suites and the complete Smart Q test suite.
 
-```text
-SQLite3 regression
+Day 49 has its own named CI gate:
+
+```powershell
+python manage.py test smartq.test_day49_history_recovery
 ```
 
-The job verifies dependencies, missing migrations, Django system checks, app-specific regression suites, QueueEvent audit tests, Day 39 reporting tests, Day 40 final audit tests, Day 41-48 frontend milestone tests and the complete Smart Q regression suite.
-
-## Day 40 final backend audit
-
-The final focused audit proves that separate backend features still agree when exercised together.
-
-```text
-cross-customer timeline denial
-duplicate check-in conflict + single activation event
-stale final-slot capacity rejection
-Counter Staff Call Next -> Complete integration
-counter-assignment isolation
-Branch Manager report isolation
-System Admin global reporting access
-locked ETA contract
-```
-
-This audit complements the complete app-specific regression suite rather than replacing it.
+The Day 49 integration suite covers frontend route/static presence, branch pause restoration and branch isolation, manager/admin historical report/audit scope, the full manager-disruption-to-customer-recovery journey, and the BranchService `service_id` browser contract.
 
 ## Permanent engineering documentation
 
@@ -654,15 +408,12 @@ docs/DAY45_RECEPTION_WORKSPACE.md
 docs/DAY46_COUNTER_STAFF_WORKSPACE.md
 docs/DAY47_BRANCH_MANAGER_WORKSPACE.md
 docs/DAY48_SYSTEM_ADMIN_WORKSPACE.md
+docs/DAY49_HISTORY_REPORTING_RECOVERY.md
 ```
 
-## Backend v1 capabilities
+## Frontend capabilities through Day 49
 
-Smart Q backend v1 includes customer registration/session authentication, CSRF-protected browser login, password rotation, role/branch/counter/ownership authorization, System Admin control APIs, branch/service/capacity configuration, booking/check-in, reception walk-ins, General/Priority queues, deterministic ETA, queue-number sequence allocation, counter lifecycle, manager dashboard, disruption/rescheduling, in-app notifications, QueueEvent history, customer timelines, branch audit history, historical operational reporting, environment-driven security settings, SQLite3 persistence guidance and complete SQLite3 regression verification.
-
-## Frontend capabilities through Day 48
-
-Smart Q now includes a public entry page, customer registration/sign-in, CSRF-protected session restoration, role-aware workspace routing, a live Customer Dashboard, customer-owned appointment/history views, live queue position/ETA presentation, lifecycle history, server-authoritative check-in/cancellation, a full appointment booking/rescheduling workflow, a branch-scoped Receptionist Workspace, an assigned-counter Counter Staff Workspace, an own-branch Branch Manager Workspace for daily operations and safe staffing, and a global System Admin control plane for staff, branches, services, BranchService capacity and branch inspection.
+Smart Q now includes a public entry page, customer registration/sign-in, CSRF-protected session restoration, role-aware workspace routing, live customer queue tracking, server-authoritative booking/check-in/cancellation/rescheduling, a branch-scoped Receptionist Workspace, an assigned-counter Counter Staff Workspace, an own-branch Branch Manager Workspace, a global System Admin control plane, a historical reporting/audit workspace, branch disruption controls with refresh-safe restoration, and a customer-owned disruption recovery experience.
 
 ## Roadmap
 
@@ -682,9 +433,9 @@ Day 44  Booking + Availability + Rescheduling     COMPLETE / MERGED
 Day 45  Receptionist Workspace                    COMPLETE / MERGED
 Day 46  Counter Staff Workspace                   COMPLETE / MERGED
 Day 47  Branch Manager Workspace                  COMPLETE / MERGED
-Day 48  System Admin Workspace                    COMPLETE
-Day 49  Reporting + Disruption/Rescheduling UX    NEXT
-Day 50  Full Frontend Integration + Release Audit
+Day 48  System Admin Workspace                    COMPLETE / MERGED
+Day 49  Reporting + Disruption/Rescheduling UX    COMPLETE / PR VERIFICATION
+Day 50  Full Frontend Integration + Release Audit NEXT
 ```
 
 ## Technology stack
@@ -696,10 +447,8 @@ Day 50  Full Frontend Integration + Release Audit
 | Frontend | Django templates + HTML5 + CSS3 + vanilla JavaScript ES modules |
 | Authentication | Django sessions + CSRF |
 | Authorization | Profile roles + branch/counter/ownership scope |
-| Account abuse protection | DRF scoped throttling |
 | Database | SQLite3 |
 | Browser origin policy | django-cors-headers + Django CSRF |
-| Admin/control plane | Protected Smart Q System Admin APIs + dedicated Day 48 workspace + Django Admin for development |
 | Tests | Django + DRF APITestCase/TransactionTestCase |
 | CI | GitHub Actions: SQLite3 regression |
 
