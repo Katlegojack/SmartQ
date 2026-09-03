@@ -81,7 +81,7 @@ class LiveSmokeDemoBootstrapTests(TestCase):
         with self.assertRaises(CommandError):
             call_command("bootstrap_demo", stdout=StringIO())
 
-    def test_codespaces_development_origin_is_trusted_automatically(self):
+    def test_codespaces_and_local_development_origins_are_trusted_automatically(self):
         env = os.environ.copy()
         env.update(
             {
@@ -116,6 +116,10 @@ class LiveSmokeDemoBootstrapTests(TestCase):
         host = "smartq-demo-space-8000.app.github.dev"
         self.assertIn(host, payload["hosts"])
         self.assertIn(f"https://{host}", payload["csrf"])
+        self.assertIn("http://localhost:8000", payload["csrf"])
+        self.assertIn("https://localhost:8000", payload["csrf"])
+        self.assertIn("http://127.0.0.1:8000", payload["csrf"])
+        self.assertIn("https://127.0.0.1:8000", payload["csrf"])
 
     def test_customer_booking_ui_does_not_expose_engineering_rule_copy(self):
         resolved = finders.find("js/pages/customer-dashboard.js")
