@@ -1,0 +1,219 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Smart Q System Admin control plane for staff, branches, services, capacity and global operations.">
+    <title>System administration | Smart Q</title>
+    <link rel="stylesheet" href="{% static 'css/smartq.css' %}">
+    <link rel="stylesheet" href="{% static 'css/auth-shell.css' %}">
+    <link rel="stylesheet" href="{% static 'css/admin-workspace.css' %}">
+    <script type="module" src="{% static 'js/pages/app-shell.js' %}" defer></script>
+    <script type="module" src="{% static 'js/pages/admin-workspace.js' %}" defer></script>
+</head>
+<body class="app-page" data-app-shell data-admin-workspace data-expected-role="system_admin">
+    <a class="skip-link" href="#workspace-main">Skip to administration controls</a>
+
+    <div class="app-layout">
+        <aside class="sidebar" aria-label="System administration navigation">
+            <a class="brand sidebar__brand" href="/" aria-label="Smart Q home">
+                <span class="brand__mark" aria-hidden="true">SQ</span>
+                <span class="brand__text"><strong>Smart Q</strong><small>Where Time Meets Priority</small></span>
+            </a>
+
+            <div class="sidebar__context">
+                <span class="sidebar__context-label">Signed-in role</span>
+                <strong data-shell-role>System Admin</strong>
+                <small>Global platform scope</small>
+            </div>
+
+            <nav class="side-nav" aria-label="Administration sections">
+                <a class="side-nav__item is-active" href="#overview">Platform overview</a>
+                <a class="side-nav__item" href="#staff">Staff accounts</a>
+                <a class="side-nav__item" href="#branches">Branches</a>
+                <a class="side-nav__item" href="#services">Services</a>
+                <a class="side-nav__item" href="#capacity">Branch capacity</a>
+                <a class="side-nav__item" href="#inspection">Branch inspection</a>
+                <span class="side-nav__divider" aria-hidden="true"></span>
+                <a class="side-nav__item" href="#security">Security</a>
+            </nav>
+
+            <div class="sidebar__footer">
+                <button class="btn btn--secondary btn--block" type="button" data-logout>Sign out</button>
+            </div>
+        </aside>
+
+        <div class="workspace">
+            <header class="workspace-topbar admin-topbar">
+                <div>
+                    <p class="kicker">System administration workspace</p>
+                    <h1>Smart Q control plane</h1>
+                </div>
+                <div class="admin-topbar__actions">
+                    <span class="scope-chip">Global configuration</span>
+                    <button class="btn btn--secondary btn--sm" type="button" data-refresh-admin>Refresh all</button>
+                </div>
+            </header>
+
+            <main class="workspace-main admin-main" id="workspace-main">
+                <div class="notice notice--error" data-shell-error hidden role="alert"></div>
+                <div class="admin-message" data-admin-message hidden role="status" aria-live="polite"></div>
+                <div class="admin-loading" data-admin-loading role="status">Loading platform configuration...</div>
+
+                <div data-admin-content hidden>
+                    <section class="admin-section" id="overview" aria-labelledby="overview-heading">
+                        <div class="section-row admin-section__heading">
+                            <div>
+                                <p class="eyebrow">Platform overview</p>
+                                <h2 id="overview-heading">Configuration at a glance</h2>
+                                <p>Counts are derived from the protected administration catalogues. Configuration remains backend-validated.</p>
+                            </div>
+                            <span class="scope-chip">System Admin only</span>
+                        </div>
+                        <div class="admin-metric-grid">
+                            <article class="metric-card"><span>Active staff</span><strong data-metric-staff>0</strong><small data-metric-staff-total>0 total staff accounts</small></article>
+                            <article class="metric-card"><span>Active branches</span><strong data-metric-branches>0</strong><small data-metric-branches-total>0 configured branches</small></article>
+                            <article class="metric-card"><span>Active services</span><strong data-metric-services>0</strong><small data-metric-services-total>0 catalogue services</small></article>
+                            <article class="metric-card"><span>Active mappings</span><strong data-metric-mappings>0</strong><small data-metric-mappings-total>0 branch/service mappings</small></article>
+                        </div>
+                    </section>
+
+                    <section class="admin-section" id="staff" aria-labelledby="staff-heading">
+                        <div class="section-row admin-section__heading">
+                            <div><p class="kicker">Identity & access</p><h3 id="staff-heading">Operational staff accounts</h3><p>Create staff, edit role/branch profile fields and activate or deactivate accounts without deleting history.</p></div>
+                            <button class="btn btn--secondary btn--sm" type="button" data-reset-staff-form>New staff</button>
+                        </div>
+                        <div class="admin-management-grid">
+                            <div class="panel admin-table-panel">
+                                <div class="table-wrap">
+                                    <table class="admin-table">
+                                        <thead><tr><th>Staff</th><th>Role</th><th>Branch</th><th>Status</th><th>Action</th></tr></thead>
+                                        <tbody data-staff-body></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <form class="panel admin-form" data-staff-form>
+                                <div class="admin-form__heading"><div><p class="kicker" data-staff-form-mode>Create</p><h4 data-staff-form-title>New staff account</h4></div><span class="form-id" data-staff-edit-id hidden></span></div>
+                                <div class="form-message" data-staff-message hidden role="status"></div>
+                                <label class="field"><span class="field__label">Username</span><input class="input" name="username" autocomplete="off" required></label>
+                                <div class="form-two">
+                                    <label class="field"><span class="field__label">First name</span><input class="input" name="first_name"></label>
+                                    <label class="field"><span class="field__label">Last name</span><input class="input" name="last_name"></label>
+                                </div>
+                                <label class="field"><span class="field__label">Email</span><input class="input" name="email" type="email"></label>
+                                <div class="form-two" data-staff-create-only>
+                                    <label class="field"><span class="field__label">Date of birth</span><input class="input" name="date_of_birth" type="date" required></label>
+                                    <label class="field"><span class="field__label">Gender</span><select class="input" name="gender" required><option value="">Choose</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></label>
+                                </div>
+                                <label class="check-row" data-staff-create-only><input type="checkbox" name="disability_status"><span>Disability status</span></label>
+                                <div class="form-two">
+                                    <label class="field"><span class="field__label">Role</span><select class="input" name="role" data-staff-role required><option value="receptionist">Receptionist</option><option value="counter_staff">Counter Staff</option><option value="branch_manager">Branch Manager</option><option value="system_admin">System Admin</option></select></label>
+                                    <label class="field"><span class="field__label">Branch</span><select class="input" name="branch" data-staff-branch><option value="">No branch</option></select></label>
+                                </div>
+                                <label class="field" data-staff-create-only><span class="field__label">Temporary password</span><input class="input" name="password" type="password" autocomplete="new-password" required></label>
+                                <p class="form-help" data-staff-branch-help>Receptionist, Counter Staff and Branch Manager require an active branch. System Admin must have no branch.</p>
+                                <div class="form-actions"><button class="btn btn--primary" type="submit" data-staff-submit>Create staff</button><button class="btn btn--secondary" type="button" data-reset-staff-form>Clear</button></div>
+                            </form>
+                        </div>
+                    </section>
+
+                    <section class="admin-section" id="branches" aria-labelledby="branches-heading">
+                        <div class="section-row admin-section__heading">
+                            <div><p class="kicker">Service locations</p><h3 id="branches-heading">Branches</h3><p>Maintain branch identity and operating hours. Deactivate instead of deleting historical context.</p></div>
+                            <button class="btn btn--secondary btn--sm" type="button" data-reset-branch-form>New branch</button>
+                        </div>
+                        <div class="admin-management-grid">
+                            <div class="panel admin-table-panel"><div class="table-wrap"><table class="admin-table"><thead><tr><th>Branch</th><th>City</th><th>Hours</th><th>Status</th><th>Action</th></tr></thead><tbody data-branch-body></tbody></table></div></div>
+                            <form class="panel admin-form" data-branch-form>
+                                <div class="admin-form__heading"><div><p class="kicker" data-branch-form-mode>Create</p><h4 data-branch-form-title>New branch</h4></div></div>
+                                <div class="form-message" data-branch-message hidden role="status"></div>
+                                <div class="form-two"><label class="field"><span class="field__label">Branch code</span><input class="input" name="branch_code" maxlength="10" required></label><label class="field"><span class="field__label">Name</span><input class="input" name="name" required></label></div>
+                                <label class="field"><span class="field__label">Address</span><input class="input" name="address" required></label>
+                                <label class="field"><span class="field__label">City</span><input class="input" name="city" required></label>
+                                <div class="form-two"><label class="field"><span class="field__label">Opening time</span><input class="input" name="opening_time" type="time" required></label><label class="field"><span class="field__label">Closing time</span><input class="input" name="closing_time" type="time" required></label></div>
+                                <label class="check-row"><input type="checkbox" name="is_active" checked><span>Branch active</span></label>
+                                <div class="form-actions"><button class="btn btn--primary" type="submit" data-branch-submit>Save branch</button><button class="btn btn--secondary" type="button" data-reset-branch-form>Clear</button></div>
+                            </form>
+                        </div>
+                    </section>
+
+                    <section class="admin-section" id="services" aria-labelledby="services-heading">
+                        <div class="section-row admin-section__heading">
+                            <div><p class="kicker">Global catalogue</p><h3 id="services-heading">Services</h3><p>Service duration is the backend-approved slot duration used by availability and ETA-related operations.</p></div>
+                            <button class="btn btn--secondary btn--sm" type="button" data-reset-service-form>New service</button>
+                        </div>
+                        <div class="admin-management-grid">
+                            <div class="panel admin-table-panel"><div class="table-wrap"><table class="admin-table"><thead><tr><th>Service</th><th>Average time</th><th>Status</th><th>Action</th></tr></thead><tbody data-service-body></tbody></table></div></div>
+                            <form class="panel admin-form" data-service-form>
+                                <div class="admin-form__heading"><div><p class="kicker" data-service-form-mode>Create</p><h4 data-service-form-title>New service</h4></div></div>
+                                <div class="form-message" data-service-message hidden role="status"></div>
+                                <div class="form-two"><label class="field"><span class="field__label">Service code</span><input class="input" name="service_code" maxlength="10" required></label><label class="field"><span class="field__label">Name</span><input class="input" name="name" required></label></div>
+                                <label class="field"><span class="field__label">Description</span><textarea class="input admin-textarea" name="description" required></textarea></label>
+                                <label class="field"><span class="field__label">Average service time (minutes)</span><input class="input" name="average_service_time" type="number" min="1" required></label>
+                                <label class="check-row"><input type="checkbox" name="is_active" checked><span>Service active</span></label>
+                                <div class="form-actions"><button class="btn btn--primary" type="submit" data-service-submit>Save service</button><button class="btn btn--secondary" type="button" data-reset-service-form>Clear</button></div>
+                            </form>
+                        </div>
+                    </section>
+
+                    <section class="admin-section" id="capacity" aria-labelledby="capacity-heading">
+                        <div class="section-row admin-section__heading">
+                            <div><p class="kicker">BranchService mapping</p><h3 id="capacity-heading">Branch service capacity</h3><p>Configure which branch offers which service and how many scheduled bookings are accepted per backend-generated slot.</p></div>
+                            <button class="btn btn--secondary btn--sm" type="button" data-reset-mapping-form>New mapping</button>
+                        </div>
+                        <div class="admin-management-grid">
+                            <div class="panel admin-table-panel"><div class="table-wrap"><table class="admin-table"><thead><tr><th>Branch</th><th>Service</th><th>Capacity</th><th>Status</th><th>Action</th></tr></thead><tbody data-mapping-body></tbody></table></div></div>
+                            <form class="panel admin-form" data-mapping-form>
+                                <div class="admin-form__heading"><div><p class="kicker" data-mapping-form-mode>Create</p><h4 data-mapping-form-title>New branch/service mapping</h4></div></div>
+                                <div class="form-message" data-mapping-message hidden role="status"></div>
+                                <label class="field"><span class="field__label">Branch</span><select class="input" name="branch" data-mapping-branch required><option value="">Choose active branch</option></select></label>
+                                <label class="field"><span class="field__label">Service</span><select class="input" name="service" data-mapping-service required><option value="">Choose active service</option></select></label>
+                                <label class="field"><span class="field__label">Maximum bookings per slot</span><input class="input" name="max_bookings_per_slot" type="number" min="1" required></label>
+                                <label class="check-row"><input type="checkbox" name="is_active" checked><span>Mapping active</span></label>
+                                <p class="form-help">When editing, branch and service are locked; change capacity or active state. Active mappings require an active branch and active service.</p>
+                                <div class="form-actions"><button class="btn btn--primary" type="submit" data-mapping-submit>Save mapping</button><button class="btn btn--secondary" type="button" data-reset-mapping-form>Clear</button></div>
+                            </form>
+                        </div>
+                    </section>
+
+                    <section class="admin-section" id="inspection" aria-labelledby="inspection-heading">
+                        <div class="section-row admin-section__heading">
+                            <div><p class="kicker">Global operational access</p><h3 id="inspection-heading">Inspect a branch</h3><p>System Admin may inspect any active branch through the existing manager dashboard read model. Configuration and operations remain separate concerns.</p></div>
+                        </div>
+                        <div class="panel inspection-controls">
+                            <label class="field"><span class="field__label">Branch</span><select class="input" data-inspection-branch><option value="">Choose active branch</option></select></label>
+                            <label class="field"><span class="field__label">Date</span><input class="input" type="date" data-inspection-date></label>
+                            <button class="btn btn--primary" type="button" data-inspect-branch>Load branch</button>
+                        </div>
+                        <div class="inspection-empty" data-inspection-empty>Select an active branch to inspect its operational read model.</div>
+                        <div data-inspection-result hidden>
+                            <div class="admin-metric-grid inspection-metrics">
+                                <article class="metric-card"><span>Total customers</span><strong data-inspect-total>0</strong><small data-inspect-date>Selected date</small></article>
+                                <article class="metric-card"><span>Waiting</span><strong data-inspect-waiting>0</strong><small>General + Priority</small></article>
+                                <article class="metric-card"><span>Serving</span><strong data-inspect-serving>0</strong><small>Currently in service for date</small></article>
+                                <article class="metric-card"><span>Live counters</span><strong data-inspect-counters>0</strong><small data-inspect-counter-note>Current state</small></article>
+                            </div>
+                            <div class="panel inspection-summary"><div><strong data-inspect-branch-name>Branch</strong><span data-inspect-city>—</span></div><div><span data-inspect-open>0 open</span><span data-inspect-busy>0 busy</span><span data-inspect-unstaffed>0 unstaffed</span></div></div>
+                        </div>
+                    </section>
+
+                    <section class="admin-section" id="security" aria-labelledby="security-heading">
+                        <div class="panel security-panel">
+                            <div class="panel__header"><div><p class="kicker">Account security</p><h2 id="security-heading">Change password</h2></div></div>
+                            <p class="muted">Your current trusted session remains active after a successful password change.</p>
+                            <div class="form-message" data-security-message hidden role="status" aria-live="polite"></div>
+                            <form class="form-stack security-form" data-security-form>
+                                <label class="field"><span class="field__label">Current password</span><input class="input" type="password" name="current_password" autocomplete="current-password" required></label>
+                                <label class="field"><span class="field__label">New password</span><input class="input" type="password" name="new_password" autocomplete="new-password" required></label>
+                                <label class="field"><span class="field__label">Confirm new password</span><input class="input" type="password" name="confirm_password" autocomplete="new-password" required></label>
+                                <div><button class="btn btn--primary" type="submit">Change password</button></div>
+                            </form>
+                        </div>
+                    </section>
+                </div>
+            </main>
+        </div>
+    </div>
+</body>
+</html>
