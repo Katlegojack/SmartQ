@@ -1,54 +1,196 @@
-# Smart Q - Day 46 Engineering Documentation
+# Smart Q - Day 46 Full Engineering Documentation
 
 ## Counter Staff Workspace
 
-**Milestone:** Frontend Day 46  
-**Branch:** `feature/day46-counter-staff-workspace`  
-**Primary workflow:** assigned counter -> open -> call next -> serve -> complete/no-show -> next customer
+**Status:** Complete, merged into `main`, verified  
+**Feature branch:** `feature/day46-counter-staff-workspace`  
+**Pull Request:** #39 - Build Day 46 counter staff workspace  
+**Feature head:** `9a327476fa24e17e21790173cab2306d2a759720`  
+**Merge commit:** `6ea8646e1459a5d221385c1b9486da888939d5de`  
+**Post-merge CI:** Django Tests run 212 - success  
+**README closeout:** PR #40 - merged  
+
+> **Day 46 architectural rule:** Counter Staff operate an assigned counter. The backend owns assignment, queue allocation, fairness and valid state transitions.
 
 ---
 
-## 1. Day 46 objective
+# Executive Summary
 
-Day 46 replaces the generic Counter Staff application shell with a focused operational workspace built on the counter and queue APIs already proven during the backend milestones.
+Day 46 transformed the Counter Staff role from a generic role shell into a real serving workspace. The page restores the authenticated staff member's assigned counter, mirrors the counter lifecycle, shows the current customer, exposes backend-authoritative Call Next / Complete / No-show actions and provides a read-only waiting preview for the counter's queue type.
 
-The target loop is intentionally narrow:
+The key design decision was to keep allocation authority out of the browser. Counter Staff cannot choose a branch, self-assign a counter, change queue type, click a waiting row to bypass order, or force a lifecycle transition the backend rejects. The frontend presents the operational state machine while the server remains the source of truth.
+
+Day 46 was protected by a dedicated APITestCase suite, the full Smart Q regression suite, feature-branch and pull-request GitHub Actions, and a successful post-merge `main` run. The milestone is therefore documented from the verified final state rather than from an untested implementation snapshot.
+
+---
+
+# Part 1 - Day 46 Context, Scope and Objectives
+
+## 1. Introduction
+
+Day 46 is the point where the frontend moves from customer intake and reception activation into the actual service-delivery loop.
+
+Before Day 46, Smart Q already had backend support for:
+
+- counter assignment;
+- counter lifecycle states;
+- waiting tickets;
+- General/Priority queue types;
+- Call Next;
+- current serving ticket;
+- Complete;
+- No-show;
+- counter ownership permissions.
+
+The missing piece was a dedicated Counter Staff interface.
+
+The repeated workflow is:
 
 ```text
-Counter Staff signs in
-        |
-        v
-Restore authenticated role
-        |
-        v
-GET assigned counter
-        |
-        +--> no assignment -> stop and explain manager assignment requirement
-        |
-        v
-Counter lifecycle state
-        |
-        +--> CLOSED -> OPEN
-        +--> PAUSED -> RESUME or CLOSE when free
-        +--> OPEN -> CALL NEXT
-        |
-        v
-SERVING customer
-        |
-        +--> COMPLETE
-        +--> NO_SHOW
-        |
-        v
-Counter free -> CALL NEXT
+ASSIGNED COUNTER
+      |
+      v
+CLOSED --open--> OPEN
+                  |
+                  +--> CALL NEXT --> SERVING
+                  |                   |
+                  |                   +--> COMPLETE
+                  |                   +--> NO_SHOW
+                  |
+                  +--> PAUSE --> PAUSED --resume--> OPEN
+                  |
+                  +--> CLOSE (only when free)
 ```
 
-The screen is not a receptionist search tool, manager dashboard or administrator control plane.
+## 2. Position in the Frontend Roadmap
+
+```text
+Day 41  Shared frontend design system
+Day 42  Authentication + role-aware shell
+Day 43  Customer Dashboard
+Day 44  Booking + availability + rescheduling
+Day 45  Receptionist Workspace
+Day 46  Counter Staff Workspace
+Day 47  Branch Manager Workspace
+Day 48  System Admin Workspace
+Day 49  History/reporting/disruption UX
+Day 50  Full integration + release audit
+```
+
+## 3. Objectives
+
+Day 46 had to:
+
+- replace `/app/counter/` with a dedicated Counter Staff page;
+- restore the authenticated staff member's assigned counter;
+- represent `CLOSED`, `OPEN` and `PAUSED` clearly;
+- expose Open, Pause, Resume and Close lifecycle actions;
+- show the current `SERVING` customer;
+- expose server-authoritative Call Next, Complete and No-show;
+- show a read-only waiting preview for the counter queue type;
+- handle no-assignment, free-counter, empty-queue and conflict states;
+- add focused tests and CI coverage;
+- keep Reception, Manager and Admin features outside this role surface.
+
+## 4. Acceptance Criteria
+
+Day 46 is complete only if a Counter Staff user can:
+
+1. authenticate;
+2. restore the assigned counter;
+3. open the counter;
+4. call the next eligible customer chosen by the backend;
+5. read the current serving ticket;
+6. complete or no-show that customer;
+7. return to a free counter state;
+8. remain blocked from operating another staff member's counter.
+
+## 5. Role Boundary
+
+Counter Staff are service executors, not branch coordinators.
+
+```text
+Receptionist    -> identify/check in customers, create walk-ins
+Counter Staff   -> serve customers at assigned counter
+Branch Manager  -> observe branch + staff counters
+System Admin    -> configure platform-wide resources
+```
+
+### Engineering lesson
+
+A role workspace should expose the repeated job, not every API the role can technically reach.
 
 ---
 
-## 2. Backend contracts reused
+# Part 2 - Counter Domain Architecture and Backend Contracts
 
-Day 46 does not create a second serving algorithm in JavaScript. It uses the existing server contracts:
+## 6. Assignment Is an Authorization Boundary
+
+Counter Staff do not choose a counter from a dropdown.
+
+```http
+GET /api/v1/counters/my/
+```
+
+The endpoint answers a permission question:
+
+```text
+200 -> this is the counter you may operate
+404 -> you are not currently assigned to a counter
+```
+
+The Day 46 frontend translates the 404 into an explicit state telling the user a Branch Manager must assign a counter.
+
+### Engineering lesson
+
+Operational assignment is identity/authorization data, not ordinary form input.
+
+## 7. Counter Lifecycle
+
+The backend counter states are:
+
+```text
+CLOSED
+OPEN
+PAUSED
+```
+
+The frontend mirrors those states but does not replace backend validation.
+
+### CLOSED
+
+- Open is available.
+- Call Next is disabled.
+
+### OPEN and free
+
+- Call Next is available.
+- Pause is available.
+- Close is available.
+
+### OPEN and serving
+
+- Complete / No-show are available.
+- Pause is available.
+- Close is blocked.
+- Call Next is blocked.
+
+### PAUSED and free
+
+- Resume is available.
+- Close is available.
+- Call Next is blocked.
+
+### PAUSED and serving
+
+- The current customer may still be resolved.
+- No new customer may be called.
+
+### Engineering lesson
+
+Operational interfaces become easier to reason about when they mirror a state machine instead of exposing every endpoint simultaneously.
+
+## 8. Backend Contracts Reused
 
 ```http
 GET  /api/v1/accounts/me/
@@ -65,196 +207,243 @@ POST /api/v1/queues/counters/<counter_id>/complete/
 POST /api/v1/queues/counters/<counter_id>/no-show/
 ```
 
-### Engineering lesson
+Day 46 did not create a second queue-selection or lifecycle engine in JavaScript.
 
-A frontend milestone should orchestrate already-proven domain rules. If the backend already owns queue selection, counter assignment and lifecycle transitions, JavaScript should not reproduce those decisions.
+## 9. Queue Type Is a Counter Property
 
----
-
-## 3. Assignment is an authorization boundary
-
-Counter Staff do not choose their counter from a dropdown.
-
-`GET /api/v1/counters/my/` returns the counter assigned to the authenticated staff member. If there is no assignment, the endpoint returns 404 and the Day 46 UI stops the serving flow with an explicit instruction that a Branch Manager must assign a counter.
-
-This preserves the Day 33 rule:
+Each counter has a backend-owned queue type:
 
 ```text
-Branch Manager assigns Counter Staff
-        |
-        v
-Counter Staff operates only that assigned counter
+GENERAL
+or
+PRIORITY
 ```
 
-The backend rejects same-branch Counter Staff attempting to operate another staff member's counter.
+The Day 46 page displays the value and uses it for the waiting preview. Counter Staff cannot alter it.
 
-### Engineering lesson
+The backend Call Next service also uses the counter's stored queue type, so allocation does not depend on a browser-selected customer.
 
-Operational scope should come from authenticated assignment, not client input. A selector would make authority look like a preference when it is actually a permission.
+## 10. Call Next Is an Allocation Operation
 
----
+The waiting table is informational.
 
-## 4. Counter lifecycle represented in the UI
-
-The backend counter states are:
-
-```text
-CLOSED
-OPEN
-PAUSED
-```
-
-The Day 46 interface exposes only actions appropriate to the current state.
-
-### CLOSED
-
-The primary action is **Open counter**. Call Next remains disabled.
-
-### OPEN and free
-
-The counter may:
-
-- Call Next;
-- Pause;
-- Close.
-
-### OPEN and serving
-
-The counter may:
-
-- Complete the current customer;
-- Mark the current customer as no-show;
-- Pause the counter.
-
-Closing is disabled in the frontend because a current customer exists, while the backend also independently rejects closing a busy counter.
-
-### PAUSED and free
-
-The counter may Resume or Close. Call Next remains disabled.
-
-### PAUSED and serving
-
-The current customer may still be completed or marked no-show, but no new customer can be called until the counter resumes.
-
-### Engineering lesson
-
-A good operational UI mirrors the state machine. It should make the valid next transition obvious instead of exposing every possible endpoint at all times.
-
----
-
-## 5. Call Next remains backend-owned
-
-The Day 46 page shows a preview of waiting customers matching the assigned counter's queue type, but clicking **Call next customer** does not select a row from that table.
-
-The browser sends only:
+Clicking Call Next sends only:
 
 ```http
 POST /api/v1/queues/counters/<counter_id>/call-next/
 ```
 
-The backend then selects the next eligible ticket for:
+The backend chooses the next eligible ticket using authoritative queue rules.
 
-```text
-assigned counter
-+ same branch
-+ today's checked-in waiting tickets
-+ same queue type as the counter
-+ oldest eligible check-in first within that queue type
-```
-
-The selected ticket is returned to the frontend as the current customer.
+The staff member does **not** click a waiting row to choose who is served.
 
 ### Engineering lesson
 
-A queue preview is information. Queue allocation is a business decision. Keeping those separate prevents a staff screen from bypassing fairness rules by clicking a different row.
+Queue visibility and queue-allocation authority are different responsibilities.
 
----
+## 11. Current Customer Contract
 
-## 6. Queue type is a counter property
-
-Each counter has a backend-owned `queue_type` such as General or Priority.
-
-Day 46 displays that queue type and requests a matching waiting preview, but it does not allow Counter Staff to alter it.
-
-The backend Call Next service also filters by the counter's queue type, so even a manipulated browser request cannot make a General counter call a Priority ticket or vice versa through client-side selection.
-
----
-
-## 7. Current-customer card
-
-When `GET /api/v1/queues/counters/<counter_id>/current/` returns a serving ticket, the workspace presents the information needed to finish the service:
-
-```text
-queue number
-customer name
-service
-queue type
-appointment date/time
-check-in timestamp
+```http
+GET /api/v1/queues/counters/<counter_id>/current/
 ```
 
-The two deliberate service outcomes are:
+Possible results:
 
 ```text
-COMPLETE SERVICE
-MARK NO-SHOW
+200 -> SERVING ticket exists
+404 -> counter is free
 ```
 
-The UI does not add arbitrary booking status controls.
+A 404 from this endpoint is therefore a normal operational state rather than a page failure.
 
----
+The current-customer card shows:
 
-## 8. Complete service
+- queue number;
+- customer name;
+- service;
+- queue type;
+- appointment date/time;
+- check-in time.
+
+## 12. Complete Service
 
 ```http
 POST /api/v1/queues/counters/<counter_id>/complete/
 ```
 
-The backend performs the authoritative transition:
+Authoritative transition:
 
 ```text
 QueueTicket: SERVING -> COMPLETED
-Booking:     current -> COMPLETED
-assigned_counter -> null
+Booking:     -> COMPLETED
+assigned_counter -> cleared
 QueueEvent:  COMPLETED
 ```
 
-After success the frontend refreshes the assigned counter, current ticket and waiting preview from backend reads.
+The frontend then refreshes server state rather than trying to reproduce every related database update itself.
 
-### Engineering lesson
-
-After a mutation, refresh the authoritative read model. Do not manually simulate several related database transitions in browser memory.
-
----
-
-## 9. No-show
+## 13. No-Show
 
 ```http
 POST /api/v1/queues/counters/<counter_id>/no-show/
 ```
 
-This action is only for a customer who already checked in and was called into `SERVING` but did not present.
-
-The backend transition is:
+Authoritative transition:
 
 ```text
 QueueTicket: SERVING -> NO_SHOW
-Booking:     current -> NO_SHOW
-assigned_counter -> null
+Booking:     -> NO_SHOW
+assigned_counter -> cleared
 QueueEvent:  NO_SHOW
 ```
 
-This remains distinct from an unchecked appointment that expires before entering the live queue, which is cancelled rather than marked no-show.
+This remains distinct from an appointment that never checked in and later becomes `CANCELLED`.
+
+## 14. Pause Semantics
+
+`PAUSED` stops new work from being called. It does not erase a customer already being served.
+
+That means:
+
+```text
+PAUSED + current customer
+    -> Complete allowed
+    -> No-show allowed
+    -> Call Next blocked
+```
+
+### Engineering lesson
+
+Interruption states often block new work while allowing in-flight work to reach a safe terminal state.
 
 ---
 
-## 10. Waiting queue preview
+# Part 3 - Frontend Workspace Implementation
 
-The workspace displays only waiting customers matching the assigned counter's queue type.
+## 15. Dedicated Route
 
-The table shows:
+`/app/counter/` now renders:
 
 ```text
+templates/frontend/counter_workspace.html
+```
+
+instead of the generic Day 42 shell.
+
+The template declares:
+
+```html
+data-expected-role="counter_staff"
+```
+
+and loads:
+
+```text
+static/css/counter-workspace.css
+static/js/pages/counter-workspace.js
+```
+
+## 16. Workspace Information Architecture
+
+The page is organized around four areas:
+
+```text
+Serve customer
+Waiting queue
+Counter controls
+Security
+```
+
+It deliberately excludes:
+
+- receptionist search;
+- guest walk-in creation;
+- manager analytics;
+- System Admin configuration.
+
+## 17. Bootstrap Flow
+
+The page first restores the authenticated account.
+
+```javascript
+account = await getCurrentAccount();
+
+if (!account) {
+    // redirect to login
+}
+
+if (account.role !== "counter_staff") {
+    // redirect to real role workspace
+}
+```
+
+It then loads the assigned counter:
+
+```javascript
+counter = await apiRequest("/api/v1/counters/my/");
+```
+
+A no-assignment 404 becomes a dedicated UI state instead of a branch/counter selector.
+
+## 18. State-Driven Lifecycle Controls
+
+The frontend renders actions from the current server state.
+
+```text
+CLOSED:
+  Open
+
+OPEN + free:
+  Call Next
+  Pause
+  Close
+
+OPEN + serving:
+  Complete / No-show
+  Pause
+
+PAUSED + free:
+  Resume
+  Close
+
+PAUSED + serving:
+  Complete / No-show
+  Resume
+```
+
+The backend still validates every request independently.
+
+## 19. Current-Customer Card
+
+When a serving ticket exists, the customer card becomes the dominant content.
+
+Primary actions:
+
+```text
+Complete service
+Mark no-show
+```
+
+The page does not expose arbitrary booking status changes.
+
+## 20. Free-Counter State
+
+When the current-ticket endpoint returns 404, the page shows the next meaningful instruction:
+
+- open the counter;
+- resume the counter;
+- call the next eligible customer.
+
+## 21. Waiting Preview
+
+The page requests the assigned branch waiting queue with the counter queue type.
+
+It displays:
+
+```text
+waiting count
+first visible queue number
+counter queue type
 queue number
 customer
 service
@@ -262,58 +451,378 @@ check-in time
 status
 ```
 
-It also shows:
+The table is read-only.
 
-```text
-waiting count
-first visible queue number
-counter queue type
-```
+## 22. Safe DOM Rendering
 
-The preview is read-only. Staff cannot reorder it, drag rows or manually assign a ticket to themselves.
-
----
-
-## 11. Refresh and concurrency behavior
-
-Day 46 uses refresh-after-write plus an explicit Refresh button rather than introducing a separate polling mechanism during the role-by-role frontend build.
-
-A sequence counter prevents an older asynchronous workspace refresh from overwriting a newer one.
-
-Mutating buttons are disabled while their requests are in flight.
+Customer/API values are written as text nodes / `textContent` rather than being concatenated into executable HTML.
 
 ### Engineering lesson
 
-Frontend safeguards improve operator experience, but transactional backend rules remain the real concurrency and integrity boundary.
+Customer-controlled strings should be treated as data, not markup.
 
----
+## 23. Refresh-After-Write
 
-## 12. Error and empty states
+After lifecycle or queue mutations, Day 46 refreshes:
+
+```text
+assigned counter
+current ticket
+waiting preview
+```
+
+This is safer than manually updating several related client-side objects and hoping they match what the backend persisted.
+
+## 24. Stale Refresh Protection
+
+Day 46 uses a refresh sequence counter:
+
+```javascript
+const sequence = ++refreshSequence;
+
+await Promise.all([...]);
+
+if (sequence !== refreshSequence) {
+    return;
+}
+```
+
+Older network responses cannot overwrite newer workspace state.
+
+## 25. In-Flight Button Protection
+
+Buttons are disabled while mutations are running and are temporarily relabelled.
+
+This reduces duplicate clicks but is not treated as the data-integrity guarantee.
+
+### Engineering lesson
+
+Frontend safeguards improve usability. Backend transactions and validation protect correctness.
+
+## 26. Error and Empty States
 
 The workspace explicitly handles:
 
 - unauthenticated session;
-- wrong authenticated role;
+- wrong role;
 - no counter assignment;
-- free counter with no current ticket;
+- no current ticket;
 - no matching waiting customers;
 - paused counter;
 - closed counter;
-- server conflicts;
+- conflict responses;
 - failed reads;
-- failed lifecycle actions;
+- failed lifecycle writes;
 - failed Call Next;
-- failed Complete/No-show.
+- failed Complete / No-show.
 
-A 404 from the current-ticket endpoint is treated as the normal **counter is free** state rather than as a page failure.
+## 27. Responsive Layout
 
-### Engineering lesson
-
-Not every HTTP 404 represents a broken application. In a stateful API, “no current ticket” can be an expected business state and should be translated into useful UI language.
+The workspace continues the Day 41 design system and prioritizes compact operational clarity rather than decorative dashboard density.
 
 ---
 
-## 13. Files added or changed
+# Part 4 - Security, Fairness and Data Integrity
+
+## 28. No Self-Assignment
+
+Counter Staff cannot choose a counter.
+
+Branch Managers own counter staffing.
+
+## 29. No Cross-Counter Operation
+
+A Counter Staff user cannot operate another staff member's counter even when both users belong to the same branch.
+
+This is enforced by the API, not only hidden in the UI.
+
+## 30. No Manual Queue Allocation
+
+The waiting table contains no `Serve` or `Select` action.
+
+Allowing staff to pick a row would turn a read-only queue view into a fairness override.
+
+## 31. No Client-Controlled Queue Type
+
+Queue type comes from the counter model. The browser may display it but does not control it.
+
+## 32. No Client-Controlled Branch Scope
+
+The branch comes from the assigned counter. Counter Staff are not offered a branch selector.
+
+## 33. Write-Then-Read Consistency
+
+A successful mutation is followed by authoritative reads.
+
+This matters because one action can affect:
+
+```text
+Counter
+QueueTicket
+Booking
+QueueEvent
+```
+
+## 34. Frontend Concurrency vs Backend Integrity
+
+Sequence counters and disabled buttons reduce accidental races, but the backend remains the real concurrency and integrity boundary.
+
+## 35. Status Meaning Is Preserved
+
+Day 46 keeps domain semantics consistent:
+
+```text
+unchecked expiry -> CANCELLED
+checked in + called + absent -> NO_SHOW
+served successfully -> COMPLETED
+```
+
+---
+
+# Part 5 - Automated Testing, CI and Verification
+
+## 36. Focused Test Module
+
+```text
+smartq/test_day46_counter_workspace.py
+```
+
+The fixture builds:
+
+- a branch;
+- a service;
+- two Counter Staff users;
+- a customer;
+- an assigned counter;
+- waiting tickets as required by each test.
+
+## 37. Route Test
+
+The dedicated route test verifies:
+
+```text
+Counter staff workspace
+data-counter-workspace
+data-call-next
+data-complete-current
+data-no-show-current
+data-counter-action="pause"
+```
+
+It also verifies that manager/admin language is not rendered.
+
+## 38. Static Asset Test
+
+Django staticfiles must discover:
+
+```text
+css/counter-workspace.css
+js/pages/counter-workspace.js
+```
+
+## 39. No-Assignment Test
+
+Removing the assignment must cause:
+
+```http
+GET /api/v1/counters/my/
+-> 404
+```
+
+with the explicit assignment message.
+
+## 40. Open -> Call -> Complete Integration
+
+The focused test proves:
+
+```text
+Open counter
+    -> 200
+
+Call Next
+    -> WAITING ticket becomes SERVING
+    -> assigned_counter set
+
+GET current
+    -> same ticket
+
+Complete
+    -> COMPLETED
+    -> assigned_counter cleared
+
+GET current
+    -> 404 (counter free)
+```
+
+## 41. Paused Counter Test
+
+With a paused counter and an existing serving ticket:
+
+```text
+Call Next -> 409 Conflict
+No-show   -> 200 OK
+```
+
+This protects the in-flight-work semantics.
+
+## 42. Queue-Type Allocation Test
+
+The test creates General and Priority waiting tickets and configures the assigned counter as Priority.
+
+Call Next must select the Priority ticket while leaving the General ticket waiting.
+
+## 43. Cross-Staff Isolation Test
+
+A second Counter Staff user attempts to Call Next using the first staff member's counter.
+
+Expected result:
+
+```http
+403 Forbidden
+```
+
+## 44. CI Integration
+
+The workflow contains an explicit Day 46 step:
+
+```yaml
+- name: Run Day 46 counter staff workspace tests
+  run: python manage.py test smartq.test_day46_counter_workspace
+
+- name: Run full test suite
+  run: python manage.py test
+```
+
+## 45. Verified CI State
+
+```text
+Feature branch push: Django Tests run 210 - success
+Pull request:        Django Tests run 211 - success
+PR head:             9a327476fa24e17e21790173cab2306d2a759720
+Merge commit:        6ea8646e1459a5d221385c1b9486da888939d5de
+Post-merge main:     Django Tests run 212 - success
+```
+
+PR #39 merged only after the focused Day 46 test and complete Smart Q regression suite passed.
+
+## 46. README Closeout
+
+After the Day 46 implementation merge, README still described Day 46 as being at the verification gate.
+
+A documentation-only PR #40 corrected the final project state and marked Day 47 as next. That PR also passed CI before merging.
+
+### Engineering lesson
+
+A milestone is not fully closed until code, tests, permanent documentation and project-status documentation all agree.
+
+## 47. Recommended Local Verification
+
+```powershell
+python manage.py makemigrations --check --dry-run
+python manage.py check
+python manage.py test smartq.test_day46_counter_workspace
+python manage.py test
+```
+
+---
+
+# Part 6 - Engineering Trade-Offs and Design Decisions
+
+## 48. No Manual Customer Selection
+
+A clickable queue row could feel convenient but would allow staff to bypass queue allocation policy.
+
+Decision:
+
+```text
+waiting table = information
+Call Next     = allocation
+```
+
+## 49. No Counter Self-Assignment
+
+This may require a Branch Manager to fix a missing assignment, but it preserves accountability and the Day 33 staffing boundary.
+
+## 50. No Manager Analytics
+
+Counter Staff need current operational context, not branch-wide performance analysis.
+
+That belongs to Day 47.
+
+## 51. No Automatic Polling Yet
+
+Day 46 uses explicit refresh and refresh-after-write instead of introducing a temporary real-time architecture.
+
+This avoids continuous traffic and prevents a throw-away polling design before the final integration phase.
+
+## 52. No Frontend Lifecycle Engine
+
+The UI hides or disables clearly invalid actions for usability, but lifecycle validity remains backend-owned.
+
+## 53. No Mid-Roadmap Framework Rewrite
+
+Day 46 continued Django templates + vanilla JavaScript ES modules.
+
+A new framework could simplify some client state management, but introducing it mid-roadmap would add migration risk and duplicate the frontend foundation during a deadline-driven integration phase.
+
+---
+
+# Part 7 - Engineering Lessons Learned
+
+## 54. State Machines Make Operational UIs Clearer
+
+Counter service is naturally represented by explicit states and transitions. This makes both implementation and debugging easier.
+
+## 55. Identity and Assignment Are Different From Input
+
+A counter assignment is permission data, not a user preference.
+
+## 56. Visibility Does Not Imply Control
+
+The operator may see waiting customers without receiving the authority to choose who is next.
+
+## 57. Fairness Decisions Belong on the Backend
+
+Queue type, ticket order and eligibility should be centrally enforced and independently testable.
+
+## 58. Expected 404s Can Represent Valid Domain State
+
+`no current ticket` and `no assigned counter` are meaningful operational states.
+
+Good frontend code translates transport responses into domain language.
+
+## 59. Frontend Safeguards Are Not Integrity Guarantees
+
+Disabled buttons and freshness counters reduce mistakes. Backend validation and transactions remain the real protection.
+
+## 60. Re-Read Authoritative State After Compound Writes
+
+Complete and No-show affect multiple related models. Refreshing backend reads avoids incomplete local simulation.
+
+## 61. Role Separation Improves Usability and Security
+
+```text
+Counter Staff -> serve
+Reception     -> identify/activate
+Manager       -> coordinate
+Admin         -> configure
+```
+
+Narrow role surfaces reduce cognitive load and accidental privilege expansion.
+
+## 62. Status Names Are Shared Contracts
+
+`CANCELLED`, `WAITING`, `SERVING`, `COMPLETED` and `NO_SHOW` must carry the same meaning in frontend, backend, reports and documentation.
+
+## 63. CI Should Name New Milestones Explicitly
+
+A named Day 46 CI step keeps the role workflow visible and prevents it from disappearing inside only a large full-suite result.
+
+---
+
+# Part 8 - Final State and Day 47 Handoff
+
+## 64. Files Added or Changed
 
 ```text
 templates/frontend/counter_workspace.html
@@ -326,74 +835,79 @@ docs/DAY46_COUNTER_STAFF_WORKSPACE.md
 README.md
 ```
 
----
-
-## 14. Day 46 automated tests
-
-The focused integration suite verifies:
-
-1. `/app/counter/` renders the dedicated Counter Staff workspace.
-2. Day 46 CSS and JavaScript assets are discoverable by Django staticfiles.
-3. Counter Staff without an assignment receive the explicit assignment 404.
-4. Assigned Counter Staff can open their counter, call the next matching customer, read the current ticket, complete it and return the counter to a free state.
-5. A paused counter cannot Call Next but can resolve the existing current customer as no-show.
-6. The counter's queue type determines which waiting customer Call Next selects.
-7. Another same-branch Counter Staff user cannot operate a counter assigned to someone else.
-
-The GitHub Actions workflow runs the focused Day 46 suite before the complete regression suite.
-
----
-
-## 15. Trade-offs
-
-### No manual customer selection
-
-This is intentionally stricter than a clickable waiting table. It protects queue fairness and keeps the backend Call Next algorithm authoritative.
-
-### No self-assignment
-
-A no-assignment screen may require a manager intervention, but it preserves the separation between staffing decisions and service execution.
-
-### No manager analytics
-
-Counter Staff see the immediate waiting set for their queue type, not branch performance metrics. Analytics remain a Day 47 Branch Manager concern.
-
-### No automatic polling yet
-
-Explicit refresh plus refresh-after-write avoids introducing a temporary real-time architecture before the final integration phase.
-
-### No frontend-only lifecycle rules
-
-The UI hides/disables invalid actions for clarity, but all important transitions are still validated by the backend.
-
----
-
-## 16. Core engineering lessons from Day 46
-
-- Model operational interfaces around state transitions, not CRUD forms.
-- Authenticated assignment is an authorization boundary.
-- A read-only queue preview must not become a manual allocation mechanism.
-- The server should own queue selection and fairness.
-- Paused does not necessarily mean current work disappears; it blocks new work while allowing safe completion of in-flight work.
-- Treat expected empty states differently from system failures.
-- Disable duplicate UI actions, but rely on backend transactions for correctness.
-- Re-read authoritative state after mutations.
-- Keep role surfaces narrow: Counter Staff serve; Reception identifies/checks in; Managers analyse and configure branch operations.
-
----
-
-## 17. Day 47 handoff
-
-Day 47 moves from an individual counter's serving loop to the Branch Manager's broader operational view.
-
-The manager workspace should build on existing branch-scoped capabilities such as:
+## 65. End-to-End Counter Staff Workflow
 
 ```text
-branch dashboard metrics
-counter states and assignments
-waiting/serving operational visibility
-disruption controls
-historical reporting/audit views
+COUNTER STAFF LOGIN
+        |
+        v
+Restore role
+        |
+        v
+GET assigned counter
+        |
+        +--> none -> manager assignment required
+        |
+        v
+Render counter state
+        |
+        +--> CLOSED -> OPEN
+        +--> PAUSED -> RESUME / CLOSE when free
+        +--> OPEN + free -> CALL NEXT
+        |
+        v
+Backend selects matching WAITING customer
+        |
+        v
+SERVING
+   |            |
+   v            v
+COMPLETE      NO_SHOW
+   |            |
+   +------v-----+
+          |
+          v
+Counter free
+          |
+          v
+Refresh authoritative state
+          |
+          v
+CALL NEXT
 ```
 
-The Day 46 lesson must carry forward: management may observe and coordinate the branch, while existing backend permissions and domain services remain authoritative.
+## 66. What Day 46 Deliberately Did Not Add
+
+- receptionist customer/booking search;
+- guest walk-in creation;
+- branch-level analytics;
+- historical reporting UI;
+- System Admin configuration;
+- manual queue reordering;
+- manual queue-type changes;
+- counter self-assignment;
+- a temporary WebSocket/polling architecture.
+
+## 67. Day 47 Handoff
+
+Day 47 moves from individual service execution to branch coordination.
+
+```text
+Day 46
+Counter Staff -> serve assigned work
+
+Day 47
+Branch Manager -> observe branch demand + coordinate counter staffing
+```
+
+The Day 46 rule carries forward: frontend screens present role-appropriate operations while backend permissions and domain services remain authoritative.
+
+## 68. Final Outcome
+
+Day 46 is complete, merged and verified.
+
+Smart Q now has a real Counter Staff serving workspace instead of a generic shell. Counter Staff can operate only their assigned counter, follow the approved lifecycle, call the next eligible customer, resolve service as Complete or No-show, and see the matching waiting queue without receiving authority to reorder or reclassify customers.
+
+The milestone preserves Smart Q's central architecture:
+
+> **Frontend = task-focused operator surface. Backend = authorization, fairness, allocation and state integrity.**
