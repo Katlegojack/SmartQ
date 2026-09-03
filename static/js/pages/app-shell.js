@@ -41,6 +41,7 @@ function insertBeforeDivider(nav, link) {
 }
 
 function ensureDay49Navigation(role) {
+    if (window.location.pathname === "/app/history/") return;
     const nav = shell?.querySelector(".side-nav");
     if (!nav || nav.querySelector("[data-day49-nav]")) return;
     if (!new Set(["branch_manager", "system_admin"]).has(role)) return;
