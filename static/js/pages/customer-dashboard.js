@@ -112,13 +112,17 @@ async function loadBranches() {
     const data = await apiRequest("/api/v1/branches/");
     branches = Array.isArray(data) ? data : [];
     const select = one("[data-booking-branch]");
-    select.replaceChildren(new Option("Select a branch", ""));
+    select.replaceChildren(new Option(branches.length ? "Select a branch" : "No branches available", ""));
     for (const branch of branches) select.add(new Option(`${branch.name} — ${branch.city}`, branch.id));
+    select.disabled = !branches.length;
+    if (!branches.length) {
+        setBookingMessage("No branches are configured yet. Ask an administrator to complete setup.");
+    }
 }
 async function loadServices(branchId) {
     const select = one("[data-booking-service]");
     branchServices = [];
-    select.replaceChildren(new Option("Loading services...", ""));
+    select.replaceChildren(new Option("Loading...", ""));
     select.disabled = true;
     if (!branchId) {
         select.replaceChildren(new Option("Select a branch first", ""));
@@ -128,7 +132,7 @@ async function loadServices(branchId) {
     branchServices = Array.isArray(data) ? data : [];
     select.replaceChildren(new Option(branchServices.length ? "Select a service" : "No services available", ""));
     for (const item of branchServices) {
-        select.add(new Option(`${item.service_name} — about ${item.average_service_time} min`, item.service_id));
+        select.add(new Option(item.service_name, item.service_id));
     }
     select.disabled = bookingMode.kind === "reschedule" || !branchServices.length;
 }
@@ -150,7 +154,7 @@ function renderQueue(data) {
     setText("[data-queue-position]", prediction.queue_position);
     setText("[data-queue-ahead]", prediction.people_ahead);
     setText("[data-queue-wait]", `${prediction.estimated_wait_time} min`);
-    setText("[data-queue-counter]", ticket.assigned_counter ? `Counter ${ticket.assigned_counter}` : "Waiting for assignment");
+    setText("[data-queue-counter]", ticket.assigned_counter ? `Counter ${ticket.assigned_counter}` : "Waiting");
     setText("[data-queue-heading]", ticket.status === "serving" ? "You are being served" : "Your live queue");
     const status = one("[data-queue-status]");
     status.className = badge(ticket.status);
@@ -257,7 +261,7 @@ async function refresh() {
         setLoading(false);
     } catch (error) {
         setLoading(false);
-        showError(firstApiError(error, "Smart Q could not load your customer dashboard. Refresh the page and try again."));
+        showError(firstApiError(error, "Smart Q could not load your dashboard. Refresh and try again."));
     }
 }
 
@@ -276,7 +280,7 @@ function setBookingStep(step) {
 }
 function branchById(id) { return branches.find(item => String(item.id) === String(id)); }
 function serviceById(id) { return branchServices.find(item => String(item.service_id) === String(id)); }
-function resetSlots(help = "Select a branch, service and date to load backend-generated availability.") {
+function resetSlots(help = "Choose a branch, service and date.") {
     selectedSlot = "";
     one("[data-slot-grid]").replaceChildren();
     setText("[data-slot-help]", help);
@@ -290,11 +294,11 @@ function renderAvailability(data) {
     const slots = Array.isArray(data?.slots) ? data.slots : [];
     const available = slots.filter(slot => slot.is_available);
     if (!available.length) {
-        setText("[data-slot-help]", "No appointment times are available for this date. Choose another date.");
+        setText("[data-slot-help]", "No times available. Try another date.");
         one("[data-slot-fieldset]").disabled = false;
         return;
     }
-    setText("[data-slot-help]", `Choose from ${available.length} available time${available.length === 1 ? "" : "s"}. Capacity is revalidated when you confirm.`);
+    setText("[data-slot-help]", `${available.length} time${available.length === 1 ? "" : "s"} available.`);
     for (const slot of slots) {
         const labelElement = document.createElement("label");
         labelElement.className = `slot-option${slot.is_available ? "" : " is-full"}`;
@@ -307,7 +311,7 @@ function renderAvailability(data) {
         const main = document.createElement("strong");
         main.textContent = fmtSlotTime(slot.time);
         const detail = document.createElement("small");
-        detail.textContent = slot.is_available ? `${slot.remaining} place${slot.remaining === 1 ? "" : "s"} left` : "Full";
+        detail.textContent = slot.is_available ? `${slot.remaining} left` : "Full";
         labelElement.append(input, main, detail);
         grid.append(labelElement);
     }
@@ -318,7 +322,7 @@ async function loadAvailability() {
     const branchId = one("[data-booking-branch]").value;
     const serviceId = one("[data-booking-service]").value;
     const bookingDate = one("[data-booking-date]").value;
-    resetSlots("Loading backend availability...");
+    resetSlots("Loading times...");
     if (!branchId || !serviceId || !bookingDate) return;
     const requestId = ++availabilityRequest;
     try {
@@ -327,7 +331,7 @@ async function loadAvailability() {
         renderAvailability(data);
     } catch (error) {
         if (requestId !== availabilityRequest) return;
-        setText("[data-slot-help]", firstApiError(error, "Smart Q could not load availability for this date."));
+        setText("[data-slot-help]", firstApiError(error, "Could not load times for this date."));
         one("[data-slot-fieldset]").disabled = false;
     }
 }
@@ -361,25 +365,29 @@ async function resetBookingForm({ keepMessage = false } = {}) {
     selectedSlot = "";
     const form = one("[data-booking-form]");
     form.reset();
-    one("[data-booking-branch]").disabled = false;
+    one("[data-booking-branch]").disabled = !branches.length;
     one("[data-booking-service]").disabled = true;
     one("[data-booking-service]").replaceChildren(new Option("Select a branch first", ""));
     one("[data-booking-date]").disabled = true;
     one("[data-booking-date]").min = localDateString();
     resetSlots();
-    setText("[data-booking-kicker]", "New appointment");
+    setText("[data-booking-kicker]", "Appointment");
     setText("[data-booking-heading]", "Book an appointment");
     setText("[data-booking-submit]", "Confirm appointment");
     one("[data-booking-reset]").hidden = true;
     setBookingStep(1);
     configurePregnancyField();
-    if (!keepMessage) setBookingMessage();
+    if (!keepMessage) {
+        setBookingMessage(
+            branches.length ? "" : "No branches are configured yet. Ask an administrator to complete setup."
+        );
+    }
 }
 async function beginReschedule(booking) {
     if (!booking || booking.is_checked_in || FINAL.has(booking.status)) return;
     bookingMode = { kind: "reschedule", booking };
     setBookingMessage();
-    setText("[data-booking-kicker]", "Reschedule appointment");
+    setText("[data-booking-kicker]", "Reschedule");
     setText("[data-booking-heading]", booking.service_name);
     setText("[data-booking-submit]", "Confirm new time");
     one("[data-booking-reset]").hidden = false;
@@ -427,13 +435,13 @@ async function submitBooking(event) {
         await resetBookingForm({ keepMessage: true });
         setBookingMessage(
             successKind === "create"
-                ? `Appointment booked${saved?.queue_ticket?.queue_number ? ` with queue reference ${saved.queue_ticket.queue_number}` : ""}. Check in when the six-hour window opens.`
-                : `Appointment rescheduled${saved ? ` to ${fmtDateTime(appointment(saved))}` : ""}. A fresh check-in will be required.`,
+                ? `Appointment booked${saved?.queue_ticket?.queue_number ? ` — ${saved.queue_ticket.queue_number}` : ""}.`
+                : `Appointment moved${saved ? ` to ${fmtDateTime(appointment(saved))}` : ""}.`,
             "success",
         );
         one("[data-booking-workflow]").scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (error) {
-        setBookingMessage(firstApiError(error, "Smart Q could not save this appointment. Review the selection and try again."), "error");
+        setBookingMessage(firstApiError(error, "Could not save this appointment. Check your selection and try again."), "error");
         if (error instanceof ApiError && [400, 409].includes(error.status)) await loadAvailability();
     } finally {
         submit.textContent = original;
@@ -450,14 +458,14 @@ async function checkIn(id, button) {
     try {
         await apiRequest(`/api/v1/bookings/${id}/check-in/`, { method: "POST" });
         await refresh();
-        message("Check-in completed. Your live queue information is now available.", "success");
+        message("Check-in complete.", "success");
     } catch (error) {
         if (error instanceof ApiError) {
             if (error.status === 409) await refresh();
             const opens = error.data?.check_in_opens_at;
-            message(opens ? `${error.message} Check-in opens at ${fmtDateTime(opens)}.` : firstApiError(error, error.message), "error");
+            message(opens ? `${error.message} Opens ${fmtDateTime(opens)}.` : firstApiError(error, error.message), "error");
         } else {
-            message("Smart Q could not complete check-in.", "error");
+            message("Could not complete check-in.", "error");
         }
     } finally {
         button.disabled = false;
@@ -476,7 +484,7 @@ async function cancel(id, button) {
         await refresh();
         message("Appointment cancelled.", "success");
     } catch (error) {
-        message(firstApiError(error, "Smart Q could not cancel this appointment."), "error");
+        message(firstApiError(error, "Could not cancel this appointment."), "error");
     } finally {
         button.disabled = false;
         button.textContent = old;
@@ -522,13 +530,13 @@ async function details(id) {
         if (!list.children.length) {
             const item = document.createElement("li");
             item.className = "timeline__empty";
-            item.textContent = "No lifecycle events are available yet.";
+            item.textContent = "No history yet.";
             list.append(item);
         }
         one("[data-dialog-content]", dialog).hidden = false;
     } catch (error) {
         const target = one("[data-dialog-error]", dialog);
-        target.textContent = firstApiError(error, "Smart Q could not load this booking history.");
+        target.textContent = firstApiError(error, "Could not load booking history.");
         target.hidden = false;
     } finally {
         one("[data-dialog-loading]", dialog).hidden = true;
@@ -555,7 +563,7 @@ function bindBookingWorkflow() {
             await loadServices(branchSelect.value);
             setBookingStep(2);
         } catch (error) {
-            setBookingMessage(firstApiError(error, "Smart Q could not load services for this branch."));
+            setBookingMessage(firstApiError(error, "Could not load services for this branch."));
         }
     });
 
@@ -564,8 +572,6 @@ function bindBookingWorkflow() {
         resetSlots();
         dateInput.disabled = !serviceSelect.value;
         setBookingStep(serviceSelect.value ? 3 : 2);
-        const service = serviceById(serviceSelect.value);
-        setText("[data-service-help]", service ? `${service.service_name} normally takes about ${service.average_service_time} minutes. Slot duration follows that backend service time.` : "Services are loaded from the selected branch.");
     });
 
     dateInput.addEventListener("change", loadAvailability);
@@ -591,7 +597,7 @@ async function bootstrap() {
         return;
     }
     setText("[data-customer-identity]", account.username);
-    setText("[data-greeting]", account.first_name ? `Welcome, ${account.first_name}` : "Your Smart Q overview");
+    setText("[data-greeting]", account.first_name ? `Welcome, ${account.first_name}` : "Your Smart Q");
     bindBookingWorkflow();
     await Promise.all([loadBranches(), refresh()]);
     await resetBookingForm();
@@ -611,4 +617,4 @@ one("[data-dialog-close]")?.addEventListener("click", () => one("[data-booking-d
 one("[data-logout]")?.addEventListener("click", async () => {
     try { await logoutAccount(); } finally { window.location.replace("/login/"); }
 });
-bootstrap().catch(error => showError(firstApiError(error, "Smart Q could not restore this customer session. Sign in again.")));
+bootstrap().catch(error => showError(firstApiError(error, "Could not restore this customer session. Sign in again.")));
