@@ -83,5 +83,8 @@ jobs:
       - name: Run Day 45 reception workspace tests
         run: python manage.py test smartq.test_day45_reception_workspace
 
+      - name: Run Day 46 counter staff workspace tests
+        run: python manage.py test smartq.test_day46_counter_workspace
+
       - name: Run full test suite
         run: python manage.py test
