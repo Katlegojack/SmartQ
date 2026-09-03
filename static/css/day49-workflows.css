@@ -1,0 +1,487 @@
+.day49-main {
+    display: grid;
+    gap: 24px;
+}
+
+.day49-topbar {
+    gap: 20px;
+}
+
+.day49-topbar__meta,
+.day49-section__heading,
+.day49-card-heading,
+.day49-filter-panel,
+.day49-detail-list > div,
+.recovery-card__heading,
+.recovery-card__route,
+.recovery-option__main,
+.recovery-option__meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.day49-topbar__meta {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.day49-scope-chip,
+.day49-status,
+.day49-chip,
+.recovery-status,
+.recovery-option__badge {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    min-height: 30px;
+    padding: 5px 10px;
+    border: 1px solid #c8d9e8;
+    border-radius: 8px;
+    background: #f4faff;
+    color: #163b5c;
+    font-size: 0.82rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.day49-section {
+    display: grid;
+    gap: 16px;
+    scroll-margin-top: 24px;
+}
+
+.day49-section + .day49-section {
+    padding-top: 12px;
+    border-top: 1px solid #dce7f0;
+}
+
+.day49-section__heading {
+    align-items: flex-start;
+}
+
+.day49-section__heading h2,
+.day49-card-heading h3,
+.recovery-card h3,
+.day49-empty-state h3 {
+    margin: 0;
+    color: #163b5c;
+}
+
+.day49-section__heading p,
+.day49-card-heading p,
+.day49-empty-state p,
+.recovery-card p {
+    margin-top: 6px;
+}
+
+.day49-message,
+.form-message {
+    padding: 10px 12px;
+    border: 1px solid #d5dde5;
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.day49-message[data-kind="success"],
+.form-message[data-kind="success"] {
+    border-color: #b9dbc9;
+    background: #f4fbf7;
+    color: #216c49;
+}
+
+.day49-message[data-kind="error"],
+.form-message[data-kind="error"] {
+    border-color: #efc4c0;
+    background: #fff7f6;
+    color: #8b2f29;
+}
+
+.day49-loading {
+    padding: 18px 0;
+    color: #667085;
+}
+
+.day49-filter-panel {
+    align-items: end;
+    flex-wrap: wrap;
+    padding: 16px;
+}
+
+.day49-filter-panel .field {
+    min-width: 170px;
+    flex: 1 1 170px;
+}
+
+.day49-filter-panel--audit .day49-search-field {
+    flex: 2 1 280px;
+}
+
+.day49-footnote {
+    margin: -6px 0 0;
+    color: #667085;
+    font-size: 0.88rem;
+}
+
+.day49-metric-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.day49-metric-grid--recovery {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.day49-metric-grid .metric-card {
+    min-height: 118px;
+}
+
+.day49-metric-grid .metric-card strong {
+    font-size: 1.65rem;
+}
+
+.day49-split {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.day49-split--wide {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+}
+
+.day49-split--disruption {
+    grid-template-columns: minmax(300px, 0.8fr) minmax(340px, 1.2fr);
+}
+
+.day49-mix-card,
+.day49-table-panel,
+.day49-form,
+.day49-pause-detail,
+.recovery-card {
+    padding: 16px;
+}
+
+.day49-card-heading {
+    align-items: flex-start;
+    margin-bottom: 12px;
+}
+
+.day49-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.day49-chip {
+    justify-content: space-between;
+    min-width: 125px;
+    background: #ffffff;
+}
+
+.day49-chip strong {
+    margin-left: 12px;
+    color: #163b5c;
+}
+
+.day49-table-panel {
+    min-width: 0;
+}
+
+.day49-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.day49-table th,
+.day49-table td {
+    padding: 10px 9px;
+    border-bottom: 1px solid #e3ebf2;
+    text-align: left;
+    vertical-align: top;
+}
+
+.day49-table th {
+    color: #52677a;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+}
+
+.day49-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.day49-table--audit td:first-child {
+    white-space: nowrap;
+}
+
+.day49-table-primary {
+    display: block;
+    color: #163b5c;
+    font-weight: 700;
+}
+
+.day49-table-secondary {
+    display: block;
+    margin-top: 3px;
+    color: #667085;
+    font-size: 0.82rem;
+}
+
+.day49-empty-inline {
+    padding: 12px 0 4px;
+    color: #667085;
+}
+
+.day49-form {
+    align-self: start;
+    display: grid;
+    gap: 12px;
+}
+
+.day49-textarea {
+    min-height: 95px;
+    resize: vertical;
+}
+
+.day49-detail-list {
+    margin: 0;
+}
+
+.day49-detail-list > div {
+    align-items: flex-start;
+    padding: 9px 0;
+    border-bottom: 1px solid #e3ebf2;
+}
+
+.day49-detail-list > div:last-child {
+    border-bottom: 0;
+}
+
+.day49-detail-list dt {
+    color: #667085;
+}
+
+.day49-detail-list dd {
+    margin: 0;
+    color: #163b5c;
+    font-weight: 700;
+    text-align: right;
+}
+
+.day49-risk-block {
+    display: grid;
+    gap: 4px;
+    margin-top: 14px;
+    padding: 12px;
+    border: 1px solid #d8e6f3;
+    border-radius: 8px;
+    background: #f4faff;
+}
+
+.day49-risk-block span {
+    color: #667085;
+    font-size: 0.82rem;
+}
+
+.day49-risk-block strong {
+    color: #163b5c;
+}
+
+.day49-status[data-state="active"],
+.recovery-status[data-status="applied"] {
+    border-color: #b9dbc9;
+    background: #f4fbf7;
+    color: #216c49;
+}
+
+.day49-status[data-state="ended"],
+.recovery-status[data-status="cancelled"],
+.recovery-status[data-status="rejected"] {
+    background: #f8f9fb;
+    border-color: #d9dee5;
+    color: #667085;
+}
+
+.recovery-list {
+    display: grid;
+    gap: 16px;
+}
+
+.recovery-card {
+    border-left: 4px solid #2878c8;
+}
+
+.recovery-card__heading {
+    align-items: flex-start;
+}
+
+.recovery-card__heading > div {
+    min-width: 0;
+}
+
+.recovery-card__route {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    margin: 14px 0;
+}
+
+.recovery-card__appointment {
+    min-width: 180px;
+    padding: 12px;
+    border: 1px solid #dce7f0;
+    border-radius: 8px;
+    background: #f8fbfd;
+}
+
+.recovery-card__appointment span,
+.recovery-reason span,
+.recovery-options__title {
+    display: block;
+    color: #667085;
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.recovery-card__appointment strong {
+    display: block;
+    margin-top: 4px;
+    color: #163b5c;
+}
+
+.recovery-card__arrow {
+    color: #2878c8;
+    font-weight: 800;
+}
+
+.recovery-reason {
+    padding: 12px;
+    border-left: 3px solid #c8d9e8;
+    background: #f8fbfd;
+}
+
+.recovery-reason p {
+    margin: 4px 0 0;
+}
+
+.recovery-options {
+    display: grid;
+    gap: 9px;
+    margin-top: 14px;
+}
+
+.recovery-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 11px 12px;
+    border: 1px solid #dce7f0;
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.recovery-option[data-selected="true"] {
+    border-color: #8ab7df;
+    background: #f4faff;
+}
+
+.recovery-option__main {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+}
+
+.recovery-option__main strong {
+    color: #163b5c;
+}
+
+.recovery-option__meta {
+    justify-content: flex-start;
+    color: #667085;
+    font-size: 0.84rem;
+}
+
+.recovery-option__badge {
+    min-height: 24px;
+    padding: 3px 7px;
+    font-size: 0.72rem;
+}
+
+.recovery-priority-note {
+    margin-top: 12px;
+    color: #52677a;
+    font-size: 0.88rem;
+}
+
+.day49-empty-state {
+    padding: 24px;
+    text-align: left;
+}
+
+@media (max-width: 1100px) {
+    .day49-metric-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .day49-split,
+    .day49-split--wide,
+    .day49-split--disruption {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 760px) {
+    .day49-topbar,
+    .day49-section__heading,
+    .day49-card-heading,
+    .recovery-card__heading {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .day49-topbar__meta {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .day49-metric-grid,
+    .day49-metric-grid--recovery {
+        grid-template-columns: 1fr;
+    }
+
+    .day49-filter-panel {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .day49-filter-panel .field {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .recovery-option {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .recovery-option .btn {
+        width: 100%;
+    }
+
+    .recovery-card__route {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .recovery-card__arrow {
+        transform: rotate(90deg);
+        width: fit-content;
+    }
+}

@@ -1,0 +1,104 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Smart Q customer disruption recovery and rescheduling workspace.">
+    <title>Service recovery | Smart Q</title>
+    <link rel="stylesheet" href="{% static 'css/smartq.css' %}">
+    <link rel="stylesheet" href="{% static 'css/auth-shell.css' %}">
+    <link rel="stylesheet" href="{% static 'css/day49-workflows.css' %}">
+    <script type="module" src="{% static 'js/pages/app-shell.js' %}" defer></script>
+    <script type="module" src="{% static 'js/pages/customer-recovery-workspace.js' %}" defer></script>
+</head>
+<body class="app-page" data-app-shell data-customer-recovery data-expected-role="customer">
+    <a class="skip-link" href="#workspace-main">Skip to service recovery</a>
+
+    <div class="app-layout">
+        <aside class="sidebar" aria-label="Customer service recovery navigation">
+            <a class="brand sidebar__brand" href="/" aria-label="Smart Q home">
+                <span class="brand__mark" aria-hidden="true">SQ</span>
+                <span class="brand__text"><strong>Smart Q</strong><small>Where Time Meets Priority</small></span>
+            </a>
+
+            <div class="sidebar__context">
+                <span class="sidebar__context-label">Signed-in role</span>
+                <strong data-shell-role>Customer</strong>
+                <small data-shell-branch>Smart Q</small>
+            </div>
+
+            <nav class="side-nav" aria-label="Recovery workspace sections">
+                <a class="side-nav__item" href="/app/customer/">Back to My Smart Q</a>
+                <a class="side-nav__item is-active" href="#recovery">Service recovery</a>
+                <span class="side-nav__divider" aria-hidden="true"></span>
+                <a class="side-nav__item" href="#security">Security</a>
+            </nav>
+
+            <div class="sidebar__footer">
+                <button class="btn btn--secondary btn--block" type="button" data-logout>Sign out</button>
+            </div>
+        </aside>
+
+        <div class="workspace">
+            <header class="workspace-topbar day49-topbar">
+                <div>
+                    <p class="kicker">Customer service recovery</p>
+                    <h1>Disruption rescheduling</h1>
+                </div>
+                <div class="day49-topbar__meta">
+                    <span class="day49-scope-chip">Your bookings only</span>
+                    <button class="btn btn--secondary btn--sm" type="button" data-recovery-refresh>Refresh</button>
+                </div>
+            </header>
+
+            <main class="workspace-main day49-main" id="workspace-main">
+                <div class="notice notice--error" data-shell-error hidden role="alert"></div>
+                <div class="day49-message" data-recovery-message hidden role="status" aria-live="polite"></div>
+                <div class="day49-loading" data-recovery-loading role="status">Checking your service recovery options...</div>
+
+                <div data-recovery-content hidden>
+                    <section class="day49-section" id="recovery" aria-labelledby="recovery-heading">
+                        <div class="section-row day49-section__heading">
+                            <div>
+                                <p class="eyebrow">Disruption recovery</p>
+                                <h2 id="recovery-heading">Replacement appointment options</h2>
+                                <p>If a service disruption puts your checked-in visit at reschedule risk, Smart Q may generate future options. Availability is revalidated when you choose one.</p>
+                            </div>
+                            <span class="day49-scope-chip">Server-validated slots</span>
+                        </div>
+
+                        <div class="day49-metric-grid day49-metric-grid--recovery">
+                            <article class="metric-card"><span>Pending decisions</span><strong data-recovery-pending>0</strong><small>Recommendations needing action</small></article>
+                            <article class="metric-card"><span>Applied recoveries</span><strong data-recovery-applied>0</strong><small>Replacement slots already accepted</small></article>
+                            <article class="metric-card"><span>Total recommendations</span><strong data-recovery-total>0</strong><small>Your disruption recovery history</small></article>
+                        </div>
+
+                        <div class="recovery-list" data-recovery-list></div>
+                        <div class="panel day49-empty-state" data-recovery-empty hidden>
+                            <p class="kicker">No recovery action required</p>
+                            <h3>You have no disruption reschedule recommendations.</h3>
+                            <p>If a future service interruption creates a recovery option for one of your bookings, it will appear here.</p>
+                            <a class="btn btn--secondary" href="/app/customer/">Return to My Smart Q</a>
+                        </div>
+                    </section>
+
+                    <section class="day49-section" id="security" aria-labelledby="security-heading">
+                        <div class="panel security-panel">
+                            <div class="panel__header"><div><p class="kicker">Account security</p><h2 id="security-heading">Change password</h2></div></div>
+                            <p class="muted">Your current trusted session remains active after a successful password change.</p>
+                            <div class="form-message" data-security-message hidden role="status" aria-live="polite"></div>
+                            <form class="form-stack security-form" data-security-form>
+                                <label class="field"><span class="field__label">Current password</span><input class="input" type="password" name="current_password" autocomplete="current-password" required></label>
+                                <label class="field"><span class="field__label">New password</span><input class="input" type="password" name="new_password" autocomplete="new-password" required></label>
+                                <label class="field"><span class="field__label">Confirm new password</span><input class="input" type="password" name="confirm_password" autocomplete="new-password" required></label>
+                                <div><button class="btn btn--primary" type="submit">Change password</button></div>
+                            </form>
+                        </div>
+                    </section>
+                </div>
+            </main>
+        </div>
+    </div>
+</body>
+</html>

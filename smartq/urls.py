@@ -62,5 +62,15 @@ urlpatterns = [
         TemplateView.as_view(template_name="frontend/admin_workspace.html"),
         name="frontend_admin_workspace",
     ),
+    path(
+        "app/history/",
+        TemplateView.as_view(template_name="frontend/history_reporting_workspace.html"),
+        name="frontend_history_reporting_workspace",
+    ),
+    path(
+        "app/recovery/",
+        TemplateView.as_view(template_name="frontend/customer_recovery_workspace.html"),
+        name="frontend_customer_recovery_workspace",
+    ),
     path("", TemplateView.as_view(template_name="frontend/index.html"), name="frontend_home"),
 ]

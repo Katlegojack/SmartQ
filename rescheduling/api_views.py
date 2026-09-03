@@ -95,6 +95,22 @@ def reschedule_error_response(error_code):
 class BranchQueuePauseCreateAPIView(APIView):
     permission_classes = [IsBranchManager]
 
+    def get(self, request, branch_id):
+        """Restore branch disruption history/state for authorised managers/admins."""
+        branch = get_object_or_404(Branch, pk=branch_id, is_active=True)
+        self.check_object_permissions(request, branch)
+        pauses = QueuePause.objects.filter(branch=branch).select_related(
+            "branch",
+            "service",
+        ).order_by("-is_active", "-started_at", "-id")
+        return Response(
+            {
+                "branch_id": branch.id,
+                "pauses": [queue_pause_response(item) for item in pauses],
+            },
+            status=status.HTTP_200_OK,
+        )
+
     def post(self, request, branch_id):
         branch = get_object_or_404(Branch, pk=branch_id, is_active=True)
         self.check_object_permissions(request, branch)
