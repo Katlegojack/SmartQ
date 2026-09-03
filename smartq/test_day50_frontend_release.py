@@ -1,9 +1,15 @@
+import json
 import re
+from datetime import date, time
 from pathlib import Path
 
+from django.contrib.auth.models import User
 from django.contrib.staticfiles import finders
 from django.test import TestCase
 from django.urls import reverse
+
+from accounts.models import Profile
+from branches.models import Branch
 
 
 class Day50FrontendReleaseAuditTests(TestCase):
@@ -156,3 +162,59 @@ class Day50FrontendReleaseAuditTests(TestCase):
         )[1].split("function renderWorkspaceCopy", 1)[0]
         self.assertIn("insertBeforeDivider(nav, link)", recovery_function)
         self.assertIn("customerDashboardOwnsLogout", app_shell_js)
+
+    def test_last_active_system_admin_cannot_be_demoted(self):
+        branch = Branch.objects.create(
+            branch_code="D50",
+            name="Day 50 Branch",
+            address="50 Release Street",
+            city="Pretoria",
+            opening_time=time(8, 0),
+            closing_time=time(17, 0),
+            is_active=True,
+        )
+        admin = User.objects.create_user(username="day50_admin", password="pw")
+        Profile.objects.create(
+            user=admin,
+            date_of_birth=date(1990, 1, 1),
+            gender=Profile.OTHER,
+            role=Profile.SYSTEM_ADMIN,
+        )
+        self.client.force_login(admin)
+
+        detail_url = reverse("api_admin_staff_detail", args=[admin.id])
+        rejected = self.client.patch(
+            detail_url,
+            data=json.dumps(
+                {"role": Profile.RECEPTIONIST, "branch": branch.id}
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(rejected.status_code, 409)
+        admin.profile.refresh_from_db()
+        self.assertEqual(admin.profile.role, Profile.SYSTEM_ADMIN)
+
+        second_admin = User.objects.create_user(username="day50_admin_2", password="pw")
+        Profile.objects.create(
+            user=second_admin,
+            date_of_birth=date(1991, 2, 2),
+            gender=Profile.OTHER,
+            role=Profile.SYSTEM_ADMIN,
+        )
+        allowed = self.client.patch(
+            reverse("api_admin_staff_detail", args=[second_admin.id]),
+            data=json.dumps(
+                {"role": Profile.RECEPTIONIST, "branch": branch.id}
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(allowed.status_code, 200)
+        second_admin.profile.refresh_from_db()
+        self.assertEqual(second_admin.profile.role, Profile.RECEPTIONIST)
+        self.assertEqual(
+            User.objects.filter(
+                profile__role=Profile.SYSTEM_ADMIN,
+                is_active=True,
+            ).count(),
+            1,
+        )
