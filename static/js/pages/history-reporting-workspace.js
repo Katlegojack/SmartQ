@@ -1,5 +1,5 @@
 import { ApiError, apiRequest, fieldErrors } from "../api/client.js";
-import { getCurrentAccount, roleLabel, routeForRole } from "../auth/session.js";
+import { getCurrentAccount, routeForRole } from "../auth/session.js";
 
 const root = document.querySelector("[data-history-workspace]");
 const one = (selector, scope = root) => scope?.querySelector(selector) || null;
@@ -39,10 +39,6 @@ function formatDate(value) {
     const parsed = new Date(`${String(value).slice(0, 10)}T12:00:00`);
     if (Number.isNaN(parsed.getTime())) return String(value);
     return parsed.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-}
-
-function formatTime(value) {
-    return value ? String(value).slice(0, 5) : "—";
 }
 
 function formatDateTime(value) {
@@ -359,10 +355,10 @@ function fillPauseServices() {
     blank.value = "";
     blank.textContent = "Choose branch service";
     select.append(blank);
-    for (const service of state.services) {
+    for (const mapping of state.services) {
         const option = document.createElement("option");
-        option.value = String(service.id);
-        option.textContent = service.name || service.service_name || `Service #${service.id}`;
+        option.value = String(mapping.service_id);
+        option.textContent = mapping.service_name || `Service #${mapping.service_id}`;
         select.append(option);
     }
 }
