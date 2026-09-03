@@ -34,6 +34,38 @@ function renderRoleNavigation(role) {
     }
 }
 
+function insertBeforeDivider(nav, link) {
+    const divider = nav?.querySelector(".side-nav__divider");
+    if (divider) nav.insertBefore(link, divider);
+    else nav?.append(link);
+}
+
+function ensureDay49Navigation(role) {
+    const nav = shell?.querySelector(".side-nav");
+    if (!nav || nav.querySelector("[data-day49-nav]")) return;
+    if (!new Set(["branch_manager", "system_admin"]).has(role)) return;
+
+    const link = document.createElement("a");
+    link.className = "side-nav__item";
+    link.href = "/app/history/";
+    link.dataset.day49Nav = "history";
+    link.textContent = role === "branch_manager" ? "History & disruptions" : "History & reporting";
+    insertBeforeDivider(nav, link);
+}
+
+function ensureCustomerRecoveryNavigation() {
+    const customerRoot = document.querySelector("[data-customer-dashboard]");
+    const nav = customerRoot?.querySelector(".side-nav");
+    if (!nav || nav.querySelector("[data-day49-recovery-nav]")) return;
+
+    const link = document.createElement("a");
+    link.className = "side-nav__item";
+    link.href = "/app/recovery/";
+    link.dataset.day49RecoveryNav = "recovery";
+    link.textContent = "Service recovery";
+    nav.append(link);
+}
+
 function renderWorkspaceCopy(role) {
     const copy = {
         customer: {
@@ -71,6 +103,7 @@ function setSecurityMessage(text, kind = "error") {
 }
 
 async function bootstrapShell() {
+    ensureCustomerRecoveryNavigation();
     if (!shell) return;
 
     try {
@@ -94,6 +127,7 @@ async function bootstrapShell() {
         renderAccount(user);
         renderRoleNavigation(user.role);
         renderWorkspaceCopy(user.role);
+        ensureDay49Navigation(user.role);
         shell.dataset.ready = "true";
     } catch (error) {
         const main = shell.querySelector("[data-shell-error]");
