@@ -1,0 +1,193 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Smart Q counter staff workspace for assigned-counter lifecycle and customer serving operations.">
+    <title>Counter workspace | Smart Q</title>
+    <link rel="stylesheet" href="{% static 'css/smartq.css' %}">
+    <link rel="stylesheet" href="{% static 'css/auth-shell.css' %}">
+    <link rel="stylesheet" href="{% static 'css/counter-workspace.css' %}">
+    <script type="module" src="{% static 'js/pages/app-shell.js' %}" defer></script>
+    <script type="module" src="{% static 'js/pages/counter-workspace.js' %}" defer></script>
+</head>
+<body class="app-page" data-app-shell data-counter-workspace data-expected-role="counter_staff">
+    <a class="skip-link" href="#workspace-main">Skip to counter controls</a>
+
+    <div class="app-layout">
+        <aside class="sidebar" aria-label="Counter staff workspace navigation">
+            <a class="brand sidebar__brand" href="/" aria-label="Smart Q home">
+                <span class="brand__mark" aria-hidden="true">SQ</span>
+                <span class="brand__text"><strong>Smart Q</strong><small>Where Time Meets Priority</small></span>
+            </a>
+
+            <div class="sidebar__context">
+                <span class="sidebar__context-label">Signed-in role</span>
+                <strong data-shell-role>Counter Staff</strong>
+                <small data-shell-branch>Verifying branch</small>
+            </div>
+
+            <nav class="side-nav" aria-label="Counter workspace sections">
+                <a class="side-nav__item is-active" href="#serve">Serve customer</a>
+                <a class="side-nav__item" href="#waiting">Waiting queue</a>
+                <a class="side-nav__item" href="#counter">Counter controls</a>
+                <span class="side-nav__divider" aria-hidden="true"></span>
+                <a class="side-nav__item" href="#security">Security</a>
+            </nav>
+
+            <div class="sidebar__footer">
+                <button class="btn btn--secondary btn--block" type="button" data-logout>Sign out</button>
+            </div>
+        </aside>
+
+        <div class="workspace">
+            <header class="workspace-topbar">
+                <div>
+                    <p class="kicker">Counter staff workspace</p>
+                    <h1>Serving desk</h1>
+                </div>
+                <div class="counter-topbar__meta">
+                    <span class="counter-chip" data-counter-chip>Loading assignment...</span>
+                    <span class="session-chip"><span class="status-dot status-dot--success" aria-hidden="true"></span> Session active</span>
+                </div>
+            </header>
+
+            <main class="workspace-main counter-main" id="workspace-main">
+                <div class="notice notice--error" data-shell-error hidden role="alert"></div>
+                <div class="counter-message" data-counter-message hidden role="status" aria-live="polite"></div>
+
+                <div class="counter-loading" data-counter-loading role="status">Loading your assigned counter...</div>
+
+                <section class="unassigned-state" data-unassigned-state hidden aria-labelledby="unassigned-heading">
+                    <p class="eyebrow">No counter assignment</p>
+                    <h2 id="unassigned-heading">A Branch Manager must assign you before serving customers.</h2>
+                    <p>Smart Q does not let Counter Staff choose or self-assign a counter. Your assignment is an operational permission controlled by branch management.</p>
+                    <button class="btn btn--secondary" type="button" data-retry-assignment>Check assignment again</button>
+                </section>
+
+                <div data-counter-content hidden>
+                    <section class="serve-section" id="serve" aria-labelledby="serve-heading">
+                        <div class="serve-heading">
+                            <div>
+                                <p class="eyebrow">Day 46 focused serving loop</p>
+                                <h2 id="serve-heading">Serve one customer at a time.</h2>
+                                <p>Smart Q chooses the next eligible customer for your assigned counter. Finish or mark the current customer as a no-show before calling another.</p>
+                            </div>
+                            <div class="counter-status-card" aria-label="Assigned counter state">
+                                <small>Counter</small>
+                                <strong data-counter-number>—</strong>
+                                <span data-counter-status>—</span>
+                            </div>
+                        </div>
+
+                        <article class="current-customer panel" data-current-card hidden aria-labelledby="current-customer-heading">
+                            <div class="current-customer__topline">
+                                <div>
+                                    <p class="kicker">Now serving</p>
+                                    <h3 id="current-customer-heading" data-current-queue-number>—</h3>
+                                </div>
+                                <span class="badge badge--success">Serving</span>
+                            </div>
+                            <div class="current-customer__name" data-current-customer>—</div>
+                            <dl class="current-details">
+                                <div><dt>Service</dt><dd data-current-service>—</dd></div>
+                                <div><dt>Queue type</dt><dd data-current-type>—</dd></div>
+                                <div><dt>Appointment</dt><dd data-current-appointment>—</dd></div>
+                                <div><dt>Checked in</dt><dd data-current-checkin>—</dd></div>
+                            </dl>
+                            <div class="serve-actions">
+                                <button class="btn btn--primary" type="button" data-complete-current>Complete service</button>
+                                <button class="btn btn--danger" type="button" data-no-show-current>Mark no-show</button>
+                            </div>
+                            <p class="serve-note">Complete means the service was delivered. No-show means this already checked-in customer did not present when called.</p>
+                        </article>
+
+                        <article class="free-counter panel" data-free-card hidden>
+                            <p class="kicker">Counter available</p>
+                            <h3>No customer is currently being served.</h3>
+                            <p data-free-copy>Open your assigned counter, then let Smart Q call the next eligible customer.</p>
+                            <button class="btn btn--primary btn--large" type="button" data-call-next>Call next customer</button>
+                        </article>
+                    </section>
+
+                    <section class="waiting-section" id="waiting" aria-labelledby="waiting-heading">
+                        <div class="section-row">
+                            <div>
+                                <p class="kicker">Your queue type</p>
+                                <h3 id="waiting-heading">Customers waiting for this counter type</h3>
+                                <p>Preview only. The backend still decides who Call Next receives.</p>
+                            </div>
+                            <button class="btn btn--secondary btn--sm" type="button" data-refresh-workspace>Refresh</button>
+                        </div>
+
+                        <div class="waiting-summary">
+                            <div><span data-waiting-count>0</span><small>Waiting</small></div>
+                            <div><span data-next-number>—</span><small>First in line</small></div>
+                            <div><span data-counter-type>—</span><small>Counter queue</small></div>
+                        </div>
+
+                        <div class="panel counter-table-panel" data-waiting-table hidden>
+                            <div class="table-wrap">
+                                <table class="counter-table">
+                                    <thead><tr><th>Queue</th><th>Customer</th><th>Service</th><th>Check-in</th><th>Status</th></tr></thead>
+                                    <tbody data-waiting-body></tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="waiting-state" data-waiting-loading role="status">Loading waiting customers...</div>
+                        <div class="waiting-state" data-waiting-empty hidden><strong>No matching customers are waiting.</strong><span>Your counter remains ready for the next eligible arrival.</span></div>
+                    </section>
+
+                    <section class="counter-control-section" id="counter" aria-labelledby="counter-control-heading">
+                        <div class="section-row">
+                            <div>
+                                <p class="kicker">Assigned counter lifecycle</p>
+                                <h3 id="counter-control-heading">Counter controls</h3>
+                                <p>Operate only your assigned counter. Smart Q prevents opening an unassigned counter and prevents closing while a customer is still being served.</p>
+                            </div>
+                        </div>
+
+                        <div class="counter-control-grid">
+                            <article class="panel assignment-panel">
+                                <span class="assignment-label">Assignment</span>
+                                <strong data-assignment-title>Counter —</strong>
+                                <dl class="assignment-details">
+                                    <div><dt>Branch</dt><dd data-assignment-branch>—</dd></div>
+                                    <div><dt>Queue type</dt><dd data-assignment-type>—</dd></div>
+                                    <div><dt>Counter state</dt><dd data-assignment-status>—</dd></div>
+                                </dl>
+                            </article>
+
+                            <article class="panel lifecycle-panel">
+                                <p class="kicker">Lifecycle actions</p>
+                                <div class="lifecycle-actions">
+                                    <button class="btn btn--primary" type="button" data-counter-action="open">Open counter</button>
+                                    <button class="btn btn--secondary" type="button" data-counter-action="pause">Pause counter</button>
+                                    <button class="btn btn--primary" type="button" data-counter-action="resume">Resume counter</button>
+                                    <button class="btn btn--secondary" type="button" data-counter-action="close">Close counter</button>
+                                </div>
+                                <p class="lifecycle-help" data-lifecycle-help>Loading available counter actions...</p>
+                            </article>
+                        </div>
+                    </section>
+
+                    <section class="counter-control-section" id="security" aria-labelledby="security-heading">
+                        <div class="panel security-panel">
+                            <div class="panel__header"><div><p class="kicker">Account security</p><h2 id="security-heading">Change password</h2></div></div>
+                            <p class="muted">Your current trusted session remains active after a successful password change.</p>
+                            <div class="form-message" data-security-message hidden role="status" aria-live="polite"></div>
+                            <form class="form-stack security-form" data-security-form>
+                                <label class="field"><span class="field__label">Current password</span><input class="input" type="password" name="current_password" autocomplete="current-password" required></label>
+                                <label class="field"><span class="field__label">New password</span><input class="input" type="password" name="new_password" autocomplete="new-password" required></label>
+                                <label class="field"><span class="field__label">Confirm new password</span><input class="input" type="password" name="confirm_password" autocomplete="new-password" required></label>
+                                <div><button class="btn btn--primary" type="submit">Change password</button></div>
+                            </form>
+                        </div>
+                    </section>
+                </div>
+            </main>
+        </div>
+    </div>
+</body>
+</html>
