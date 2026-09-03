@@ -92,5 +92,8 @@ jobs:
       - name: Run Day 48 system admin workspace tests
         run: python manage.py test smartq.test_day48_admin_workspace
 
+      - name: Run Day 49 history reporting and recovery tests
+        run: python manage.py test smartq.test_day49_history_recovery
+
       - name: Run full test suite
         run: python manage.py test
