@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - "feature/**"
+      - "fix/**"
   pull_request:
     branches:
       - main
@@ -100,6 +101,9 @@ jobs:
 
       - name: Run Day 50 frontend release audit tests
         run: python manage.py test smartq.test_day50_frontend_release
+
+      - name: Run live smoke demo bootstrap tests
+        run: python manage.py test smartq.test_live_smoke_demo
 
       - name: Run full test suite
         run: python manage.py test

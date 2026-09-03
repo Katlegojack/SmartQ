@@ -32,7 +32,7 @@ class Day43CustomerDashboardTests(TestCase):
     def test_customer_workspace_renders_dashboard_contract(self):
         response = self.client.get(reverse("frontend_customer_workspace"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Customer dashboard")
+        self.assertContains(response, "My Smart Q")
         self.assertContains(response, "data-customer-dashboard")
         self.assertContains(response, "data-queue-panel")
         self.assertContains(response, "data-upcoming-body")

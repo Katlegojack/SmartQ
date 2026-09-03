@@ -25,21 +25,14 @@
     <main class="auth-main" id="main-content">
         <div class="container auth-layout">
             <section class="auth-intro" aria-labelledby="login-heading">
-                <p class="eyebrow">Secure access</p>
-                <h1 id="login-heading">Sign in to your Smart Q workspace.</h1>
-                <p>One account opens the workspace assigned to your Smart Q role. Permissions and branch scope remain enforced by the backend.</p>
-                <dl class="auth-points">
-                    <div><dt>Session</dt><dd>Django session authentication</dd></div>
-                    <div><dt>Browser protection</dt><dd>CSRF-protected sign-in</dd></div>
-                    <div><dt>Routing</dt><dd>Role-aware workspace entry</dd></div>
-                </dl>
+                <p class="eyebrow">Smart Q</p>
+                <h1 id="login-heading">Sign in</h1>
+                <p>Customers and staff use the same sign-in.</p>
             </section>
 
             <section class="auth-card" aria-label="Sign-in form">
                 <div class="auth-card__header">
-                    <p class="kicker">Account access</p>
-                    <h2>Sign in</h2>
-                    <p>Use the username and password linked to your Smart Q account.</p>
+                    <h2>Welcome back</h2>
                 </div>
                 <div class="form-message" data-form-message hidden role="status" aria-live="polite"></div>
                 <form class="form-stack" data-login-form novalidate>
@@ -53,7 +46,7 @@
                     </label>
                     <button class="btn btn--primary btn--block" type="submit">Sign in</button>
                 </form>
-                <p class="auth-card__footer">New to Smart Q? <a href="/register/">Create a customer account</a>.</p>
+                <p class="auth-card__footer">New customer? <a href="/register/">Create an account</a>.</p>
             </section>
         </div>
     </main>

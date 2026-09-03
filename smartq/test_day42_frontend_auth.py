@@ -15,7 +15,7 @@ class Day42FrontendAuthenticationTests(TestCase):
 
         self.assertEqual(login.status_code, 200)
         self.assertEqual(register.status_code, 200)
-        self.assertContains(login, "Sign in to your Smart Q workspace")
+        self.assertContains(login, "Customers and staff use the same sign-in")
         self.assertContains(register, "Customer registration")
         self.assertContains(login, "/static/css/auth-shell.css")
         self.assertContains(login, "/static/js/pages/login.js")
