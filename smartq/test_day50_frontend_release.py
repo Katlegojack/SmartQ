@@ -149,6 +149,32 @@ class Day50FrontendReleaseAuditTests(TestCase):
         self.assertIn("window.location.replace(safeRoute)", login_js)
         self.assertNotIn("window.location.replace(requested)", login_js)
 
+    def test_mid_session_expiry_uses_shared_login_return_path(self):
+        api_client = self.static_text("js/api/client.js")
+        app_shell = self.static_text("js/pages/app-shell.js")
+
+        self.assertIn(
+            'SESSION_EXPIRED_DETAIL = "Authentication credentials were not provided."',
+            api_client,
+        )
+        self.assertIn('new CustomEvent("smartq:session-expired")', api_client)
+        self.assertIn(
+            'window.addEventListener("smartq:session-expired", redirectExpiredSession)',
+            app_shell,
+        )
+        self.assertIn("sessionRedirecting", app_shell)
+        self.assertIn('window.location.replace(`/login/?next=${next}`)', app_shell)
+
+    def test_router_shell_has_no_stale_frontend_roadmap_placeholder_copy(self):
+        response = self.client.get(reverse("frontend_app"))
+        self.assertContains(response, "Workspace router")
+        self.assertContains(response, "Backend-owned access")
+        self.assertNotContains(response, "continue Day 43")
+        self.assertNotContains(response, "continue Day 45")
+        self.assertNotContains(response, "continue Day 46")
+        self.assertNotContains(response, "continue Day 47")
+        self.assertNotContains(response, "continue Day 48")
+
     def test_customer_dashboard_release_navigation_and_security_contract(self):
         response = self.client.get(reverse("frontend_customer_workspace"))
         self.assertContains(response, "data-customer-dashboard")
@@ -159,9 +185,16 @@ class Day50FrontendReleaseAuditTests(TestCase):
         app_shell_js = self.static_text("js/pages/app-shell.js")
         recovery_function = app_shell_js.split(
             "function ensureCustomerRecoveryNavigation()", 1
-        )[1].split("function renderWorkspaceCopy", 1)[0]
+        )[1].split("function setSecurityMessage", 1)[0]
         self.assertIn("insertBeforeDivider(nav, link)", recovery_function)
         self.assertIn("customerDashboardOwnsLogout", app_shell_js)
+
+    def test_admin_self_role_change_refreshes_identity_before_leaving_control_plane(self):
+        admin_js = self.static_text("js/pages/admin-workspace.js")
+        self.assertIn("const editingId = state.staffEditId", admin_js)
+        self.assertIn("getCurrentAccount({ refresh: true })", admin_js)
+        self.assertIn('refreshedAccount.role !== "system_admin"', admin_js)
+        self.assertIn("window.location.replace(routeForRole(refreshedAccount?.role))", admin_js)
 
     def test_last_active_system_admin_cannot_be_demoted(self):
         branch = Branch.objects.create(
