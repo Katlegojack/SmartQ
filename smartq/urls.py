@@ -59,10 +59,7 @@ urlpatterns = [
     ),
     path(
         "app/admin/",
-        TemplateView.as_view(
-            template_name=APP_TEMPLATE,
-            extra_context={"workspace_title": "System administration workspace", "workspace_role": "system_admin"},
-        ),
+        TemplateView.as_view(template_name="frontend/admin_workspace.html"),
         name="frontend_admin_workspace",
     ),
     path("", TemplateView.as_view(template_name="frontend/index.html"), name="frontend_home"),
