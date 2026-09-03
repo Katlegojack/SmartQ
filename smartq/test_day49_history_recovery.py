@@ -1,4 +1,5 @@
 from datetime import date, time, timedelta
+from pathlib import Path
 
 from django.contrib.auth.models import User
 from django.contrib.staticfiles import finders
@@ -104,9 +105,20 @@ class Day49HistoryRecoveryTests(APITestCase):
         self.assertContains(recovery, "data-customer-recovery")
         self.assertContains(recovery, "data-recovery-list")
 
-        self.assertIsNotNone(finders.find("css/day49-workflows.css"))
-        self.assertIsNotNone(finders.find("js/pages/history-reporting-workspace.js"))
-        self.assertIsNotNone(finders.find("js/pages/customer-recovery-workspace.js"))
+        css_path = finders.find("css/day49-workflows.css")
+        history_js_path = finders.find("js/pages/history-reporting-workspace.js")
+        recovery_js_path = finders.find("js/pages/customer-recovery-workspace.js")
+        self.assertIsNotNone(css_path)
+        self.assertIsNotNone(history_js_path)
+        self.assertIsNotNone(recovery_js_path)
+
+        # BranchServiceSerializer uses `id` for the mapping itself and
+        # `service_id` for the Service primary key expected by the pause POST.
+        # Lock that frontend/backend contract so the selector cannot regress to
+        # accidentally sending a BranchService mapping ID as the service ID.
+        history_js = Path(history_js_path).read_text(encoding="utf-8")
+        self.assertIn("mapping.service_id", history_js)
+        self.assertIn("service_id: Number(form.elements.service_id.value)", history_js)
 
     def test_branch_pause_list_restores_state_and_preserves_scope(self):
         active = QueuePause.objects.create(
