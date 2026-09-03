@@ -95,5 +95,11 @@ jobs:
       - name: Run Day 49 history reporting and recovery tests
         run: python manage.py test smartq.test_day49_history_recovery
 
+      - name: Check frontend JavaScript syntax
+        run: find static/js -name '*.js' -print0 | xargs -0 -n1 node --check
+
+      - name: Run Day 50 frontend release audit tests
+        run: python manage.py test smartq.test_day50_frontend_release
+
       - name: Run full test suite
         run: python manage.py test

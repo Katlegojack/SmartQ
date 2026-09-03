@@ -346,6 +346,7 @@ async function submitStaff(event) {
     const restore = setBusy(submit);
     setFormMessage("staff", "");
 
+    const editingId = state.staffEditId;
     const branchValue = form.elements.branch.value;
     const payload = {
         first_name: form.elements.first_name.value.trim(),
@@ -354,7 +355,7 @@ async function submitStaff(event) {
         role: form.elements.role.value,
         branch: branchValue ? Number(branchValue) : null,
     };
-    if (!state.staffEditId) {
+    if (!editingId) {
         Object.assign(payload, {
             username: form.elements.username.value.trim(),
             password: form.elements.password.value,
@@ -366,10 +367,20 @@ async function submitStaff(event) {
 
     try {
         await apiRequest(
-            state.staffEditId ? `/api/v1/accounts/admin/staff/${state.staffEditId}/` : "/api/v1/accounts/admin/staff/",
-            { method: state.staffEditId ? "PATCH" : "POST", body: payload },
+            editingId ? `/api/v1/accounts/admin/staff/${editingId}/` : "/api/v1/accounts/admin/staff/",
+            { method: editingId ? "PATCH" : "POST", body: payload },
         );
-        setMessage(state.staffEditId ? "Staff account updated." : "Staff account created.", "success");
+
+        if (editingId && editingId === state.account?.id) {
+            const refreshedAccount = await getCurrentAccount({ refresh: true });
+            state.account = refreshedAccount;
+            if (!refreshedAccount || refreshedAccount.role !== "system_admin") {
+                window.location.replace(routeForRole(refreshedAccount?.role));
+                return;
+            }
+        }
+
+        setMessage(editingId ? "Staff account updated." : "Staff account created.", "success");
         resetStaffForm();
         await refreshCatalogues({ silent: true });
     } catch (error) {

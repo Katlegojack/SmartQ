@@ -28,6 +28,20 @@ from .serializers import (
 )
 
 
+def is_last_active_system_admin(user):
+    """Return True when removing this admin role/state would orphan the control plane."""
+
+    if user.profile.role != Profile.SYSTEM_ADMIN or not user.is_active:
+        return False
+    return (
+        User.objects.filter(
+            profile__role=Profile.SYSTEM_ADMIN,
+            is_active=True,
+        ).count()
+        <= 1
+    )
+
+
 class CustomerRegistrationAPIView(APIView):
     """Create a new Smart Q customer account and profile."""
 
@@ -193,6 +207,17 @@ class StaffAccountDetailAPIView(APIView):
             partial=True,
         )
         serializer.is_valid(raise_exception=True)
+
+        requested_role = serializer.validated_data.get("role", user.profile.role)
+        if (
+            requested_role != Profile.SYSTEM_ADMIN
+            and is_last_active_system_admin(user)
+        ):
+            return Response(
+                {"detail": "Smart Q must retain at least one active System Admin."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
         serializer.save()
         user.refresh_from_db()
         return Response(StaffAccountSerializer(user).data)
@@ -223,20 +248,11 @@ class StaffAccountActivationAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if (
-            user.profile.role == Profile.SYSTEM_ADMIN
-            and user.is_active
-            and requested_state is False
-        ):
-            active_admin_count = User.objects.filter(
-                profile__role=Profile.SYSTEM_ADMIN,
-                is_active=True,
-            ).count()
-            if active_admin_count <= 1:
-                return Response(
-                    {"detail": "Smart Q must retain at least one active System Admin."},
-                    status=status.HTTP_409_CONFLICT,
-                )
+        if requested_state is False and is_last_active_system_admin(user):
+            return Response(
+                {"detail": "Smart Q must retain at least one active System Admin."},
+                status=status.HTTP_409_CONFLICT,
+            )
 
         user.is_active = requested_state
         user.save(update_fields=["is_active"])

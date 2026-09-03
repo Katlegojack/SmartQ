@@ -3,6 +3,7 @@ import {
     getCurrentAccount,
     loginAccount,
     redirectToWorkspace,
+    safeNextRoute,
 } from "../auth/session.js";
 
 const form = document.querySelector("[data-login-form]");
@@ -22,10 +23,20 @@ function setBusy(isBusy) {
     submitButton.textContent = isBusy ? "Signing in..." : "Sign in";
 }
 
+function openRequestedWorkspace(user) {
+    const requested = new URLSearchParams(window.location.search).get("next") || "";
+    const safeRoute = safeNextRoute(user?.role, requested);
+    if (safeRoute) {
+        window.location.replace(safeRoute);
+        return;
+    }
+    redirectToWorkspace(user, { replace: true });
+}
+
 async function restoreExistingSession() {
     try {
         const user = await getCurrentAccount();
-        if (user) redirectToWorkspace(user, { replace: true });
+        if (user) openRequestedWorkspace(user);
     } catch (error) {
         setMessage("Smart Q could not verify the current session. Please try again.");
     }
@@ -48,7 +59,7 @@ form?.addEventListener("submit", async (event) => {
     try {
         const user = await loginAccount(username, password);
         setMessage("Sign-in successful. Opening your workspace.", "success");
-        redirectToWorkspace(user, { replace: true });
+        openRequestedWorkspace(user);
     } catch (error) {
         if (error instanceof ApiError && error.status === 429) {
             setMessage("Too many sign-in attempts. Wait a moment and try again.");

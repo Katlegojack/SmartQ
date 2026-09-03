@@ -12,7 +12,7 @@
     <script type="module" src="{% static 'js/pages/app-shell.js' %}" defer></script>
     <script type="module" src="{% static 'js/pages/customer-dashboard.js' %}" defer></script>
 </head>
-<body class="app-page" data-customer-dashboard data-expected-role="customer">
+<body class="app-page" data-app-shell data-customer-dashboard data-expected-role="customer">
     <a class="skip-link" href="#workspace-main">Skip to workspace</a>
     <div class="app-layout">
         <aside class="sidebar" aria-label="Customer workspace navigation">
@@ -22,7 +22,7 @@
             </a>
             <div class="sidebar__context">
                 <span class="sidebar__context-label">Signed-in role</span>
-                <strong>Customer</strong>
+                <strong data-shell-role>Customer</strong>
                 <small data-customer-identity>Verifying session</small>
             </div>
             <nav class="side-nav" aria-label="Customer sections">
@@ -30,6 +30,8 @@
                 <a class="side-nav__item" href="#book">Book appointment</a>
                 <a class="side-nav__item" href="#appointments">Appointments</a>
                 <a class="side-nav__item" href="#history">History</a>
+                <span class="side-nav__divider" aria-hidden="true"></span>
+                <a class="side-nav__item" href="#security">Security</a>
             </nav>
             <div class="sidebar__footer"><button class="btn btn--secondary btn--block" type="button" data-logout>Sign out</button></div>
         </aside>
@@ -41,7 +43,7 @@
             </header>
 
             <main class="workspace-main" id="workspace-main">
-                <div class="notice notice--error" data-dashboard-error hidden role="alert"></div>
+                <div class="notice notice--error" data-dashboard-error data-shell-error hidden role="alert"></div>
                 <div class="customer-loading" data-dashboard-loading role="status">Loading your Smart Q dashboard...</div>
 
                 <div data-dashboard-content hidden>
@@ -172,6 +174,20 @@
                         <div class="customer-section__header"><div><p class="kicker">History</p><h3 id="history-heading">Past appointments</h3></div></div>
                         <div class="panel customer-table-panel" data-history-table><div class="table-wrap"><table class="customer-table"><thead><tr><th>Appointment</th><th>Service</th><th>Branch</th><th>Outcome</th><th>Queue</th><th>Details</th></tr></thead><tbody data-history-body></tbody></table></div></div>
                         <div class="panel empty-state empty-state--compact" data-history-empty hidden><p>No completed, cancelled or no-show appointments yet.</p></div>
+                    </section>
+
+                    <section class="customer-section" id="security" aria-labelledby="security-heading">
+                        <div class="panel security-panel">
+                            <div class="panel__header"><div><p class="kicker">Account security</p><h2 id="security-heading">Change password</h2></div></div>
+                            <p class="muted">Your current trusted session remains active after a successful password change.</p>
+                            <div class="form-message" data-security-message hidden role="status" aria-live="polite"></div>
+                            <form class="form-stack security-form" data-security-form>
+                                <label class="field"><span class="field__label">Current password</span><input class="input" type="password" name="current_password" autocomplete="current-password" required></label>
+                                <label class="field"><span class="field__label">New password</span><input class="input" type="password" name="new_password" autocomplete="new-password" required></label>
+                                <label class="field"><span class="field__label">Confirm new password</span><input class="input" type="password" name="confirm_password" autocomplete="new-password" required></label>
+                                <div><button class="btn btn--primary" type="submit">Change password</button></div>
+                            </form>
+                        </div>
                     </section>
                 </div>
             </main>

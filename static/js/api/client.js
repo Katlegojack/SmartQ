@@ -1,4 +1,5 @@
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS", "TRACE"]);
+const SESSION_EXPIRED_DETAIL = "Authentication credentials were not provided.";
 let csrfToken = null;
 
 export class ApiError extends Error {
@@ -20,6 +21,14 @@ async function parseResponse(response) {
 
     const text = await response.text();
     return text ? { detail: text } : null;
+}
+
+function signalExpiredSession(response, data) {
+    if (response.status !== 403 || data?.detail !== SESSION_EXPIRED_DETAIL) return;
+    clearCsrfToken();
+    if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("smartq:session-expired"));
+    }
 }
 
 export function clearCsrfToken() {
@@ -73,6 +82,7 @@ export async function apiRequest(path, options = {}) {
 
     const data = await parseResponse(response);
     if (!response.ok) {
+        signalExpiredSession(response, data);
         const message = data?.detail || "The request could not be completed.";
         throw new ApiError(message, response.status, data);
     }

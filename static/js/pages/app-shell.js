@@ -9,9 +9,11 @@ import {
 
 const shell = document.querySelector("[data-app-shell]");
 const expectedRole = shell?.dataset.expectedRole || "";
-const logoutButton = shell?.querySelector("[data-logout]") || null;
+const customerDashboardOwnsLogout = shell?.matches("[data-customer-dashboard]") || false;
+const logoutButton = customerDashboardOwnsLogout ? null : shell?.querySelector("[data-logout]") || null;
 const securityForm = shell?.querySelector("[data-security-form]") || null;
 const securityMessage = shell?.querySelector("[data-security-message]") || null;
+let sessionRedirecting = false;
 
 function setText(selector, value) {
     const node = shell?.querySelector(selector);
@@ -26,12 +28,6 @@ function renderAccount(user) {
     setText("[data-user-branch]", user.branch_name || "System-wide");
     setText("[data-shell-role]", roleLabel(user.role));
     setText("[data-shell-branch]", user.branch_name || "Smart Q");
-}
-
-function renderRoleNavigation(role) {
-    for (const node of shell?.querySelectorAll("[data-role-nav]") || []) {
-        node.hidden = node.dataset.roleNav !== role;
-    }
 }
 
 function insertBeforeDivider(nav, link) {
@@ -64,36 +60,7 @@ function ensureCustomerRecoveryNavigation() {
     link.href = "/app/recovery/";
     link.dataset.day49RecoveryNav = "recovery";
     link.textContent = "Service recovery";
-    nav.append(link);
-}
-
-function renderWorkspaceCopy(role) {
-    const copy = {
-        customer: {
-            title: "Customer workspace",
-            text: "Your authenticated Smart Q workspace is ready. Booking and live queue modules are connected next.",
-        },
-        receptionist: {
-            title: "Reception workspace",
-            text: "Your branch-scoped reception shell is ready for customer search, assisted check-in and walk-in operations.",
-        },
-        counter_staff: {
-            title: "Counter workspace",
-            text: "Your assigned-counter shell is ready for the focused serving workflow that follows in the frontend roadmap.",
-        },
-        branch_manager: {
-            title: "Branch management workspace",
-            text: "Your branch-scoped management shell is ready for operational dashboard and reporting integration.",
-        },
-        system_admin: {
-            title: "System administration workspace",
-            text: "Your system-wide administration shell is ready for staff, branch, service and capacity management screens.",
-        },
-    }[role];
-
-    if (!copy) return;
-    setText("[data-workspace-title]", copy.title);
-    setText("[data-workspace-copy]", copy.text);
+    insertBeforeDivider(nav, link);
 }
 
 function setSecurityMessage(text, kind = "error") {
@@ -103,6 +70,15 @@ function setSecurityMessage(text, kind = "error") {
     securityMessage.hidden = !text;
 }
 
+function redirectExpiredSession() {
+    if (!shell || sessionRedirecting) return;
+    sessionRedirecting = true;
+    const next = encodeURIComponent(window.location.pathname);
+    window.location.replace(`/login/?next=${next}`);
+}
+
+window.addEventListener("smartq:session-expired", redirectExpiredSession);
+
 async function bootstrapShell() {
     ensureCustomerRecoveryNavigation();
     if (!shell) return;
@@ -110,8 +86,7 @@ async function bootstrapShell() {
     try {
         const user = await getCurrentAccount();
         if (!user) {
-            const next = encodeURIComponent(window.location.pathname);
-            window.location.replace(`/login/?next=${next}`);
+            redirectExpiredSession();
             return;
         }
 
@@ -126,8 +101,6 @@ async function bootstrapShell() {
         }
 
         renderAccount(user);
-        renderRoleNavigation(user.role);
-        renderWorkspaceCopy(user.role);
         ensureDay49Navigation(user.role);
         shell.dataset.ready = "true";
     } catch (error) {
