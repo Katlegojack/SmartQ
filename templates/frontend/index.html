@@ -4,70 +4,63 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Smart Q queue intelligence platform.">
-    <title>Smart Q</title>
+    <meta name="description" content="Smart Q - Where Time Meets Priority.">
+    <title>Smart Q | Where Time Meets Priority</title>
     <link rel="stylesheet" href="{% static 'css/smartq.css' %}">
+    <link rel="stylesheet" href="{% static 'css/home.css' %}">
     <script type="module" src="{% static 'js/app.js' %}" defer></script>
 </head>
-<body>
+<body class="home-page">
     <a class="skip-link" href="#main-content">Skip to content</a>
 
-    <header class="topbar">
-        <div class="topbar__inner container">
-            <a class="brand" href="/" aria-label="Smart Q home">
-                <span class="brand__mark" aria-hidden="true">SQ</span>
-                <span class="brand__text"><strong>Smart Q</strong><small>Where Time Meets Priority</small></span>
+    <header class="home-header">
+        <div class="container home-header__inner">
+            <a class="home-wordmark" href="/" aria-label="Smart Q home">
+                <span class="home-wordmark__mark" aria-hidden="true">SQ</span>
+                <span>SMART Q</span>
             </a>
-            <nav class="topbar__actions" aria-label="Primary navigation">
-                <a class="nav-link is-active" href="#overview">Overview</a>
-                <a class="nav-link" href="#system">System</a>
-                <a class="btn btn--primary" href="/login/" data-account-link>Sign in</a>
+            <nav class="home-nav" aria-label="Account navigation">
+                <a class="home-nav__link" href="/register/">Create account</a>
+                <a class="home-primary-action" href="/login/" data-account-link>Sign in</a>
             </nav>
         </div>
     </header>
 
     <main id="main-content">
-        <section class="hero" id="overview">
-            <div class="container hero__grid">
-                <div class="hero__content">
-                    <p class="eyebrow">Queue intelligence platform</p>
-                    <h1>Clear queue decisions, without unnecessary complexity.</h1>
-                    <p class="hero__lead">Smart Q gives customers, staff and managers one structured interface for appointments, live queues, counter operations and branch performance.</p>
-                    <div class="hero__actions">
-                        <a class="btn btn--primary" href="/login/" data-account-link>Open Smart Q</a>
-                        <a class="btn btn--secondary" href="/register/">Create account</a>
+        <section class="home-hero" aria-labelledby="home-title">
+            <div class="container home-hero__grid">
+                <div>
+                    <p class="home-hero__eyebrow">Where Time Meets Priority</p>
+                    <h1 id="home-title">SMART Q</h1>
+                    <p class="home-hero__tagline">Give people their time back.</p>
+                    <div class="home-hero__actions">
+                        <a class="home-primary-action" href="/login/" data-account-link>Open Smart Q</a>
+                        <a class="home-secondary-action" href="/register/">Create customer account</a>
                     </div>
-                    <div class="hero__note"><span class="status-dot status-dot--success" aria-hidden="true"></span><span data-home-session>Backend v1 connected to the frontend authentication shell</span></div>
                 </div>
 
-                <aside class="queue-preview panel" aria-label="Queue status preview">
-                    <div class="panel__header"><div><p class="kicker">Current appointment</p><h2>ID Application</h2></div><span class="badge badge--success">Checked in</span></div>
-                    <div class="queue-preview__number"><span class="queue-preview__label">Queue number</span><strong>A042</strong></div>
-                    <dl class="metric-list">
-                        <div><dt>People ahead</dt><dd>3</dd></div>
-                        <div><dt>Estimated wait</dt><dd>30 min</dd></div>
-                        <div><dt>Branch</dt><dd>Pretoria Central</dd></div>
-                    </dl>
-                </aside>
-            </div>
-        </section>
+                <div class="home-purpose" aria-label="Smart Q vision and mission">
+                    <section class="home-purpose__section" aria-labelledby="vision-heading">
+                        <span class="home-purpose__label">Vision</span>
+                        <h2 id="vision-heading">Make waiting predictable, transparent and fair.</h2>
+                        <p>Smart Q aims to transform the way people experience queues by making waiting times predictable, transparent, and fair. The platform enables customers to book services, track their position in real time, receive accurate waiting-time predictions, and avoid spending unnecessary hours in physical queues.</p>
+                    </section>
 
-        <section class="section section--soft" id="system">
-            <div class="container">
-                <div class="section-heading"><p class="eyebrow">Frontend foundation</p><h2>A restrained interface system for the full Smart Q product.</h2><p>Customer, receptionist, counter staff, manager and administrator screens share one visual language and one authenticated application shell.</p></div>
-                <div class="component-grid">
-                    <article class="panel"><div class="panel__header"><div><p class="kicker">Status language</p><h3>Operational states</h3></div></div><div class="stack stack--sm"><span class="badge badge--success">Available</span><span class="badge badge--info">Waiting</span><span class="badge badge--neutral">Scheduled</span><span class="badge badge--warning">Paused</span></div></article>
-                    <article class="panel"><div class="panel__header"><div><p class="kicker">Account access</p><h3>Role-aware entry</h3></div></div><p>Sign-in restores the Django session, reads the authenticated account, and routes the user to the workspace assigned to their Smart Q role.</p><a class="btn btn--secondary" href="/login/">Sign in</a></article>
-                    <article class="panel"><div class="panel__header"><div><p class="kicker">Form language</p><h3>Clear input structure</h3></div></div><label class="field"><span class="field__label">Branch</span><select class="input" disabled><option>Pretoria Central</option></select><span class="field__help">Operational screens use backend-provided branch and service data.</span></label></article>
+                    <section class="home-purpose__section" aria-labelledby="mission-heading">
+                        <span class="home-purpose__label">Mission</span>
+                        <h2 id="mission-heading">Give people their time back.</h2>
+                        <p>Make queues predictable, transparent, fair, and continuously improving.</p>
+                    </section>
                 </div>
-                <article class="panel table-panel">
-                    <div class="panel__header"><div><p class="kicker">Dense operational data</p><h3>Queue table</h3></div><button class="btn btn--secondary btn--sm" type="button" disabled>Refresh</button></div>
-                    <div class="table-wrap"><table><thead><tr><th scope="col">Queue</th><th scope="col">Service</th><th scope="col">Status</th><th scope="col">Wait</th><th scope="col">Counter</th></tr></thead><tbody><tr><td>A042</td><td>ID Application</td><td><span class="badge badge--info">Waiting</span></td><td>30 min</td><td>—</td></tr><tr><td>P017</td><td>Passport Collection</td><td><span class="badge badge--success">Serving</span></td><td>0 min</td><td>4</td></tr><tr><td>A043</td><td>Document Verification</td><td><span class="badge badge--neutral">Scheduled</span></td><td>—</td><td>—</td></tr></tbody></table></div>
-                </article>
             </div>
         </section>
     </main>
 
-    <footer class="footer"><div class="container footer__inner"><span>Smart Q</span><span>HTML, CSS and JavaScript frontend</span></div></footer>
+    <footer class="home-footer">
+        <div class="container home-footer__inner">
+            <strong>SMART Q</strong>
+            <span>Where Time Meets Priority</span>
+        </div>
+    </footer>
 </body>
 </html>
