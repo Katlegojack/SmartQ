@@ -27,15 +27,16 @@
         <div class="container auth-login-wrap">
             <section class="auth-card auth-card--login" aria-labelledby="login-heading">
                 <div class="auth-card__header">
-                    <p class="eyebrow">Account access</p>
+                    <p class="eyebrow">Registered users</p>
                     <h1 id="login-heading">Sign in</h1>
+                    <p class="login-intro">Select your Smart Q role, then enter your credentials.</p>
                 </div>
 
                 <div class="form-message" data-form-message hidden role="status" aria-live="polite"></div>
 
                 <form class="form-stack" data-login-form novalidate>
-                    <fieldset class="role-selector">
-                        <legend>Sign in as</legend>
+                    <fieldset class="role-selector" data-role-selector>
+                        <legend>Account type</legend>
                         <div class="role-options">
                             <label class="role-option">
                                 <input type="radio" name="role" value="customer" {% if initial_role == "customer" or not initial_role %}checked{% endif %}>
@@ -60,6 +61,8 @@
                         </div>
                     </fieldset>
 
+                    <div class="login-divider" aria-hidden="true"></div>
+
                     <div class="form-grid form-grid--2 login-credentials">
                         <label class="field">
                             <span class="field__label">Username</span>
@@ -71,7 +74,9 @@
                         </label>
                     </div>
 
-                    <button class="btn btn--primary" type="submit">Sign in</button>
+                    <div class="login-actions">
+                        <button class="btn btn--primary" type="submit">Sign in</button>
+                    </div>
                 </form>
 
                 <p class="auth-card__footer">New customer? <a href="/register/">Create an account</a>.</p>
