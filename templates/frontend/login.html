@@ -5,12 +5,12 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="Sign in to Smart Q.">
-    <title>Sign in | Smart Q</title>
+    <title>{% if staff_access %}Staff sign in{% else %}Customer sign in{% endif %} | Smart Q</title>
     <link rel="stylesheet" href="{% static 'css/smartq.css' %}">
     <link rel="stylesheet" href="{% static 'css/auth-shell.css' %}">
     <script type="module" src="{% static 'js/pages/login.js' %}" defer></script>
 </head>
-<body class="auth-page">
+<body class="auth-page" data-login-audience="{% if staff_access %}staff{% else %}customer{% endif %}">
     <a class="skip-link" href="#main-content">Skip to content</a>
     <header class="topbar">
         <div class="topbar__inner container">
@@ -18,16 +18,26 @@
                 <span class="brand__mark" aria-hidden="true">SQ</span>
                 <span class="brand__text"><strong>Smart Q</strong><small>Where Time Meets Priority</small></span>
             </a>
-            <a class="nav-link" href="/register/">Create account</a>
+            {% if staff_access %}
+                <a class="nav-link" href="/login/">Customer sign in</a>
+            {% else %}
+                <a class="nav-link" href="/staff-login/">Staff &amp; administration</a>
+            {% endif %}
         </div>
     </header>
 
     <main class="auth-main" id="main-content">
         <div class="container auth-layout">
             <section class="auth-intro" aria-labelledby="login-heading">
-                <p class="eyebrow">Smart Q</p>
-                <h1 id="login-heading">Sign in</h1>
-                <p>Customers and staff use the same sign-in.</p>
+                {% if staff_access %}
+                    <p class="eyebrow">Staff &amp; administration</p>
+                    <h1 id="login-heading">Staff sign in</h1>
+                    <p>Receptionists, Counter Staff, Branch Managers and System Administrators use their provisioned Smart Q accounts here.</p>
+                {% else %}
+                    <p class="eyebrow">Customer access</p>
+                    <h1 id="login-heading">Customer sign in</h1>
+                    <p>Sign in to book appointments, join a live queue and track your place.</p>
+                {% endif %}
             </section>
 
             <section class="auth-card" aria-label="Sign-in form">
@@ -46,7 +56,11 @@
                     </label>
                     <button class="btn btn--primary btn--block" type="submit">Sign in</button>
                 </form>
-                <p class="auth-card__footer">New customer? <a href="/register/">Create an account</a>.</p>
+                {% if staff_access %}
+                    <p class="auth-card__footer">Customer? <a href="/login/">Use customer sign in</a>.</p>
+                {% else %}
+                    <p class="auth-card__footer">New customer? <a href="/register/">Create an account</a>.</p>
+                {% endif %}
             </section>
         </div>
     </main>
