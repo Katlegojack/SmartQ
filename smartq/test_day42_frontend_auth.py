@@ -17,7 +17,9 @@ class Day42FrontendAuthenticationTests(TestCase):
         self.assertEqual(login.status_code, 200)
         self.assertEqual(staff_login.status_code, 200)
         self.assertEqual(register.status_code, 200)
-        self.assertContains(login, "Sign in as")
+        self.assertContains(login, "Registered users")
+        self.assertContains(login, "Account type")
+        self.assertContains(login, "data-role-selector")
         for label in ["Customer", "Receptionist", "Counter Staff", "Branch Manager", "System Admin"]:
             self.assertContains(login, label)
             self.assertContains(staff_login, label)
@@ -47,6 +49,23 @@ class Day42FrontendAuthenticationTests(TestCase):
         self.assertNotIn("getCurrentAccount", login_source)
         self.assertNotIn("getCurrentAccount", home_source)
         self.assertIn("loginAccount(username, password, role)", login_source)
+
+    def test_login_page_stays_visible_even_when_browser_already_has_session(self):
+        user = User.objects.create_user(username="existing42", password="SafePassword123!")
+        Profile.objects.create(
+            user=user,
+            date_of_birth="1995-05-12",
+            gender=Profile.OTHER,
+            role=Profile.CUSTOMER,
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("frontend_login"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Account type")
+        self.assertContains(response, 'name="role"')
+        self.assertNotEqual(response.get("Location"), reverse("frontend_customer_workspace"))
 
     def test_role_workspace_routes_render_expected_role_contract(self):
         routes = {
