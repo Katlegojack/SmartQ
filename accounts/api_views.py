@@ -70,7 +70,7 @@ class CSRFTokenAPIView(APIView):
 
 @method_decorator(csrf_protect, name="dispatch")
 class LoginAPIView(APIView):
-    """Authenticate username/password and start a CSRF-protected Django session."""
+    """Authenticate credentials, verify the selected Smart Q role, then start a session."""
 
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]
@@ -79,10 +79,18 @@ class LoginAPIView(APIView):
     def post(self, request):
         username = request.data.get("username")
         password = request.data.get("password")
+        expected_role = request.data.get("role")
 
         if not username or not password:
             return Response(
                 {"detail": "Username and password are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        valid_roles = {value for value, _label in Profile.ROLE_CHOICES}
+        if expected_role and expected_role not in valid_roles:
+            return Response(
+                {"detail": "Select a valid Smart Q role."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -96,6 +104,12 @@ class LoginAPIView(APIView):
         if not hasattr(user, "profile"):
             return Response(
                 {"detail": "This account is missing its Smart Q profile."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if expected_role and user.profile.role != expected_role:
+            return Response(
+                {"detail": "The selected role does not match this Smart Q account."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
