@@ -5,12 +5,12 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="Sign in to Smart Q.">
-    <title>{% if staff_access %}Staff sign in{% else %}Customer sign in{% endif %} | Smart Q</title>
+    <title>Sign in | Smart Q</title>
     <link rel="stylesheet" href="{% static 'css/smartq.css' %}">
     <link rel="stylesheet" href="{% static 'css/auth-shell.css' %}">
     <script type="module" src="{% static 'js/pages/login.js' %}" defer></script>
 </head>
-<body class="auth-page" data-login-audience="{% if staff_access %}staff{% else %}customer{% endif %}">
+<body class="auth-page">
     <a class="skip-link" href="#main-content">Skip to content</a>
     <header class="topbar">
         <div class="topbar__inner container">
@@ -18,49 +18,62 @@
                 <span class="brand__mark" aria-hidden="true">SQ</span>
                 <span class="brand__text"><strong>Smart Q</strong><small>Where Time Meets Priority</small></span>
             </a>
-            {% if staff_access %}
-                <a class="nav-link" href="/login/">Customer sign in</a>
-            {% else %}
-                <a class="nav-link" href="/staff-login/">Staff &amp; administration</a>
-            {% endif %}
+            <a class="nav-link" href="/">Home</a>
         </div>
     </header>
 
     <main class="auth-main" id="main-content">
-        <div class="container auth-layout">
-            <section class="auth-intro" aria-labelledby="login-heading">
-                {% if staff_access %}
-                    <p class="eyebrow">Staff &amp; administration</p>
-                    <h1 id="login-heading">Staff sign in</h1>
-                    <p>Receptionists, Counter Staff, Branch Managers and System Administrators use their provisioned Smart Q accounts here.</p>
-                {% else %}
-                    <p class="eyebrow">Customer access</p>
-                    <h1 id="login-heading">Customer sign in</h1>
-                    <p>Sign in to book appointments, join a live queue and track your place.</p>
-                {% endif %}
-            </section>
-
-            <section class="auth-card" aria-label="Sign-in form">
+        <div class="container auth-login-wrap">
+            <section class="auth-card auth-card--login" aria-labelledby="login-heading">
                 <div class="auth-card__header">
-                    <h2>Welcome back</h2>
+                    <p class="eyebrow">Account access</p>
+                    <h1 id="login-heading">Sign in</h1>
                 </div>
+
                 <div class="form-message" data-form-message hidden role="status" aria-live="polite"></div>
+
                 <form class="form-stack" data-login-form novalidate>
-                    <label class="field">
-                        <span class="field__label">Username</span>
-                        <input class="input" type="text" name="username" autocomplete="username" required autofocus>
-                    </label>
-                    <label class="field">
-                        <span class="field__label">Password</span>
-                        <input class="input" type="password" name="password" autocomplete="current-password" required>
-                    </label>
-                    <button class="btn btn--primary btn--block" type="submit">Sign in</button>
+                    <fieldset class="role-selector">
+                        <legend>Sign in as</legend>
+                        <div class="role-options">
+                            <label class="role-option">
+                                <input type="radio" name="role" value="customer" {% if initial_role == "customer" or not initial_role %}checked{% endif %}>
+                                <span>Customer</span>
+                            </label>
+                            <label class="role-option">
+                                <input type="radio" name="role" value="receptionist" {% if initial_role == "receptionist" %}checked{% endif %}>
+                                <span>Receptionist</span>
+                            </label>
+                            <label class="role-option">
+                                <input type="radio" name="role" value="counter_staff" {% if initial_role == "counter_staff" %}checked{% endif %}>
+                                <span>Counter Staff</span>
+                            </label>
+                            <label class="role-option">
+                                <input type="radio" name="role" value="branch_manager" {% if initial_role == "branch_manager" %}checked{% endif %}>
+                                <span>Branch Manager</span>
+                            </label>
+                            <label class="role-option">
+                                <input type="radio" name="role" value="system_admin" {% if initial_role == "system_admin" %}checked{% endif %}>
+                                <span>System Admin</span>
+                            </label>
+                        </div>
+                    </fieldset>
+
+                    <div class="form-grid form-grid--2 login-credentials">
+                        <label class="field">
+                            <span class="field__label">Username</span>
+                            <input class="input" type="text" name="username" autocomplete="username" required autofocus>
+                        </label>
+                        <label class="field">
+                            <span class="field__label">Password</span>
+                            <input class="input" type="password" name="password" autocomplete="current-password" required>
+                        </label>
+                    </div>
+
+                    <button class="btn btn--primary" type="submit">Sign in</button>
                 </form>
-                {% if staff_access %}
-                    <p class="auth-card__footer">Customer? <a href="/login/">Use customer sign in</a>.</p>
-                {% else %}
-                    <p class="auth-card__footer">New customer? <a href="/register/">Create an account</a>.</p>
-                {% endif %}
+
+                <p class="auth-card__footer">New customer? <a href="/register/">Create an account</a>.</p>
             </section>
         </div>
     </main>
