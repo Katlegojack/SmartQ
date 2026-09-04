@@ -99,6 +99,7 @@ class Day43CustomerDashboardTests(TestCase):
         self.assertContains(response, "data-customer-dashboard")
         self.assertContains(response, "data-queue-panel")
         self.assertContains(response, "data-queue-join-form")
+        self.assertContains(response, "data-queue-leave")
         self.assertContains(response, "Join a live queue")
         self.assertContains(response, "data-upcoming-body")
         self.assertContains(response, "data-history-body")
@@ -113,6 +114,7 @@ class Day43CustomerDashboardTests(TestCase):
         source = Path(finders.find("js/pages/customer-dashboard.js")).read_text(encoding="utf-8")
         self.assertIn('/api/v1/bookings/walk-ins/', source)
         self.assertIn("data-queue-join-form", source)
+        self.assertIn("data-queue-leave", source)
 
     def test_customer_booking_and_queue_contract_is_ownership_scoped(self):
         self.client.force_login(self.customer)
@@ -152,6 +154,27 @@ class Day43CustomerDashboardTests(TestCase):
         self.assertEqual(booking.queueticket.status, QueueTicket.WAITING)
         event = QueueEvent.objects.filter(booking=booking, event_type=QueueEvent.CHECKED_IN).get()
         self.assertEqual(event.metadata["check_in_mode"], "walk_in_customer")
+
+    def test_customer_can_leave_waiting_walk_in_queue(self):
+        self.client.force_login(self.other_customer)
+        joined = self.client.post(
+            reverse("api_customer_walk_in"),
+            {"branch": self.branch.id, "service": self.service.id},
+            content_type="application/json",
+        )
+        self.assertEqual(joined.status_code, 201)
+        booking_id = joined.json()["id"]
+
+        cancelled = self.client.patch(
+            reverse("api_booking_cancel", kwargs={"pk": booking_id}),
+            {},
+            content_type="application/json",
+        )
+        self.assertEqual(cancelled.status_code, 200)
+        booking = Booking.objects.get(pk=booking_id)
+        self.assertEqual(booking.status, Booking.CANCELLED)
+        self.assertEqual(booking.queueticket.status, QueueTicket.CANCELLED)
+        self.assertEqual(self.client.get(reverse("api_my_current_queue_ticket")).status_code, 404)
 
     def test_customer_cannot_create_second_active_live_queue(self):
         self.client.force_login(self.customer)
