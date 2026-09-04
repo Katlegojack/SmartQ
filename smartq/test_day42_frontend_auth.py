@@ -11,15 +11,30 @@ from accounts.models import Profile
 class Day42FrontendAuthenticationTests(TestCase):
     def test_public_authentication_pages_render_shared_assets(self):
         login = self.client.get(reverse("frontend_login"))
+        staff_login = self.client.get(reverse("frontend_staff_login"))
         register = self.client.get(reverse("frontend_register"))
 
         self.assertEqual(login.status_code, 200)
+        self.assertEqual(staff_login.status_code, 200)
         self.assertEqual(register.status_code, 200)
-        self.assertContains(login, "Customers and staff use the same sign-in")
+        self.assertContains(login, "Customer sign in")
+        self.assertContains(login, "join a live queue")
+        self.assertContains(staff_login, "Staff sign in")
+        self.assertContains(staff_login, "Receptionists, Counter Staff, Branch Managers and System Administrators")
         self.assertContains(register, "Customer registration")
         self.assertContains(login, "/static/css/auth-shell.css")
         self.assertContains(login, "/static/js/pages/login.js")
+        self.assertContains(staff_login, "/static/js/pages/login.js")
         self.assertContains(register, "/static/js/pages/register.js")
+
+    def test_registration_frontend_does_not_auto_login_new_customer(self):
+        register_path = Path(finders.find("js/pages/register.js"))
+        source = register_path.read_text(encoding="utf-8")
+
+        self.assertIn('await registerCustomer(payload)', source)
+        self.assertIn('/login/?created=1', source)
+        self.assertNotIn("loginAccount(", source)
+        self.assertNotIn("Opening your workspace", source)
 
     def test_role_workspace_routes_render_expected_role_contract(self):
         routes = {
@@ -102,7 +117,7 @@ class Day42FrontendAuthenticationTests(TestCase):
         self.assertEqual(logout_response.status_code, 204)
 
     def test_public_frontend_contains_no_emoji_style_interface_copy(self):
-        for route_name in ["frontend_home", "frontend_login", "frontend_register"]:
+        for route_name in ["frontend_home", "frontend_login", "frontend_staff_login", "frontend_register"]:
             response = self.client.get(reverse(route_name))
             content = response.content.decode("utf-8")
             for banned in ["🚀", "✨", "🎉", "✅", "👤", "📊", "🔐"]:
