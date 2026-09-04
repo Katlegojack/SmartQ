@@ -152,6 +152,28 @@ class BookingRescheduleSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
 
+class CustomerWalkInSerializer(serializers.Serializer):
+    branch = serializers.PrimaryKeyRelatedField(queryset=Branch.objects.filter(is_active=True))
+    service = serializers.PrimaryKeyRelatedField(queryset=Service.objects.filter(is_active=True))
+    is_pregnant = serializers.BooleanField(required=False, default=False)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        request = self.context.get("request")
+        profile = getattr(request.user, "profile", None) if request is not None else None
+
+        if attrs.get("is_pregnant") and (profile is None or profile.gender != Profile.FEMALE):
+            raise serializers.ValidationError(
+                {"is_pregnant": "Pregnancy priority applies only to a female profile."}
+            )
+
+        if get_branch_service(attrs["branch"], attrs["service"]) is None:
+            raise serializers.ValidationError(
+                {"service": "This service is not offered at the selected branch."}
+            )
+        return attrs
+
+
 class GuestWalkInSerializer(serializers.Serializer):
     full_name = serializers.CharField(max_length=150)
     phone_number = serializers.CharField(max_length=30, required=False, allow_blank=True)
