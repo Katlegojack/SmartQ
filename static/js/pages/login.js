@@ -42,6 +42,11 @@ async function restoreExistingSession() {
     }
 }
 
+const params = new URLSearchParams(window.location.search);
+if (params.get("created") === "1") {
+    setMessage("Account created. Sign in with your new username and password.", "success");
+}
+
 form?.addEventListener("submit", async (event) => {
     event.preventDefault();
     setMessage("");
