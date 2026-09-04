@@ -14,7 +14,7 @@ const eventLabels = {
     called: "Called to a counter",
     completed: "Service completed",
     no_show: "Marked as no show",
-    cancelled: "Appointment cancelled",
+    cancelled: "Visit cancelled",
     rescheduled: "Appointment rescheduled",
     disruption_rescheduled: "Rescheduled after a service disruption",
 };
@@ -23,6 +23,8 @@ let bookings = [];
 let account = null;
 let branches = [];
 let branchServices = [];
+let queueServices = [];
+let liveQueue = null;
 let bookingMode = { kind: "create", booking: null };
 let selectedSlot = "";
 let availabilityRequest = 0;
@@ -108,16 +110,22 @@ async function currentQueue() {
         throw error;
     }
 }
-async function loadBranches() {
-    const data = await apiRequest("/api/v1/branches/");
-    branches = Array.isArray(data) ? data : [];
-    const select = one("[data-booking-branch]");
+function populateBranchSelect(select) {
+    if (!select) return;
     select.replaceChildren(new Option(branches.length ? "Select a branch" : "No branches available", ""));
     for (const branch of branches) select.add(new Option(`${branch.name} — ${branch.city}`, branch.id));
     select.disabled = !branches.length;
+}
+async function loadBranches() {
+    const data = await apiRequest("/api/v1/branches/");
+    branches = Array.isArray(data) ? data : [];
+    populateBranchSelect(one("[data-booking-branch]"));
+    populateBranchSelect(one("[data-queue-join-branch]"));
     if (!branches.length) {
         setBookingMessage("No branches are configured yet. Ask an administrator to complete setup.");
+        setQueueJoinMessage("No branches are available yet.");
     }
+    updateQueueJoinState();
 }
 async function loadServices(branchId) {
     const select = one("[data-booking-service]");
@@ -136,15 +144,65 @@ async function loadServices(branchId) {
     }
     select.disabled = bookingMode.kind === "reschedule" || !branchServices.length;
 }
+async function loadQueueServices(branchId) {
+    const select = one("[data-queue-join-service]");
+    queueServices = [];
+    select.replaceChildren(new Option("Loading...", ""));
+    select.disabled = true;
+    if (!branchId) {
+        select.replaceChildren(new Option("Select a branch first", ""));
+        updateQueueJoinState();
+        return;
+    }
+    const data = await apiRequest(`/api/v1/services/branches/${branchId}/`);
+    queueServices = Array.isArray(data) ? data : [];
+    select.replaceChildren(new Option(queueServices.length ? "Select a service" : "No services available", ""));
+    for (const item of queueServices) select.add(new Option(item.service_name, item.service_id));
+    select.disabled = Boolean(liveQueue) || !queueServices.length;
+    updateQueueJoinState();
+}
 
+function setQueueJoinMessage(text = "", kind = "error") {
+    const element = one("[data-queue-join-message]");
+    if (!element) return;
+    element.textContent = text;
+    element.dataset.kind = kind;
+    element.hidden = !text;
+}
+function updateQueueJoinState() {
+    const fieldset = one("[data-queue-fieldset]");
+    const branchSelect = one("[data-queue-join-branch]");
+    const serviceSelect = one("[data-queue-join-service]");
+    const submit = one("[data-queue-join-submit]");
+    if (!fieldset || !branchSelect || !serviceSelect || !submit) return;
+
+    const hasActiveQueue = Boolean(liveQueue);
+    fieldset.disabled = hasActiveQueue || !branches.length;
+    if (!hasActiveQueue && branches.length) {
+        branchSelect.disabled = false;
+        serviceSelect.disabled = !branchSelect.value || !queueServices.length;
+    }
+    submit.disabled = hasActiveQueue || !branchSelect.value || !serviceSelect.value;
+}
 function renderQueue(data) {
+    liveQueue = data;
     const panel = one("[data-queue-panel]");
     const empty = one("[data-queue-empty]");
+    const activeNotice = one("[data-queue-join-active]");
+    const leaveButton = one("[data-queue-leave]");
+
     if (!data) {
         panel.hidden = true;
         empty.hidden = false;
+        if (activeNotice) {
+            activeNotice.textContent = "";
+            activeNotice.hidden = true;
+        }
+        if (leaveButton) leaveButton.hidden = true;
+        updateQueueJoinState();
         return;
     }
+
     panel.hidden = false;
     empty.hidden = true;
     const { ticket, prediction } = data;
@@ -159,6 +217,16 @@ function renderQueue(data) {
     const status = one("[data-queue-status]");
     status.className = badge(ticket.status);
     status.textContent = label(ticket.status);
+
+    if (activeNotice) {
+        activeNotice.textContent = `You are already in queue ${ticket.queue_number} at ${ticket.branch_name}.`;
+        activeNotice.hidden = false;
+    }
+    if (leaveButton) {
+        leaveButton.dataset.bookingId = ticket.booking_id;
+        leaveButton.hidden = ticket.status !== "waiting";
+    }
+    updateQueueJoinState();
 }
 
 function renderNext(booking) {
@@ -236,7 +304,7 @@ function renderRows(selector, items, history = false) {
 }
 function renderBookings() {
     const ordered = [...bookings].sort((a, b) => appointment(a) - appointment(b));
-    const upcoming = ordered.filter(item => !FINAL.has(item.status));
+    const upcoming = ordered.filter(item => !FINAL.has(item.status) && item.source !== "walk_in");
     const history = ordered.filter(item => FINAL.has(item.status)).reverse();
     setText("[data-upcoming-count]", upcoming.length);
     setText("[data-history-count]", history.length);
@@ -354,11 +422,17 @@ function updateReview() {
     setBookingStep(5);
 }
 function configurePregnancyField() {
-    const field = one("[data-pregnancy-field]");
-    const checkbox = one("[data-booking-pregnant]");
-    const show = bookingMode.kind === "create" && account?.gender === "female";
-    field.hidden = !show;
-    if (!show) checkbox.checked = false;
+    const bookingField = one("[data-pregnancy-field]");
+    const bookingCheckbox = one("[data-booking-pregnant]");
+    const bookingShow = bookingMode.kind === "create" && account?.gender === "female";
+    bookingField.hidden = !bookingShow;
+    if (!bookingShow) bookingCheckbox.checked = false;
+
+    const queueField = one("[data-queue-pregnancy-field]");
+    const queueCheckbox = one("[data-queue-pregnant]");
+    const queueShow = account?.gender === "female";
+    if (queueField) queueField.hidden = !queueShow;
+    if (queueCheckbox && !queueShow) queueCheckbox.checked = false;
 }
 async function resetBookingForm({ keepMessage = false } = {}) {
     bookingMode = { kind: "create", booking: null };
@@ -449,6 +523,42 @@ async function submitBooking(event) {
     }
 }
 
+async function submitQueueJoin(event) {
+    event.preventDefault();
+    if (liveQueue) return;
+    const branchId = one("[data-queue-join-branch]").value;
+    const serviceId = one("[data-queue-join-service]").value;
+    const submit = one("[data-queue-join-submit]");
+    if (!branchId || !serviceId || submit.disabled) return;
+
+    const original = submit.textContent;
+    submit.disabled = true;
+    submit.textContent = "Joining...";
+    setQueueJoinMessage();
+    try {
+        const created = await apiRequest("/api/v1/bookings/walk-ins/", {
+            method: "POST",
+            body: {
+                branch: Number(branchId),
+                service: Number(serviceId),
+                is_pregnant: account?.gender === "female" && Boolean(one("[data-queue-pregnant]")?.checked),
+            },
+        });
+        await refresh();
+        setQueueJoinMessage(
+            `Joined queue${created?.queue_ticket?.queue_number ? ` — ${created.queue_ticket.queue_number}` : ""}.`,
+            "success",
+        );
+        one("[data-queue-panel]")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    } catch (error) {
+        if (error instanceof ApiError && error.status === 409) await refresh();
+        setQueueJoinMessage(firstApiError(error, "Could not join this queue. Try again."), "error");
+    } finally {
+        submit.textContent = original;
+        updateQueueJoinState();
+    }
+}
+
 function bookingFor(id) { return bookings.find(item => String(item.id) === String(id)); }
 async function checkIn(id, button) {
     const old = button.textContent;
@@ -475,16 +585,21 @@ async function checkIn(id, button) {
 async function cancel(id, button) {
     const booking = bookingFor(id);
     if (!booking) return;
-    if (!window.confirm(`Cancel your ${booking.service_name} appointment at ${booking.branch_name} on ${fmtDateTime(appointment(booking))}?`)) return;
+    const isWalkIn = booking.source === "walk_in";
+    const prompt = isWalkIn
+        ? `Leave queue ${queueNumber(booking)} at ${booking.branch_name}?`
+        : `Cancel your ${booking.service_name} appointment at ${booking.branch_name} on ${fmtDateTime(appointment(booking))}?`;
+    if (!window.confirm(prompt)) return;
     const old = button.textContent;
     button.disabled = true;
-    button.textContent = "Cancelling...";
+    button.textContent = isWalkIn ? "Leaving..." : "Cancelling...";
     try {
         await apiRequest(`/api/v1/bookings/${id}/cancel/`, { method: "PATCH" });
         await refresh();
-        message("Appointment cancelled.", "success");
+        message(isWalkIn ? "You left the queue." : "Appointment cancelled.", "success");
+        if (isWalkIn) setQueueJoinMessage("You can join another queue when you are ready.", "success");
     } catch (error) {
-        message(firstApiError(error, "Could not cancel this appointment."), "error");
+        message(firstApiError(error, isWalkIn ? "Could not leave this queue." : "Could not cancel this appointment."), "error");
     } finally {
         button.disabled = false;
         button.textContent = old;
@@ -536,11 +651,31 @@ async function details(id) {
         one("[data-dialog-content]", dialog).hidden = false;
     } catch (error) {
         const target = one("[data-dialog-error]", dialog);
-        target.textContent = firstApiError(error, "Could not load booking history.");
+        target.textContent = firstApiError(error, "Could not load visit history.");
         target.hidden = false;
     } finally {
         one("[data-dialog-loading]", dialog).hidden = true;
     }
+}
+
+function bindQueueJoinWorkflow() {
+    const branchSelect = one("[data-queue-join-branch]");
+    const serviceSelect = one("[data-queue-join-service]");
+    branchSelect.addEventListener("change", async () => {
+        setQueueJoinMessage();
+        serviceSelect.value = "";
+        if (!branchSelect.value) {
+            await loadQueueServices("");
+            return;
+        }
+        try {
+            await loadQueueServices(branchSelect.value);
+        } catch (error) {
+            setQueueJoinMessage(firstApiError(error, "Could not load services for this branch."));
+        }
+    });
+    serviceSelect.addEventListener("change", updateQueueJoinState);
+    one("[data-queue-join-form]").addEventListener("submit", submitQueueJoin);
 }
 
 function bindBookingWorkflow() {
@@ -598,15 +733,22 @@ async function bootstrap() {
     }
     setText("[data-customer-identity]", account.username);
     setText("[data-greeting]", account.first_name ? `Welcome, ${account.first_name}` : "Your Smart Q");
+    bindQueueJoinWorkflow();
     bindBookingWorkflow();
+    configurePregnancyField();
     await Promise.all([loadBranches(), refresh()]);
     await resetBookingForm();
+    updateQueueJoinState();
 }
 
 document.addEventListener("click", event => {
-    const button = event.target.closest("[data-booking-action],[data-next-action]");
+    const button = event.target.closest("[data-booking-action],[data-next-action],[data-queue-leave]");
     if (!button) return;
     const id = button.dataset.bookingId;
+    if (button.matches("[data-queue-leave]")) {
+        cancel(id, button);
+        return;
+    }
     const action = button.dataset.bookingAction || button.dataset.nextAction;
     if (action === "check-in") checkIn(id, button);
     if (action === "cancel") cancel(id, button);
