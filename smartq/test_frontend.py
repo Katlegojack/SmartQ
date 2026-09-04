@@ -14,6 +14,9 @@ class FrontendFoundationTests(TestCase):
         self.assertContains(response, "Mission")
         self.assertContains(response, "Give people their time back")
         self.assertContains(response, "Make waiting predictable, transparent and fair")
+        self.assertContains(response, "Customer sign in")
+        self.assertContains(response, "Staff &amp; administration sign in")
+        self.assertContains(response, "/staff-login/")
 
     def test_frontend_home_stays_product_focused(self):
         response = self.client.get(reverse("frontend_home"))
