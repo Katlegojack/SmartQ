@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import Profile
-from accounts.permissions import IsQueueViewer, get_user_profile
+from accounts.permissions import IsCustomer, IsQueueViewer, get_user_profile
 from branches.models import Branch
 from queues.events import record_queue_event
 from queues.models import QueueEvent, QueueTicket
@@ -24,8 +24,10 @@ from .serializers import (
     BookingCreateSerializer,
     BookingListSerializer,
     BookingRescheduleSerializer,
+    CustomerWalkInSerializer,
     GuestWalkInSerializer,
 )
+from .services import create_customer_walk_in
 
 
 def check_in_error_response(error_code, booking=None):
@@ -100,6 +102,29 @@ class MyBookingListAPIView(ListAPIView):
         return Booking.objects.filter(user=self.request.user).select_related(
             "branch", "service", "user", "guest_customer"
         ).order_by("-created_at")
+
+
+class CustomerWalkInAPIView(APIView):
+    """Let a registered customer join one live branch queue without an appointment."""
+
+    permission_classes = [IsCustomer]
+
+    def post(self, request):
+        serializer = CustomerWalkInSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        booking, error_code = create_customer_walk_in(
+            user=request.user,
+            branch=serializer.validated_data["branch"],
+            service=serializer.validated_data["service"],
+            is_pregnant=serializer.validated_data.get("is_pregnant", False),
+            actor=request.user,
+        )
+        if error_code == "active_queue":
+            return Response(
+                {"detail": "You already have an active queue ticket. Finish that queue before joining another."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return Response(BookingListSerializer(booking).data, status=status.HTTP_201_CREATED)
 
 
 class BookingDetailAPIView(RetrieveAPIView):
