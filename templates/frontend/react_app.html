@@ -33,6 +33,7 @@
         <span>/static/css/smartq.css</span><span>/static/css/home.css</span><span>/static/js/app.js</span>
         {% elif page_kind == "login" or page_kind == "staff_login" %}
         <span>Registered users</span><span>Account type</span><span data-role-selector></span>
+        <input type="hidden" name="role" value="">
         <span>Customer</span><span>Receptionist</span><span>Counter Staff</span><span>Branch Manager</span><span>System Admin</span>
         <span>/static/css/auth-shell.css</span><span>/static/css/login.css</span><span>/static/js/pages/login.js</span>
         {% elif page_kind == "register" %}
