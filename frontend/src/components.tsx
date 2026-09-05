@@ -1,8 +1,8 @@
-import type { FormEvent, ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { Navigate, NavLink, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { errorMessage } from "./api";
+import { api, errorMessage } from "./api";
 import { logout, roleLabels, roleRoutes, useCurrentAccountQuery } from "./auth";
 import type { Account, Role } from "./types";
 
@@ -38,6 +38,11 @@ export function Metric({ label, value, detail }: { label: string; value: ReactNo
 export function WorkspaceShell({ account, title, subtitle, children, secondary }: { account: Account; title: string; subtitle?: string; children: ReactNode; secondary?: ReactNode }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [securityOpen, setSecurityOpen] = useState(false);
+  const [securityBusy, setSecurityBusy] = useState(false);
+  const [securityMessage, setSecurityMessage] = useState("");
+  const [securityError, setSecurityError] = useState("");
+
   const navigation: Partial<Record<Role, Array<[string, string]>>> = {
     customer: [["Overview", "/app/customer/"], ["Recovery", "/app/recovery/"]],
     receptionist: [["Reception", "/app/reception/"]],
@@ -45,23 +50,75 @@ export function WorkspaceShell({ account, title, subtitle, children, secondary }
     branch_manager: [["Operations", "/app/manager/"], ["History", "/app/history/"]],
     system_admin: [["Administration", "/app/admin/"], ["History", "/app/history/"]],
   };
+
   async function signOut() {
     await logout();
     queryClient.clear();
     navigate(account.role === "customer" ? "/login/" : "/staff-login/", { replace: true });
   }
+
+  async function changePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const currentPassword = String(data.get("current_password") || "");
+    const newPassword = String(data.get("new_password") || "");
+    const confirmation = String(data.get("confirm_password") || "");
+    setSecurityMessage("");
+    setSecurityError("");
+
+    if (newPassword !== confirmation) {
+      setSecurityError("New password and confirmation must match.");
+      return;
+    }
+
+    setSecurityBusy(true);
+    try {
+      await api("/api/v1/accounts/change-password/", {
+        method: "POST",
+        body: { current_password: currentPassword, new_password: newPassword },
+      });
+      form.reset();
+      setSecurityMessage("Password updated. Your current session remains active.");
+    } catch (error) {
+      setSecurityError(errorMessage(error, "Smart Q could not update the password."));
+    } finally {
+      setSecurityBusy(false);
+    }
+  }
+
   return <div className="workspace-shell">
     <aside className="workspace-nav">
       <a href="/" className="brand"><span className="brand-mark">SQ</span><span><strong>Smart Q</strong><small>Where Time Meets Priority</small></span></a>
       <nav aria-label="Workspace navigation">
         {(navigation[account.role] || []).map(([label, href]) => <NavLink key={href} to={href} className={({ isActive }) => isActive ? "nav-link is-active" : "nav-link"}>{label}</NavLink>)}
       </nav>
-      <div className="nav-account"><span>{account.first_name || account.username}</span><small>{roleLabels[account.role]}{account.branch_name ? ` · ${account.branch_name}` : ""}</small><button className="link-button" onClick={signOut}>Sign out</button></div>
+      <div className="nav-account">
+        <span>{account.first_name || account.username}</span>
+        <small>{roleLabels[account.role]}{account.branch_name ? ` · ${account.branch_name}` : ""}</small>
+        <div className="nav-account-actions">
+          <button className="link-button" type="button" onClick={() => { setSecurityOpen(true); setSecurityMessage(""); setSecurityError(""); }}>Security</button>
+          <button className="link-button" type="button" onClick={signOut}>Sign out</button>
+        </div>
+      </div>
     </aside>
     <div className="workspace-content">
       <header className="workspace-header"><div><span className="eyebrow">{roleLabels[account.role]}</span><h1>{title}</h1>{subtitle ? <p>{subtitle}</p> : null}</div>{secondary}</header>
       {children}
     </div>
+    <SimpleDialog open={securityOpen} title="Account security" onClose={() => setSecurityOpen(false)}>
+      <p className="dialog-intro">Change your Smart Q password without ending the current trusted session.</p>
+      <form onSubmit={changePassword}>
+        <Field label="Current password"><input name="current_password" type="password" autoComplete="current-password" required /></Field>
+        <Field label="New password"><input name="new_password" type="password" autoComplete="new-password" required /></Field>
+        <Field label="Confirm new password"><input name="confirm_password" type="password" autoComplete="new-password" required /></Field>
+        <FormMessage message={securityMessage} error={securityError} />
+        <div className="dialog-actions">
+          <button type="button" className="button button--quiet" onClick={() => setSecurityOpen(false)}>Close</button>
+          <button className="button button--primary" disabled={securityBusy}>{securityBusy ? "Updating…" : "Change password"}</button>
+        </div>
+      </form>
+    </SimpleDialog>
   </div>;
 }
 
@@ -84,7 +141,7 @@ export function FormMessage({ message, error }: { message?: string; error?: stri
 
 export function SimpleDialog({ open, title, children, onClose }: { open: boolean; title: string; children: ReactNode; onClose: () => void }) {
   if (!open) return null;
-  return <div className="dialog-backdrop" onMouseDown={onClose}><section className="dialog" role="dialog" aria-modal="true" aria-label={title} onMouseDown={(event) => event.stopPropagation()}><div className="dialog-head"><h2>{title}</h2><button className="icon-button" onClick={onClose} aria-label="Close">×</button></div>{children}</section></div>;
+  return <div className="dialog-backdrop" onMouseDown={onClose}><section className="dialog" role="dialog" aria-modal="true" aria-label={title} onMouseDown={(event) => event.stopPropagation()}><div className="dialog-head"><h2>{title}</h2><button type="button" className="icon-button" onClick={onClose} aria-label="Close">×</button></div>{children}</section></div>;
 }
 
 export function preventDefault(handler: (form: HTMLFormElement) => void | Promise<void>) {
