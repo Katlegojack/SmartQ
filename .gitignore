@@ -6,4 +6,6 @@ db.sqlite3
 .env.*
 !.env.example
 staticfiles/
+frontend/node_modules/
+static/react/
 *.log

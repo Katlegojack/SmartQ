@@ -1,9 +1,9 @@
 """
 URL configuration for Smart Q.
 
-API routes are grouped by Django app so each domain owns its own endpoint paths.
-Frontend routes remain thin Django template entry points; authentication, role and
-branch authority continue to come from the existing API contract.
+Django + Django REST Framework remain Smart Q's backend and authority. Day 53
+moves the browser runtime to a single React + TypeScript application while
+preserving the existing public URLs and named routes during the migration.
 """
 
 from django.contrib import admin
@@ -11,7 +11,18 @@ from django.urls import include, path
 from django.views.generic import TemplateView
 
 
-APP_TEMPLATE = "frontend/app_shell.html"
+REACT_TEMPLATE = "frontend/react_app.html"
+
+
+def react_entry(page_kind, *, expected_role=""):
+    return TemplateView.as_view(
+        template_name=REACT_TEMPLATE,
+        extra_context={
+            "page_kind": page_kind,
+            "expected_role": expected_role,
+        },
+    )
+
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -26,66 +37,37 @@ urlpatterns = [
     path("api/v1/rescheduling/", include("rescheduling.api_urls")),
     path("api/v1/dashboard/", include("dashboard.api_urls")),
 
-    path(
-        "login/",
-        TemplateView.as_view(
-            template_name="frontend/login.html",
-            extra_context={"initial_role": "customer"},
-        ),
-        name="frontend_login",
-    ),
-    path(
-        "staff-login/",
-        TemplateView.as_view(
-            template_name="frontend/login.html",
-            extra_context={"initial_role": "receptionist"},
-        ),
-        name="frontend_staff_login",
-    ),
-    path("register/", TemplateView.as_view(template_name="frontend/register.html"), name="frontend_register"),
+    path("login/", react_entry("login"), name="frontend_login"),
+    path("staff-login/", react_entry("staff_login"), name="frontend_staff_login"),
+    path("register/", react_entry("register"), name="frontend_register"),
 
-    path(
-        "app/",
-        TemplateView.as_view(
-            template_name=APP_TEMPLATE,
-            extra_context={"workspace_title": "Smart Q workspace", "workspace_role": ""},
-        ),
-        name="frontend_app",
-    ),
+    path("app/", react_entry("router"), name="frontend_app"),
     path(
         "app/customer/",
-        TemplateView.as_view(template_name="frontend/customer_dashboard.html"),
+        react_entry("customer", expected_role="customer"),
         name="frontend_customer_workspace",
     ),
     path(
         "app/reception/",
-        TemplateView.as_view(template_name="frontend/reception_workspace.html"),
+        react_entry("reception", expected_role="receptionist"),
         name="frontend_reception_workspace",
     ),
     path(
         "app/counter/",
-        TemplateView.as_view(template_name="frontend/counter_workspace.html"),
+        react_entry("counter", expected_role="counter_staff"),
         name="frontend_counter_workspace",
     ),
     path(
         "app/manager/",
-        TemplateView.as_view(template_name="frontend/manager_workspace.html"),
+        react_entry("manager", expected_role="branch_manager"),
         name="frontend_manager_workspace",
     ),
     path(
         "app/admin/",
-        TemplateView.as_view(template_name="frontend/admin_workspace.html"),
+        react_entry("admin", expected_role="system_admin"),
         name="frontend_admin_workspace",
     ),
-    path(
-        "app/history/",
-        TemplateView.as_view(template_name="frontend/history_reporting_workspace.html"),
-        name="frontend_history_reporting_workspace",
-    ),
-    path(
-        "app/recovery/",
-        TemplateView.as_view(template_name="frontend/customer_recovery_workspace.html"),
-        name="frontend_customer_recovery_workspace",
-    ),
-    path("", TemplateView.as_view(template_name="frontend/index.html"), name="frontend_home"),
+    path("app/history/", react_entry("history"), name="frontend_history_reporting_workspace"),
+    path("app/recovery/", react_entry("recovery"), name="frontend_customer_recovery_workspace"),
+    path("", react_entry("home"), name="frontend_home"),
 ]

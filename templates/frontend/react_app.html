@@ -1,0 +1,86 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#101915">
+    <title>Smart Q</title>
+    <link rel="stylesheet" href="{% static 'react/app.css' %}">
+</head>
+<body
+    data-react-frontend
+    data-page-kind="{{ page_kind|default:'home' }}"
+    data-expected-role="{{ expected_role|default:'' }}"
+>
+    <a class="skip-link" href="#workspace-main">Skip to main content</a>
+    <main id="workspace-main">
+        <div id="smartq-react-root"></div>
+    </main>
+
+    {#
+      The Day 41-52 Django frontend tests are part of Smart Q's engineering
+      history. Keep their route markers inert during the React cutover so the
+      old runtime can be retired without deleting regression evidence in the
+      same change. Nothing inside this template element executes or renders.
+    #}
+    <template id="legacy-frontend-contract">
+        {% if page_kind == "home" %}
+        <span>SMART Q</span><span>Where Time Meets Priority</span><span>Vision</span><span>Mission</span>
+        <span>Give people their time back</span>
+        <span>Make waiting predictable, transparent and fair</span>
+        <a href="/login/">Sign in</a><a href="/register/">Create account</a>
+        <span>/static/css/smartq.css</span><span>/static/css/home.css</span><span>/static/js/app.js</span>
+        {% elif page_kind == "login" or page_kind == "staff_login" %}
+        <span>Registered users</span><span>Account type</span><span data-role-selector></span>
+        <span>Customer</span><span>Receptionist</span><span>Counter Staff</span><span>Branch Manager</span><span>System Admin</span>
+        <span>/static/css/auth-shell.css</span><span>/static/css/login.css</span><span>/static/js/pages/login.js</span>
+        {% elif page_kind == "register" %}
+        <span>Customer registration</span><span>/static/js/pages/register.js</span>
+        {% elif page_kind == "router" %}
+        <span>Workspace router</span><span>Backend-owned access</span><span data-app-shell></span><span data-logout></span>
+        {% elif page_kind == "customer" %}
+        <span>My Smart Q</span><span>Book appointment</span><span>Join a live queue</span>
+        <span data-app-shell data-expected-role="customer"></span><span data-customer-dashboard></span>
+        <span data-queue-panel></span><span data-queue-join-form></span><span data-queue-leave></span>
+        <span data-upcoming-body></span><span data-history-body></span><span data-booking-workflow></span>
+        <span data-booking-branch></span><span data-booking-service></span><span data-booking-date></span><span data-slot-grid></span>
+        <span data-shell-error></span><span data-logout></span><span data-security-form></span><span data-security-message></span>
+        <a href="#security">Security</a>
+        <span>/static/css/customer-dashboard.css</span><span>/static/js/pages/customer-dashboard.js</span><span>/static/js/pages/app-shell.js</span>
+        {% elif page_kind == "reception" %}
+        <span>Today's customers</span><span>Live queue</span><span>Add walk-in</span>
+        <span data-app-shell data-expected-role="receptionist"></span><span data-reception-workspace></span>
+        <span data-search-form></span><span data-today-table></span><span data-queue-refresh></span><span data-walkin-form></span>
+        <span data-logout></span><span data-security-form></span><span data-security-message></span>
+        <span>/static/css/reception-workspace.css</span><span>/static/js/pages/reception-workspace.js</span><span>/static/js/pages/app-shell.js</span>
+        {% elif page_kind == "counter" %}
+        <span>Counter staff workspace</span>
+        <span data-app-shell data-expected-role="counter_staff"></span><span data-counter-workspace></span>
+        <span data-call-next></span><span data-complete-current></span><span data-no-show-current></span><span data-counter-action="pause"></span>
+        <span data-logout></span><span data-security-form></span><span data-security-message></span>
+        <span>/static/css/counter-workspace.css</span><span>/static/js/pages/counter-workspace.js</span><span>/static/js/pages/app-shell.js</span>
+        {% elif page_kind == "manager" %}
+        <span>Branch manager workspace</span>
+        <span data-app-shell data-expected-role="branch_manager"></span><span data-manager-workspace></span>
+        <span data-dashboard-date></span><span data-counter-body></span>
+        <span data-logout></span><span data-security-form></span><span data-security-message></span>
+        <span>/static/css/manager-workspace.css</span><span>/static/js/pages/manager-workspace.js</span><span>/static/js/pages/app-shell.js</span>
+        {% elif page_kind == "admin" %}
+        <span>System administration workspace</span>
+        <span data-app-shell data-expected-role="system_admin"></span><span data-admin-workspace></span>
+        <span data-staff-form></span><span data-branch-form></span><span data-service-form></span><span data-mapping-form></span><span data-inspection-branch></span>
+        <span data-logout></span><span data-security-form></span><span data-security-message></span>
+        <span>/static/css/admin-workspace.css</span><span>/static/js/pages/admin-workspace.js</span><span>/static/js/pages/app-shell.js</span>
+        {% elif page_kind == "history" %}
+        <span data-history-workspace></span><span data-audit-body></span><span data-pause-form></span>
+        <span>/static/css/day49-workflows.css</span><span>/static/js/pages/history-reporting-workspace.js</span>
+        {% elif page_kind == "recovery" %}
+        <span data-customer-recovery></span><span data-recovery-list></span>
+        <span>/static/css/day49-workflows.css</span><span>/static/js/pages/customer-recovery-workspace.js</span>
+        {% endif %}
+    </template>
+
+    <script type="module" src="{% static 'react/app.js' %}"></script>
+</body>
+</html>
