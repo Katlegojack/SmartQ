@@ -1,7 +1,6 @@
 import { ApiError, fieldErrors } from "../api/client.js";
 import {
     getCurrentAccount,
-    loginAccount,
     redirectToWorkspace,
     registerCustomer,
 } from "../auth/session.js";
@@ -81,9 +80,7 @@ form?.addEventListener("submit", async (event) => {
     setBusy(true);
     try {
         await registerCustomer(payload);
-        const user = await loginAccount(payload.username, payload.password);
-        setMessage("Account created. Opening your workspace.", "success");
-        redirectToWorkspace(user, { replace: true });
+        window.location.assign("/login/?created=1");
     } catch (error) {
         if (error instanceof ApiError) {
             applyFieldErrors(error.data);

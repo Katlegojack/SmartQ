@@ -61,6 +61,13 @@ class SmartQRolePermission(BasePermission):
         return profile.branch_id == branch.id
 
 
+class IsCustomer(SmartQRolePermission):
+    """Allow only registered Smart Q customers to use customer self-service APIs."""
+
+    allowed_roles = {Profile.CUSTOMER}
+    message = "Only a Smart Q customer can perform this action."
+
+
 class IsQueueViewer(SmartQRolePermission):
     """Allow staff roles that need to read live branch/counter queue information."""
 

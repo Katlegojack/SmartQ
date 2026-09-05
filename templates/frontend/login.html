@@ -8,6 +8,7 @@
     <title>Sign in | Smart Q</title>
     <link rel="stylesheet" href="{% static 'css/smartq.css' %}">
     <link rel="stylesheet" href="{% static 'css/auth-shell.css' %}">
+    <link rel="stylesheet" href="{% static 'css/login.css' %}">
     <script type="module" src="{% static 'js/pages/login.js' %}" defer></script>
 </head>
 <body class="auth-page">
@@ -18,34 +19,66 @@
                 <span class="brand__mark" aria-hidden="true">SQ</span>
                 <span class="brand__text"><strong>Smart Q</strong><small>Where Time Meets Priority</small></span>
             </a>
-            <a class="nav-link" href="/register/">Create account</a>
+            <a class="nav-link" href="/">Home</a>
         </div>
     </header>
 
     <main class="auth-main" id="main-content">
-        <div class="container auth-layout">
-            <section class="auth-intro" aria-labelledby="login-heading">
-                <p class="eyebrow">Smart Q</p>
-                <h1 id="login-heading">Sign in</h1>
-                <p>Customers and staff use the same sign-in.</p>
-            </section>
-
-            <section class="auth-card" aria-label="Sign-in form">
+        <div class="container auth-login-wrap">
+            <section class="auth-card auth-card--login" aria-labelledby="login-heading">
                 <div class="auth-card__header">
-                    <h2>Welcome back</h2>
+                    <p class="eyebrow">Registered users</p>
+                    <h1 id="login-heading">Sign in</h1>
+                    <p class="login-intro">Select your Smart Q role, then enter your credentials.</p>
                 </div>
+
                 <div class="form-message" data-form-message hidden role="status" aria-live="polite"></div>
+
                 <form class="form-stack" data-login-form novalidate>
-                    <label class="field">
-                        <span class="field__label">Username</span>
-                        <input class="input" type="text" name="username" autocomplete="username" required autofocus>
-                    </label>
-                    <label class="field">
-                        <span class="field__label">Password</span>
-                        <input class="input" type="password" name="password" autocomplete="current-password" required>
-                    </label>
-                    <button class="btn btn--primary btn--block" type="submit">Sign in</button>
+                    <fieldset class="role-selector" data-role-selector>
+                        <legend>Account type</legend>
+                        <div class="role-options">
+                            <label class="role-option">
+                                <input type="radio" name="role" value="customer" {% if initial_role == "customer" or not initial_role %}checked{% endif %}>
+                                <span>Customer</span>
+                            </label>
+                            <label class="role-option">
+                                <input type="radio" name="role" value="receptionist" {% if initial_role == "receptionist" %}checked{% endif %}>
+                                <span>Receptionist</span>
+                            </label>
+                            <label class="role-option">
+                                <input type="radio" name="role" value="counter_staff" {% if initial_role == "counter_staff" %}checked{% endif %}>
+                                <span>Counter Staff</span>
+                            </label>
+                            <label class="role-option">
+                                <input type="radio" name="role" value="branch_manager" {% if initial_role == "branch_manager" %}checked{% endif %}>
+                                <span>Branch Manager</span>
+                            </label>
+                            <label class="role-option">
+                                <input type="radio" name="role" value="system_admin" {% if initial_role == "system_admin" %}checked{% endif %}>
+                                <span>System Admin</span>
+                            </label>
+                        </div>
+                    </fieldset>
+
+                    <div class="login-divider" aria-hidden="true"></div>
+
+                    <div class="form-grid form-grid--2 login-credentials">
+                        <label class="field">
+                            <span class="field__label">Username</span>
+                            <input class="input" type="text" name="username" autocomplete="username" required autofocus>
+                        </label>
+                        <label class="field">
+                            <span class="field__label">Password</span>
+                            <input class="input" type="password" name="password" autocomplete="current-password" required>
+                        </label>
+                    </div>
+
+                    <div class="login-actions">
+                        <button class="btn btn--primary" type="submit">Sign in</button>
+                    </div>
                 </form>
+
                 <p class="auth-card__footer">New customer? <a href="/register/">Create an account</a>.</p>
             </section>
         </div>

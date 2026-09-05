@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Smart Q customer dashboard for appointment booking and live queue tracking.">
+    <meta name="description" content="Smart Q customer dashboard for appointments and live queue tracking.">
     <title>Customer workspace | Smart Q</title>
     <link rel="stylesheet" href="{% static 'css/smartq.css' %}">
     <link rel="stylesheet" href="{% static 'css/auth-shell.css' %}">
@@ -27,6 +27,7 @@
             </div>
             <nav class="side-nav" aria-label="Customer sections">
                 <a class="side-nav__item is-active" href="#overview">Overview</a>
+                <a class="side-nav__item" href="#queue">Join queue</a>
                 <a class="side-nav__item" href="#book">Book</a>
                 <a class="side-nav__item" href="#appointments">Appointments</a>
                 <a class="side-nav__item" href="#history">History</a>
@@ -52,10 +53,11 @@
                             <div>
                                 <p class="eyebrow">Overview</p>
                                 <h2 id="overview-heading" data-greeting>Your Smart Q</h2>
-                                <p>Book, check in and track your place.</p>
+                                <p>Join a queue, book an appointment and track your place.</p>
                             </div>
                             <div class="customer-heading__actions">
-                                <a class="btn btn--primary" href="#book">Book appointment</a>
+                                <a class="btn btn--primary" href="#queue">Join queue</a>
+                                <a class="btn btn--secondary" href="#book">Book appointment</a>
                                 <div class="customer-counts" aria-label="Appointment summary">
                                     <div><span data-upcoming-count>0</span><small>Upcoming</small></div>
                                     <div><span data-history-count>0</span><small>History</small></div>
@@ -78,8 +80,11 @@
                                     <div><dt>Branch</dt><dd data-queue-branch>—</dd></div>
                                     <div><dt>Counter</dt><dd data-queue-counter>Waiting</dd></div>
                                 </dl>
+                                <div class="appointment-actions">
+                                    <button class="btn btn--quiet btn--danger-text" type="button" data-queue-leave hidden>Leave queue</button>
+                                </div>
                             </article>
-                            <article class="panel empty-state" data-queue-empty hidden><p class="kicker">Live queue</p><h3>No active queue</h3><p>Check in to see your position.</p></article>
+                            <article class="panel empty-state" data-queue-empty hidden><p class="kicker">Live queue</p><h3>No active queue</h3><p>Join a queue now or check in to an appointment when check-in opens.</p></article>
 
                             <article class="panel next-appointment" data-next-panel hidden>
                                 <div class="panel__header"><div><p class="kicker">Next appointment</p><h3 data-next-service>—</h3></div><span class="badge badge--neutral" data-next-status>Confirmed</span></div>
@@ -97,6 +102,43 @@
                                 </div>
                             </article>
                             <article class="panel empty-state" data-next-empty hidden><p class="kicker">Next appointment</p><h3>Nothing booked</h3><p>Book your next appointment below.</p></article>
+                        </div>
+                    </section>
+
+                    <section class="customer-section queue-join-workflow" id="queue" aria-labelledby="queue-join-heading">
+                        <div class="customer-section__header">
+                            <div><p class="kicker">Queue now</p><h3 id="queue-join-heading">Join a live queue</h3></div>
+                            <p>Choose a branch and service. Your queue number appears immediately.</p>
+                        </div>
+                        <div class="panel queue-join-panel">
+                            <div class="form-message" data-queue-join-message hidden role="status" aria-live="polite"></div>
+                            <div class="notice notice--info" data-queue-join-active hidden></div>
+                            <form data-queue-join-form novalidate>
+                                <fieldset data-queue-fieldset>
+                                    <div class="queue-join-grid">
+                                        <label class="field">
+                                            <span class="field__label">Branch</span>
+                                            <select class="input" name="branch" data-queue-join-branch required>
+                                                <option value="">Select a branch</option>
+                                            </select>
+                                        </label>
+                                        <label class="field">
+                                            <span class="field__label">Service</span>
+                                            <select class="input" name="service" data-queue-join-service required disabled>
+                                                <option value="">Select a branch first</option>
+                                            </select>
+                                        </label>
+                                    </div>
+                                    <label class="check-field queue-join-pregnancy" data-queue-pregnancy-field hidden>
+                                        <input type="checkbox" name="is_pregnant" data-queue-pregnant>
+                                        <span><strong>Pregnancy applies to this visit</strong></span>
+                                    </label>
+                                    <div class="queue-join-actions">
+                                        <button class="btn btn--primary" type="submit" data-queue-join-submit disabled>Join queue</button>
+                                        <p>You can have one active live queue at a time.</p>
+                                    </div>
+                                </fieldset>
+                            </form>
                         </div>
                     </section>
 
@@ -166,9 +208,9 @@
                     </section>
 
                     <section class="customer-section" id="history" aria-labelledby="history-heading">
-                        <div class="customer-section__header"><div><p class="kicker">History</p><h3 id="history-heading">Past appointments</h3></div></div>
-                        <div class="panel customer-table-panel" data-history-table><div class="table-wrap"><table class="customer-table"><thead><tr><th>Appointment</th><th>Service</th><th>Branch</th><th>Outcome</th><th>Queue</th><th>Details</th></tr></thead><tbody data-history-body></tbody></table></div></div>
-                        <div class="panel empty-state empty-state--compact" data-history-empty hidden><p>No appointment history yet.</p></div>
+                        <div class="customer-section__header"><div><p class="kicker">History</p><h3 id="history-heading">Past visits</h3></div></div>
+                        <div class="panel customer-table-panel" data-history-table><div class="table-wrap"><table class="customer-table"><thead><tr><th>Visit</th><th>Service</th><th>Branch</th><th>Outcome</th><th>Queue</th><th>Details</th></tr></thead><tbody data-history-body></tbody></table></div></div>
+                        <div class="panel empty-state empty-state--compact" data-history-empty hidden><p>No history yet.</p></div>
                     </section>
 
                     <section class="customer-section" id="security" aria-labelledby="security-heading">
@@ -189,11 +231,11 @@
     </div>
 
     <dialog class="booking-dialog" data-booking-dialog aria-labelledby="booking-dialog-title">
-        <div class="booking-dialog__header"><div><p class="kicker">Booking</p><h2 id="booking-dialog-title" data-dialog-service>Appointment</h2></div><button class="dialog-close" type="button" data-dialog-close>Close</button></div>
+        <div class="booking-dialog__header"><div><p class="kicker">Visit</p><h2 id="booking-dialog-title" data-dialog-service>Visit</h2></div><button class="dialog-close" type="button" data-dialog-close>Close</button></div>
         <div class="customer-loading customer-loading--dialog" data-dialog-loading>Loading...</div>
         <div class="notice notice--error dialog-notice" data-dialog-error hidden role="alert"></div>
         <div class="booking-dialog__body" data-dialog-content hidden>
-            <dl class="dialog-details"><div><dt>Branch</dt><dd data-dialog-branch>—</dd></div><div><dt>Appointment</dt><dd data-dialog-appointment>—</dd></div><div><dt>Status</dt><dd data-dialog-status>—</dd></div><div><dt>Queue</dt><dd data-dialog-queue>—</dd></div></dl>
+            <dl class="dialog-details"><div><dt>Branch</dt><dd data-dialog-branch>—</dd></div><div><dt>Visit</dt><dd data-dialog-appointment>—</dd></div><div><dt>Status</dt><dd data-dialog-status>—</dd></div><div><dt>Queue</dt><dd data-dialog-queue>—</dd></div></dl>
             <div class="timeline-block"><h3>History</h3><ol class="timeline" data-dialog-timeline></ol></div>
         </div>
     </dialog>

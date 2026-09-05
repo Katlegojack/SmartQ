@@ -21,7 +21,7 @@ export const ROLE_LABELS = Object.freeze({
     receptionist: "Receptionist",
     counter_staff: "Counter Staff",
     branch_manager: "Branch Manager",
-    system_admin: "System Administrator",
+    system_admin: "System Admin",
 });
 
 let currentAccountPromise = null;
@@ -57,10 +57,13 @@ export function getCurrentAccount({ refresh = false } = {}) {
     return currentAccountPromise;
 }
 
-export async function loginAccount(username, password) {
+export async function loginAccount(username, password, role = "") {
+    const body = { username, password };
+    if (role) body.role = role;
+
     const data = await apiRequest("/api/v1/accounts/login/", {
         method: "POST",
-        body: { username, password },
+        body,
     });
     clearCsrfToken();
     currentAccountPromise = Promise.resolve(data.user);

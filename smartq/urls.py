@@ -26,7 +26,22 @@ urlpatterns = [
     path("api/v1/rescheduling/", include("rescheduling.api_urls")),
     path("api/v1/dashboard/", include("dashboard.api_urls")),
 
-    path("login/", TemplateView.as_view(template_name="frontend/login.html"), name="frontend_login"),
+    path(
+        "login/",
+        TemplateView.as_view(
+            template_name="frontend/login.html",
+            extra_context={"initial_role": "customer"},
+        ),
+        name="frontend_login",
+    ),
+    path(
+        "staff-login/",
+        TemplateView.as_view(
+            template_name="frontend/login.html",
+            extra_context={"initial_role": "receptionist"},
+        ),
+        name="frontend_staff_login",
+    ),
     path("register/", TemplateView.as_view(template_name="frontend/register.html"), name="frontend_register"),
 
     path(

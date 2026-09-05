@@ -6,6 +6,7 @@ from .api_views import (
     BookingCreateAPIView,
     BookingDetailAPIView,
     BookingRescheduleAPIView,
+    CustomerWalkInAPIView,
     MyBookingListAPIView,
     ReceptionBookingSearchAPIView,
     ReceptionGuestWalkInAPIView,
@@ -16,6 +17,7 @@ from .api_views import (
 urlpatterns = [
     path("", BookingCreateAPIView.as_view(), name="api_booking_create"),
     path("my/", MyBookingListAPIView.as_view(), name="api_my_booking_list"),
+    path("walk-ins/", CustomerWalkInAPIView.as_view(), name="api_customer_walk_in"),
 
     # Reception workflows are placed before the integer booking routes so their
     # paths remain clear and unambiguous.

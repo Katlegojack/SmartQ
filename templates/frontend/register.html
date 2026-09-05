@@ -18,7 +18,7 @@
                 <span class="brand__mark" aria-hidden="true">SQ</span>
                 <span class="brand__text"><strong>Smart Q</strong><small>Where Time Meets Priority</small></span>
             </a>
-            <a class="nav-link" href="/login/">Sign in</a>
+            <a class="nav-link" href="/login/">Customer sign in</a>
         </div>
     </header>
 
@@ -27,15 +27,14 @@
             <section class="auth-intro" aria-labelledby="register-heading">
                 <p class="eyebrow">Customer registration</p>
                 <h1 id="register-heading">Create your Smart Q account.</h1>
-                <p>Public registration creates a customer account only. Staff access is provisioned through protected administration workflows.</p>
-                <div class="notice notice--info">Your profile information supports queue eligibility rules and account identification. Operational decisions remain controlled by the backend.</div>
+                <p>Register once, then sign in to book appointments, join a live queue and track your place.</p>
             </section>
 
             <section class="auth-card auth-card--wide" aria-label="Registration form">
                 <div class="auth-card__header">
                     <p class="kicker">Account details</p>
                     <h2>Customer registration</h2>
-                    <p>Complete the fields below to create and open your customer workspace.</p>
+                    <p>Complete the fields below. After registration, you will sign in with the username and password you create here.</p>
                 </div>
                 <div class="form-message" data-form-message hidden role="status" aria-live="polite"></div>
                 <form class="form-stack" data-register-form novalidate>
@@ -49,7 +48,7 @@
                         <label class="field"><span class="field__label">Date of birth</span><input class="input" type="date" name="date_of_birth" autocomplete="bday" required><span class="field__error" data-field-error="date_of_birth" hidden></span></label>
                         <label class="field"><span class="field__label">Gender</span><select class="input" name="gender" required><option value="">Select</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select><span class="field__error" data-field-error="gender" hidden></span></label>
                     </div>
-                    <label class="check-field"><input type="checkbox" name="disability_status"><span><strong>Disability status</strong><small>Select this when the profile should record disability status.</small></span></label>
+                    <label class="check-field"><input type="checkbox" name="disability_status"><span><strong>Disability status</strong><small>Select this when it applies to you.</small></span></label>
                     <div class="form-grid form-grid--2">
                         <label class="field"><span class="field__label">Password</span><input class="input" type="password" name="password" autocomplete="new-password" required><span class="field__error" data-field-error="password" hidden></span></label>
                         <label class="field"><span class="field__label">Confirm password</span><input class="input" type="password" name="confirm_password" autocomplete="new-password" required><span class="field__error" data-field-error="confirm_password" hidden></span></label>

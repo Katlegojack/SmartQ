@@ -1,6 +1,5 @@
 import { ApiError } from "../api/client.js";
 import {
-    getCurrentAccount,
     loginAccount,
     redirectToWorkspace,
     safeNextRoute,
@@ -33,13 +32,15 @@ function openRequestedWorkspace(user) {
     redirectToWorkspace(user, { replace: true });
 }
 
-async function restoreExistingSession() {
-    try {
-        const user = await getCurrentAccount();
-        if (user) openRequestedWorkspace(user);
-    } catch (error) {
-        setMessage("Smart Q could not verify the current session. Please try again.");
-    }
+const params = new URLSearchParams(window.location.search);
+if (params.get("created") === "1") {
+    setMessage("Account created. Sign in with your new username and password.", "success");
+}
+
+const requestedRole = params.get("role");
+if (requestedRole && form?.elements?.role) {
+    const option = form.querySelector(`input[name="role"][value="${CSS.escape(requestedRole)}"]`);
+    if (option) option.checked = true;
 }
 
 form?.addEventListener("submit", async (event) => {
@@ -47,9 +48,14 @@ form?.addEventListener("submit", async (event) => {
     setMessage("");
 
     const formData = new FormData(form);
+    const role = String(formData.get("role") || "").trim();
     const username = String(formData.get("username") || "").trim();
     const password = String(formData.get("password") || "");
 
+    if (!role) {
+        setMessage("Choose the role you are signing in as.");
+        return;
+    }
     if (!username || !password) {
         setMessage("Enter both your username and password.");
         return;
@@ -57,8 +63,7 @@ form?.addEventListener("submit", async (event) => {
 
     setBusy(true);
     try {
-        const user = await loginAccount(username, password);
-        setMessage("Sign-in successful. Opening your workspace.", "success");
+        const user = await loginAccount(username, password, role);
         openRequestedWorkspace(user);
     } catch (error) {
         if (error instanceof ApiError && error.status === 429) {
@@ -72,5 +77,3 @@ form?.addEventListener("submit", async (event) => {
         setBusy(false);
     }
 });
-
-restoreExistingSession();
