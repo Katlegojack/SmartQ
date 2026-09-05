@@ -108,5 +108,8 @@ jobs:
       - name: Run Day 51 receptionist workflow tests
         run: python manage.py test smartq.test_day51_receptionist_workflow
 
+      - name: Run Day 52 live state and admin control tests
+        run: python manage.py test smartq.test_day52_live_admin_controls
+
       - name: Run full test suite
         run: python manage.py test
