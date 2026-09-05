@@ -1,6 +1,9 @@
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import { resolve } from "node:path";
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
@@ -15,11 +18,11 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: resolve(__dirname, "../static/react"),
+    outDir: resolve(here, "../static/react"),
     emptyOutDir: true,
     sourcemap: true,
     rollupOptions: {
-      input: resolve(__dirname, "src/main.tsx"),
+      input: resolve(here, "src/main.tsx"),
       output: {
         entryFileNames: "app.js",
         chunkFileNames: "chunks/[name]-[hash].js",
