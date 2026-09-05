@@ -4,7 +4,7 @@
 
 Smart Q is a Django + Django REST Framework Queue Intelligence Platform designed to make queues more predictable, transparent, fair, and operationally efficient.
 
-> **Current development state:** Backend v1 is complete through Day 40 and the frontend roadmap is implemented through Day 50. Day 50 closes the frontend milestone with cross-role integration, responsive/accessibility contract verification, safer session-return behavior, last-System-Admin protection, a JavaScript syntax gate, and a dedicated release-audit regression suite.
+> **Current development state:** Backend v1 is complete through Day 40, the planned frontend roadmap is complete through Day 50, and live-product refinement is implemented through Day 51. Day 51 simplifies the Receptionist workflow around today's customers, the live queue and walk-ins, and makes the Customer → Reception → Counter handoff visible through shared authoritative queue state.
 
 ## Product principle
 
@@ -31,6 +31,8 @@ SERVING
    ├── COMPLETED
    └── NO_SHOW
 ```
+
+A registered Customer may also join a live queue without an appointment. That self-service walk-in creates the same `Booking + QueueTicket` lifecycle used by Reception and Counter Staff.
 
 If appointment time passes without check-in, the booking becomes `CANCELLED` because the customer never entered the live queue.
 
@@ -72,8 +74,8 @@ dashboard
 
 | Role | Operational scope |
 |---|---|
-| Customer | Own account, booking/rescheduling, live queue, booking history, security, disruption recovery options |
-| Receptionist | Own-branch booking search, assisted check-in, guest walk-ins, branch queue visibility |
+| Customer | Own account, appointment booking/rescheduling, self-service live queue, booking history, security, disruption recovery options |
+| Receptionist | Today's own-branch customers, assisted check-in, guest walk-ins, live queue visibility and customer handoff |
 | Counter Staff | Assigned-counter serving lifecycle and matching waiting queue visibility |
 | Branch Manager | Own-branch dashboard, staffing, historical reporting, audit history and disruption control |
 | System Admin | Global staff/branch/service/capacity administration plus global branch reporting/audit inspection |
@@ -91,7 +93,9 @@ GET  /api/v1/accounts/me/
 POST /api/v1/accounts/change-password/
 ```
 
-Public registration always creates a Customer account. Browser login is CSRF-protected, password changes reuse Django password validators, and the current trusted session is preserved after successful password rotation.
+Public registration always creates a Customer account and does not silently sign the new account in. Customers and staff use the same authentication backend, while the browser sign-in page asks the user to choose the intended Smart Q role. The backend verifies that the selected role matches the authenticated account before establishing the session.
+
+Browser login is CSRF-protected, password changes reuse Django password validators, and the current trusted session is preserved after successful password rotation.
 
 Day 50 shares one in-flight `/accounts/me/` restoration result across page modules, clears/refetches that cache at explicit identity boundaries, and safely returns users to approved secondary workspaces after sign-in.
 
@@ -108,16 +112,17 @@ Day 47 -> Branch Manager Workspace
 Day 48 -> System Admin control plane
 Day 49 -> historical reporting + audit + disruption/recovery UX
 Day 50 -> full frontend integration + responsive/release audit
+Day 51 -> Receptionist workflow simplification + customer handoff
 ```
 
 Frontend routes:
 
 ```text
 /                       public Smart Q entry
-/login/                 sign in
+/login/                 explicit five-role sign in
 /register/              customer registration
 /app/                   role-routing entry
-/app/customer/          customer dashboard + booking workflow
+/app/customer/          customer dashboard + booking + live queue
 /app/reception/         receptionist operations workspace
 /app/counter/           Counter Staff serving workspace
 /app/manager/           Branch Manager operations workspace
@@ -130,7 +135,7 @@ The browser presents backend state and coordinates requests. It does not recreat
 
 ## Day 50 release integration safeguards
 
-The final frontend audit adds cross-product protections rather than another feature surface.
+The final planned frontend audit adds cross-product protections rather than another feature surface.
 
 ```text
 Shared account restoration
@@ -152,13 +157,14 @@ Approved secondary login-return routes are role constrained. For example, Custom
 
 When an authenticated session expires after a workspace has already loaded, the shared API client distinguishes the explicit unauthenticated DRF response from an ordinary permission-denied 403 and sends the user back to sign-in with the current workspace path preserved.
 
-The System Admin invariant now applies to every relevant mutation path: Smart Q rejects both deactivation and role demotion when either would remove the last active System Admin. If another active admin remains and an admin legitimately changes their own role, the browser refreshes `/accounts/me/` and immediately routes away from the admin control plane.
+The System Admin invariant applies to every relevant mutation path: Smart Q rejects both deactivation and role demotion when either would remove the last active System Admin. If another active admin remains and an admin legitimately changes their own role, the browser refreshes `/accounts/me/` and immediately routes away from the admin control plane.
 
-## Customer booking and check-in
+## Customer booking, check-in and live queue
 
 ```http
 POST  /api/v1/bookings/
 GET   /api/v1/bookings/my/
+POST  /api/v1/bookings/walk-ins/
 GET   /api/v1/bookings/<id>/
 POST  /api/v1/bookings/<id>/check-in/
 POST  /api/v1/bookings/<id>/staff-check-in/
@@ -167,6 +173,8 @@ PATCH /api/v1/bookings/<id>/reschedule/
 ```
 
 Availability is generated by the backend and revalidated on the final write. Check-in opens exactly six hours before appointment time. Rescheduling returns the ticket to `SCHEDULED`, clears check-in state and requires a fresh check-in.
+
+Customer self-service live queue entry creates a walk-in booking for today and immediately activates its ticket to `WAITING`. A customer cannot create multiple simultaneous active `WAITING`/`SERVING` tickets. A waiting customer may leave the live queue through the owned cancellation flow.
 
 ## Priority policy
 
@@ -180,13 +188,42 @@ OR female + pregnancy for the visit
 
 The same policy applies to registered customers and guest walk-ins. Reception and customers never manually select General/Priority.
 
-## Reception APIs
+## Reception APIs and Day 51 handoff
 
 ```http
+GET  /api/v1/bookings/reception/today/
 GET  /api/v1/bookings/reception/search/?q=<query>
 POST /api/v1/bookings/reception/walk-ins/
 POST /api/v1/bookings/<id>/staff-check-in/
 GET  /api/v1/queues/branches/<branch_id>/waiting/
+```
+
+Day 51 adds the `reception/today/` read contract so Reception opens directly on today's non-final own-branch workload instead of an empty search form. Search remains available for exceptions.
+
+The Reception workspace is intentionally reduced to three operational blocks:
+
+```text
+Today's customers
+Live queue
+Add walk-in
+```
+
+The browser refreshes Today's customers and the Live queue every 15 seconds while the tab is visible. An active search is kept stable rather than overwritten by background refresh. Staff check-in and walk-in creation immediately refresh the authoritative workload and queue views.
+
+Customer and Reception coordination uses shared backend state:
+
+```text
+Customer books OR joins queue
+        ↓
+Booking + QueueTicket
+        ↓
+Reception sees today's workload
+        ↓
+Check in if needed
+        ↓
+WAITING
+        ↓
+Counter Staff Call Next
 ```
 
 Reception remains branch-scoped. Guest walk-ins do not need a Smart Q account and enter `WAITING` immediately after the backend determines queue type and queue number.
@@ -426,7 +463,7 @@ Day 49 retains its focused gate:
 python manage.py test smartq.test_day49_history_recovery
 ```
 
-Day 50 adds two release gates:
+Day 50 retains the release gates:
 
 ```bash
 find static/js -name '*.js' -print0 | xargs -0 -n1 node --check
@@ -436,7 +473,13 @@ find static/js -name '*.js' -print0 | xargs -0 -n1 node --check
 python manage.py test smartq.test_day50_frontend_release
 ```
 
-The Day 50 release suite covers all frontend entry routes, viewport contracts, skip-link/main targets, primary-role shell/security parity, responsive/accessibility CSS contracts, role-route registry, shared identity restoration, safe secondary return routing, mid-session expiry, router-shell stale-copy prevention, Customer recovery navigation placement, System Admin self-role convergence and the last-active-System-Admin backend invariant.
+Day 51 adds a focused receptionist coordination gate:
+
+```powershell
+python manage.py test smartq.test_day51_receptionist_workflow
+```
+
+The Day 51 suite protects the job-first Reception surface, own-branch Today read model, Customer → Reception live-queue handoff, permission denial for Customers, and background refresh/search-stability contract.
 
 ## Permanent engineering documentation
 
@@ -464,11 +507,12 @@ docs/DAY47_BRANCH_MANAGER_WORKSPACE.md
 docs/DAY48_SYSTEM_ADMIN_WORKSPACE.md
 docs/DAY49_HISTORY_REPORTING_RECOVERY.md
 docs/DAY50_FRONTEND_RELEASE_AUDIT.md
+docs/DAY51_RECEPTIONIST_WORKFLOW.md
 ```
 
-## Frontend capabilities through Day 50
+## Frontend capabilities through Day 51
 
-Smart Q now includes a public entry page, customer registration/sign-in, CSRF-protected session restoration, role-aware primary and approved-secondary workspace routing, live customer queue tracking, server-authoritative booking/check-in/cancellation/rescheduling, a branch-scoped Receptionist Workspace, an assigned-counter Counter Staff Workspace, an own-branch Branch Manager Workspace, a global System Admin control plane, a historical reporting/audit workspace, branch disruption controls with refresh-safe restoration, customer-owned disruption recovery, unified account-security access across primary role workspaces, and final integration safeguards for session expiry, role transitions and release regression detection.
+Smart Q now includes a minimal public Vision/Mission entry page, explicit five-role sign-in, customer registration without automatic login, customer appointment booking and self-service live queue entry, live customer queue tracking, a job-first branch-scoped Receptionist Workspace with automatic Today/queue refresh, an assigned-counter Counter Staff Workspace, an own-branch Branch Manager Workspace, a global System Admin control plane, historical reporting/audit, disruption controls with refresh-safe restoration, customer-owned disruption recovery, unified account-security access across primary role workspaces, and release safeguards for session expiry, role transitions and JavaScript/regression verification.
 
 ## Roadmap
 
@@ -490,7 +534,8 @@ Day 46  Counter Staff Workspace                   COMPLETE / MERGED
 Day 47  Branch Manager Workspace                  COMPLETE / MERGED
 Day 48  System Admin Workspace                    COMPLETE / MERGED
 Day 49  Reporting + Disruption/Rescheduling UX    COMPLETE / MERGED
-Day 50  Full Frontend Integration + Release Audit COMPLETE
+Day 50  Full Frontend Integration + Release Audit COMPLETE / MERGED
+Day 51  Receptionist Workflow + Customer Handoff IMPLEMENTED
 ```
 
 ## Technology stack
@@ -517,6 +562,12 @@ python -m venv venv
 pip install -r requirements.txt
 python manage.py migrate
 python manage.py runserver
+```
+
+For a local/Codespaces demo dataset with all five Smart Q roles:
+
+```powershell
+python manage.py bootstrap_demo
 ```
 
 Local verification:

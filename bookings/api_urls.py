@@ -12,6 +12,7 @@ from .api_views import (
     ReceptionGuestWalkInAPIView,
     StaffBookingCheckInAPIView,
 )
+from .reception_api import ReceptionTodayBookingsAPIView
 
 
 urlpatterns = [
@@ -21,6 +22,11 @@ urlpatterns = [
 
     # Reception workflows are placed before the integer booking routes so their
     # paths remain clear and unambiguous.
+    path(
+        "reception/today/",
+        ReceptionTodayBookingsAPIView.as_view(),
+        name="api_reception_today_bookings",
+    ),
     path(
         "reception/search/",
         ReceptionBookingSearchAPIView.as_view(),

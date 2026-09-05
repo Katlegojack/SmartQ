@@ -51,17 +51,26 @@ class Day45ReceptionWorkspaceTests(APITestCase):
     def authenticate(self):
         self.client.force_authenticate(self.receptionist)
 
-    def test_reception_route_renders_dedicated_day45_workspace(self):
+    def test_reception_route_renders_dedicated_workspace(self):
         response = self.client.get(reverse("frontend_reception_workspace"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Reception desk")
+        self.assertContains(response, "Today's customers")
+        self.assertContains(response, "Live queue")
+        self.assertContains(response, "Add walk-in")
         self.assertContains(response, "data-reception-workspace")
         self.assertContains(response, "data-search-form")
-        self.assertContains(response, "data-search-results")
+        self.assertContains(response, "data-today-table")
         self.assertContains(response, "data-queue-refresh")
         self.assertContains(response, "data-walkin-form")
-        self.assertContains(response, "Reception never chooses General or Priority")
+        for banned in [
+            "Day 45 operational workspace",
+            "Reception never chooses General or Priority",
+            "The backend assigns",
+            "Branch scoped",
+            "Session active",
+        ]:
+            self.assertNotContains(response, banned)
         self.assertNotContains(response, "Manager analytics")
         self.assertNotContains(response, "System administration")
 

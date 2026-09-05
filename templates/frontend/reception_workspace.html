@@ -4,8 +4,8 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Smart Q receptionist workspace for booking lookup, assisted check-in, guest walk-ins and branch queue visibility.">
-    <title>Reception workspace | Smart Q</title>
+    <meta name="description" content="Smart Q reception workspace for today's customers, live queue and walk-ins.">
+    <title>Reception | Smart Q</title>
     <link rel="stylesheet" href="{% static 'css/smartq.css' %}">
     <link rel="stylesheet" href="{% static 'css/auth-shell.css' %}">
     <link rel="stylesheet" href="{% static 'css/reception-workspace.css' %}">
@@ -13,25 +13,24 @@
     <script type="module" src="{% static 'js/pages/reception-workspace.js' %}" defer></script>
 </head>
 <body class="app-page" data-app-shell data-reception-workspace data-expected-role="receptionist">
-    <a class="skip-link" href="#workspace-main">Skip to reception desk</a>
+    <a class="skip-link" href="#workspace-main">Skip to reception</a>
 
     <div class="app-layout">
-        <aside class="sidebar" aria-label="Reception workspace navigation">
+        <aside class="sidebar" aria-label="Reception navigation">
             <a class="brand sidebar__brand" href="/" aria-label="Smart Q home">
                 <span class="brand__mark" aria-hidden="true">SQ</span>
                 <span class="brand__text"><strong>Smart Q</strong><small>Where Time Meets Priority</small></span>
             </a>
 
             <div class="sidebar__context">
-                <span class="sidebar__context-label">Signed-in role</span>
                 <strong data-shell-role>Receptionist</strong>
-                <small data-shell-branch data-reception-branch>Verifying branch</small>
+                <small data-shell-branch data-reception-branch>Loading branch...</small>
             </div>
 
             <nav class="side-nav" aria-label="Reception sections">
-                <a class="side-nav__item is-active" href="#desk">Reception desk</a>
-                <a class="side-nav__item" href="#queue">Branch queue</a>
-                <a class="side-nav__item" href="#walk-in">Guest walk-in</a>
+                <a class="side-nav__item is-active" href="#today">Today's customers</a>
+                <a class="side-nav__item" href="#queue">Live queue</a>
+                <a class="side-nav__item" href="#walk-in">Add walk-in</a>
                 <span class="side-nav__divider" aria-hidden="true"></span>
                 <a class="side-nav__item" href="#security">Security</a>
             </nav>
@@ -44,62 +43,42 @@
         <div class="workspace">
             <header class="workspace-topbar">
                 <div>
-                    <p class="kicker">Reception workspace</p>
-                    <h1>Reception desk</h1>
+                    <p class="kicker">Reception</p>
+                    <h1>Reception</h1>
                 </div>
-                <div class="reception-topbar__meta">
-                    <span class="branch-chip" data-branch-chip>Loading branch...</span>
-                    <span class="session-chip"><span class="status-dot status-dot--success" aria-hidden="true"></span> Session active</span>
-                </div>
+                <span class="branch-chip" data-branch-chip>Loading branch...</span>
             </header>
 
             <main class="workspace-main" id="workspace-main">
                 <div class="notice notice--error" data-shell-error hidden role="alert"></div>
-                <div class="reception-loading" data-reception-loading role="status">Loading branch reception tools...</div>
+                <div class="reception-loading" data-reception-loading role="status">Loading reception...</div>
 
                 <div data-reception-content hidden>
-                    <section class="workspace-section" id="desk" aria-labelledby="desk-heading">
-                        <div class="reception-heading">
-                            <div>
-                                <p class="eyebrow">Day 45 operational workspace</p>
-                                <h2 id="desk-heading">Find the customer. Confirm the booking. Check them in.</h2>
-                                <p>Search your assigned branch by booking ID, name, username, email or phone number. Reception can activate a valid appointment into the live queue, but cannot change queue priority or branch scope.</p>
-                            </div>
-                            <div class="keyboard-hint" aria-label="Keyboard shortcut"><kbd>Ctrl</kbd><span>+</span><kbd>K</kbd><small>Focus search</small></div>
+                    <div class="reception-message" data-reception-message hidden role="status" aria-live="polite"></div>
+
+                    <section class="workspace-section" id="today" aria-labelledby="today-heading">
+                        <div class="reception-section__header reception-section__header--primary">
+                            <h2 id="today-heading">Today's customers</h2>
+                            <a class="btn btn--primary btn--sm" href="#walk-in">Add walk-in</a>
                         </div>
 
-                        <div class="reception-message" data-reception-message hidden role="status" aria-live="polite"></div>
+                        <form class="reception-search" data-search-form role="search">
+                            <label class="sr-only" for="reception-search">Search customer or booking</label>
+                            <input class="input" id="reception-search" type="search" name="q" data-search-input autocomplete="off" placeholder="Search customer or booking">
+                            <button class="btn btn--secondary btn--sm" type="submit">Search</button>
+                            <button class="btn btn--text btn--sm" type="button" data-search-clear hidden>Clear</button>
+                        </form>
 
-                        <article class="panel lookup-panel">
-                            <div class="panel__header lookup-panel__header">
-                                <div><p class="kicker">Customer / booking lookup</p><h3>Search branch appointments</h3></div>
-                                <span class="badge badge--info">Branch scoped</span>
-                            </div>
-                            <form class="lookup-form" data-search-form role="search">
-                                <label class="field lookup-field">
-                                    <span class="field__label">Booking ID, customer name, username, email or phone</span>
-                                    <input class="input input--search" type="search" name="q" data-search-input autocomplete="off" minlength="2" placeholder="Start typing, then press Enter" required autofocus>
-                                    <span class="field__help">Enter at least two characters. Results never leave your assigned branch.</span>
-                                </label>
-                                <button class="btn btn--primary lookup-submit" type="submit" data-search-submit>Search</button>
-                            </form>
-                        </article>
+                        <div class="reception-state" data-today-loading role="status">Loading today's customers...</div>
+                        <div class="reception-state" data-today-empty hidden>No customers yet today.</div>
 
-                        <div class="search-state" data-search-idle>
-                            <strong>Ready for the next customer</strong>
-                            <span>Use the search above to locate an appointment before assisted check-in.</span>
-                        </div>
-                        <div class="search-state" data-search-loading hidden role="status">Searching branch bookings...</div>
-                        <div class="search-state" data-search-empty hidden>
-                            <strong>No branch booking matched that search.</strong>
-                            <span>Check the booking reference, spelling, email or phone number. For a customer without an account or appointment, use Guest walk-in.</span>
-                        </div>
-
-                        <div class="panel reception-table-panel" data-search-results hidden>
+                        <div class="panel reception-table-panel" data-today-table hidden>
                             <div class="table-wrap">
                                 <table class="reception-table">
-                                    <thead><tr><th>Customer</th><th>Appointment</th><th>Service</th><th>Booking</th><th>Queue</th><th>Action</th></tr></thead>
-                                    <tbody data-search-body></tbody>
+                                    <thead>
+                                        <tr><th>Customer</th><th>Service</th><th>Time</th><th>Status</th><th>Action</th></tr>
+                                    </thead>
+                                    <tbody data-today-body></tbody>
                                 </table>
                             </div>
                         </div>
@@ -107,79 +86,61 @@
 
                     <section class="reception-section" id="queue" aria-labelledby="queue-heading">
                         <div class="reception-section__header">
-                            <div><p class="kicker">Live branch queue</p><h3 id="queue-heading">Customers waiting now</h3><p>Only customers activated into today's live queue appear here.</p></div>
-                            <button class="btn btn--secondary btn--sm" type="button" data-queue-refresh>Refresh queue</button>
+                            <h2 id="queue-heading">Live queue</h2>
+                            <button class="btn btn--secondary btn--sm" type="button" data-queue-refresh>Refresh</button>
                         </div>
-                        <div class="queue-summary" aria-label="Branch queue summary">
-                            <div><span data-queue-count>0</span><small>Waiting</small></div>
-                            <div><span data-priority-count>0</span><small>Priority</small></div>
-                            <div><span data-general-count>0</span><small>General</small></div>
-                        </div>
+
+                        <div class="reception-state" data-queue-loading role="status">Loading queue...</div>
+                        <div class="reception-state" data-queue-empty hidden>No customers waiting.</div>
+
                         <div class="panel reception-table-panel" data-queue-table hidden>
                             <div class="table-wrap">
                                 <table class="reception-table reception-table--queue">
-                                    <thead><tr><th>Queue</th><th>Customer</th><th>Service</th><th>Check-in</th><th>Type</th><th>Status</th></tr></thead>
+                                    <thead>
+                                        <tr><th>Queue</th><th>Customer</th><th>Service</th><th>Status</th></tr>
+                                    </thead>
                                     <tbody data-queue-body></tbody>
                                 </table>
                             </div>
                         </div>
-                        <div class="search-state" data-queue-loading role="status">Loading today's branch queue...</div>
-                        <div class="search-state" data-queue-empty hidden><strong>No customers are waiting.</strong><span>Checked-in appointments and guest walk-ins will appear here.</span></div>
                     </section>
 
                     <section class="reception-section" id="walk-in" aria-labelledby="walk-in-heading">
                         <div class="reception-section__header">
-                            <div><p class="kicker">Guest walk-in</p><h3 id="walk-in-heading">Create a ticket without a Smart Q account</h3><p>The backend assigns this receptionist's branch, checks the service offering, calculates priority and places the guest directly into WAITING.</p></div>
+                            <h2 id="walk-in-heading">Add walk-in</h2>
                         </div>
 
-                        <div class="walkin-layout">
-                            <article class="panel walkin-panel">
-                                <div class="form-message" data-walkin-message hidden role="status" aria-live="polite"></div>
-                                <form class="walkin-form" data-walkin-form novalidate>
-                                    <div class="walkin-grid">
-                                        <label class="field"><span class="field__label">Full name</span><input class="input" type="text" name="full_name" maxlength="150" autocomplete="name" required></label>
-                                        <label class="field"><span class="field__label">Phone number <small>optional</small></span><input class="input" type="tel" name="phone_number" maxlength="30" autocomplete="tel"></label>
-                                        <label class="field"><span class="field__label">Date of birth</span><input class="input" type="date" name="date_of_birth" data-walkin-dob required></label>
-                                        <label class="field"><span class="field__label">Gender</span><select class="input" name="gender" data-walkin-gender required><option value="">Select gender</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></label>
-                                        <label class="field walkin-service-field"><span class="field__label">Service</span><select class="input" name="service" data-walkin-service required disabled><option value="">Loading branch services...</option></select><span class="field__help">Only services offered at this branch are available.</span></label>
-                                    </div>
+                        <article class="panel walkin-panel">
+                            <div class="form-message" data-walkin-message hidden role="status" aria-live="polite"></div>
+                            <form class="walkin-form" data-walkin-form novalidate>
+                                <div class="walkin-grid">
+                                    <label class="field"><span class="field__label">Full name</span><input class="input" type="text" name="full_name" maxlength="150" autocomplete="name" required></label>
+                                    <label class="field"><span class="field__label">Phone <small>optional</small></span><input class="input" type="tel" name="phone_number" maxlength="30" autocomplete="tel"></label>
+                                    <label class="field"><span class="field__label">Date of birth</span><input class="input" type="date" name="date_of_birth" data-walkin-dob required></label>
+                                    <label class="field"><span class="field__label">Gender</span><select class="input" name="gender" data-walkin-gender required><option value="">Select gender</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></label>
+                                    <label class="field walkin-service-field"><span class="field__label">Service</span><select class="input" name="service" data-walkin-service required disabled><option value="">Loading services...</option></select></label>
+                                </div>
 
-                                    <div class="walkin-flags">
-                                        <label class="check-field"><input type="checkbox" name="disability_status"><span><strong>Disability priority applies</strong><small>The backend uses this operational detail for fair queue placement.</small></span></label>
-                                        <label class="check-field" data-walkin-pregnancy hidden><input type="checkbox" name="is_pregnant"><span><strong>Currently pregnant</strong><small>This visit-specific value can affect backend priority.</small></span></label>
-                                    </div>
+                                <div class="walkin-flags">
+                                    <label class="check-field"><input type="checkbox" name="disability_status"><span>Disability</span></label>
+                                    <label class="check-field" data-walkin-pregnancy hidden><input type="checkbox" name="is_pregnant"><span>Pregnant</span></label>
+                                </div>
 
-                                    <div class="walkin-actions">
-                                        <p>Reception never chooses General or Priority. Smart Q decides from the guest details and records the resulting queue number.</p>
-                                        <button class="btn btn--primary" type="submit" data-walkin-submit>Create walk-in ticket</button>
-                                    </div>
-                                </form>
-                            </article>
-
-                            <aside class="panel walkin-confirmation" data-walkin-confirmation hidden aria-live="polite">
-                                <p class="kicker">Queue confirmation</p>
-                                <h3>Guest added to the live queue</h3>
-                                <div class="confirmation-number" data-confirmation-number>—</div>
-                                <dl class="detail-list detail-list--compact">
-                                    <div><dt>Customer</dt><dd data-confirmation-customer>—</dd></div>
-                                    <div><dt>Service</dt><dd data-confirmation-service>—</dd></div>
-                                    <div><dt>Queue type</dt><dd data-confirmation-type>—</dd></div>
-                                    <div><dt>Status</dt><dd data-confirmation-status>—</dd></div>
-                                </dl>
-                                <button class="btn btn--secondary btn--block" type="button" data-new-walkin>New walk-in</button>
-                            </aside>
-                        </div>
+                                <div class="walkin-actions">
+                                    <button class="btn btn--primary" type="submit" data-walkin-submit>Add to queue</button>
+                                </div>
+                            </form>
+                        </article>
                     </section>
 
                     <section class="reception-section" id="security" aria-labelledby="security-heading">
                         <div class="panel security-panel">
-                            <div class="panel__header"><div><p class="kicker">Account security</p><h2 id="security-heading">Change password</h2></div></div>
-                            <p class="muted">Your current trusted session remains active after a successful password change.</p>
+                            <div class="panel__header"><h2 id="security-heading">Change password</h2></div>
                             <div class="form-message" data-security-message hidden role="status" aria-live="polite"></div>
                             <form class="form-stack security-form" data-security-form>
                                 <label class="field"><span class="field__label">Current password</span><input class="input" type="password" name="current_password" autocomplete="current-password" required></label>
                                 <label class="field"><span class="field__label">New password</span><input class="input" type="password" name="new_password" autocomplete="new-password" required></label>
-                                <label class="field"><span class="field__label">Confirm new password</span><input class="input" type="password" name="confirm_password" autocomplete="new-password" required></label>
+                                <label class="field"><span class="field__label">Confirm password</span><input class="input" type="password" name="confirm_password" autocomplete="new-password" required></label>
                                 <div><button class="btn btn--primary" type="submit">Change password</button></div>
                             </form>
                         </div>

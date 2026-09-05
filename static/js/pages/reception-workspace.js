@@ -2,14 +2,16 @@ import { ApiError, apiRequest, fieldErrors } from "../api/client.js";
 import { getCurrentAccount, routeForRole } from "../auth/session.js";
 
 const root = document.querySelector("[data-reception-workspace]");
-
 const one = (selector, scope = root) => scope?.querySelector(selector) || null;
 const all = (selector, scope = root) => [...(scope?.querySelectorAll(selector) || [])];
 
+const AUTO_REFRESH_MS = 15000;
+
 let account = null;
 let branchId = null;
+let workloadRequestSequence = 0;
 let queueRequestSequence = 0;
-let searchRequestSequence = 0;
+let searchMode = false;
 
 function label(value) {
     return String(value || "")
@@ -17,20 +19,20 @@ function label(value) {
         .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function dateLabel(value) {
-    if (!value) return "—";
-    const date = new Date(`${value}T00:00:00`);
-    if (Number.isNaN(date.getTime())) return value;
-    return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
-}
-
 function timeLabel(value) {
     if (!value) return "—";
     return String(value).slice(0, 5);
 }
 
+function dateLabel(value) {
+    if (!value) return "";
+    const date = new Date(`${value}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return value;
+    return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
+}
+
 function dateTimeLabel(value) {
-    if (!value) return "—";
+    if (!value) return "";
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
     return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
@@ -59,22 +61,30 @@ function errorMessage(error, fallback = "The request could not be completed.") {
     return error.message || fallback;
 }
 
-function badge(status, queueType = "") {
-    const normalized = String(status || "").toLowerCase();
-    if (queueType === "priority") return "badge badge--priority";
-    if (queueType === "general") return "badge badge--general";
-    if (normalized === "waiting") return "badge badge--waiting";
-    if (normalized === "scheduled") return "badge badge--scheduled";
-    if (["cancelled", "no_show"].includes(normalized)) return "badge badge--danger";
-    if (["completed", "confirmed"].includes(normalized)) return "badge badge--success";
-    return "badge badge--neutral";
+function createTextCell(primaryText, secondaryText = "") {
+    const cell = document.createElement("td");
+    const primary = document.createElement("span");
+    primary.className = "table-primary";
+    primary.textContent = primaryText || "—";
+    cell.append(primary);
+    if (secondaryText) {
+        const secondary = document.createElement("span");
+        secondary.className = "table-secondary";
+        secondary.textContent = secondaryText;
+        cell.append(secondary);
+    }
+    return cell;
 }
 
-function clearSearchStates() {
-    one("[data-search-idle]").hidden = true;
-    one("[data-search-loading]").hidden = true;
-    one("[data-search-empty]").hidden = true;
-    one("[data-search-results]").hidden = true;
+function bookingStatus(booking) {
+    const ticket = booking.queue_ticket || {};
+    if (ticket.status === "waiting") {
+        return { text: ticket.queue_number ? `Waiting · ${ticket.queue_number}` : "Waiting", className: "badge badge--waiting" };
+    }
+    if (ticket.status === "serving") {
+        return { text: ticket.queue_number ? `Serving · ${ticket.queue_number}` : "Serving", className: "badge badge--serving" };
+    }
+    return { text: "Booked", className: "badge badge--booked" };
 }
 
 function canCheckIn(booking) {
@@ -82,48 +92,45 @@ function canCheckIn(booking) {
     return !booking.is_checked_in && !finalStates.has(booking.status);
 }
 
-function renderSearchResults(bookings) {
-    clearSearchStates();
+function setWorkloadState({ loading = false, empty = false, emptyText = "No customers yet today." } = {}) {
+    const loadingNode = one("[data-today-loading]");
+    const emptyNode = one("[data-today-empty]");
+    const table = one("[data-today-table]");
+    loadingNode.hidden = !loading;
+    emptyNode.hidden = !empty;
+    emptyNode.textContent = emptyText;
+    if (loading || empty) table.hidden = true;
+}
+
+function renderBookings(bookings, { searched = false } = {}) {
+    const body = one("[data-today-body]");
+    const table = one("[data-today-table]");
+    body.replaceChildren();
+
     if (!bookings.length) {
-        one("[data-search-empty]").hidden = false;
+        setWorkloadState({
+            empty: true,
+            emptyText: searched ? "No matching customers." : "No customers yet today.",
+        });
         return;
     }
 
-    const body = one("[data-search-body]");
-    body.replaceChildren();
-
     for (const booking of bookings) {
-        const ticket = booking.queue_ticket || {};
         const row = document.createElement("tr");
+        const sourceLabel = booking.source === "walk_in" ? "Walk-in" : "";
+        const customerCell = createTextCell(booking.customer_name || "Customer", sourceLabel);
+        const serviceCell = createTextCell(booking.service_name || "—");
+        const timeCell = createTextCell(
+            timeLabel(booking.booking_time),
+            searched ? dateLabel(booking.booking_date) : "",
+        );
 
-        const customerCell = document.createElement("td");
-        customerCell.innerHTML = `<span class="table-primary"></span><span class="table-secondary"></span>`;
-        customerCell.querySelector(".table-primary").textContent = booking.customer_name || "Unnamed customer";
-        customerCell.querySelector(".table-secondary").textContent = booking.source === "walk_in" ? "Guest walk-in" : "Registered customer";
-
-        const appointmentCell = document.createElement("td");
-        appointmentCell.innerHTML = `<span class="table-primary"></span><span class="table-secondary"></span>`;
-        appointmentCell.querySelector(".table-primary").textContent = dateLabel(booking.booking_date);
-        appointmentCell.querySelector(".table-secondary").textContent = timeLabel(booking.booking_time);
-
-        const serviceCell = document.createElement("td");
-        serviceCell.innerHTML = `<span class="table-primary"></span><span class="table-secondary"></span>`;
-        serviceCell.querySelector(".table-primary").textContent = booking.service_name || "—";
-        serviceCell.querySelector(".table-secondary").textContent = booking.branch_name || account?.branch_name || "—";
-
-        const bookingCell = document.createElement("td");
-        bookingCell.innerHTML = `<span class="table-primary"></span><span class="table-secondary"></span>`;
-        bookingCell.querySelector(".table-primary").textContent = `#${booking.id}`;
-        bookingCell.querySelector(".table-secondary").textContent = label(booking.status);
-
-        const queueCell = document.createElement("td");
-        const queueNumber = document.createElement("span");
-        queueNumber.className = "table-primary";
-        queueNumber.textContent = ticket.queue_number || "Not created";
-        const queueStatus = document.createElement("span");
-        queueStatus.className = badge(ticket.status, ticket.queue_type);
-        queueStatus.textContent = ticket.queue_type ? `${label(ticket.queue_type)} · ${label(ticket.status)}` : "—";
-        queueCell.append(queueNumber, queueStatus);
+        const statusInfo = bookingStatus(booking);
+        const statusCell = document.createElement("td");
+        const statusNode = document.createElement("span");
+        statusNode.className = statusInfo.className;
+        statusNode.textContent = statusInfo.text;
+        statusCell.append(statusNode);
 
         const actionCell = document.createElement("td");
         if (canCheckIn(booking)) {
@@ -134,34 +141,50 @@ function renderSearchResults(bookings) {
             button.textContent = "Check in";
             actionCell.append(button);
         } else {
-            const state = document.createElement("span");
-            state.className = badge(ticket.status || booking.status);
-            state.textContent = booking.is_checked_in ? "Checked in" : label(booking.status);
-            actionCell.append(state);
+            actionCell.textContent = "—";
         }
 
-        row.append(customerCell, appointmentCell, serviceCell, bookingCell, queueCell, actionCell);
+        row.append(customerCell, serviceCell, timeCell, statusCell, actionCell);
         body.append(row);
     }
 
-    one("[data-search-results]").hidden = false;
+    one("[data-today-loading]").hidden = true;
+    one("[data-today-empty]").hidden = true;
+    table.hidden = false;
+}
+
+async function loadToday({ silent = false } = {}) {
+    const sequence = ++workloadRequestSequence;
+    if (!silent) setWorkloadState({ loading: true });
+
+    try {
+        const bookings = await apiRequest("/api/v1/bookings/reception/today/");
+        if (sequence !== workloadRequestSequence || searchMode) return;
+        renderBookings(bookings);
+    } catch (error) {
+        if (sequence !== workloadRequestSequence) return;
+        if (!silent) {
+            setWorkloadState({ empty: true, emptyText: "Today's customers could not be loaded." });
+            setMessage(errorMessage(error, "Smart Q could not load today's customers."), "error");
+        }
+    }
 }
 
 async function searchBookings(query) {
-    const sequence = ++searchRequestSequence;
-    clearSearchStates();
-    one("[data-search-loading]").hidden = false;
+    const sequence = ++workloadRequestSequence;
+    searchMode = true;
+    one("[data-search-clear]").hidden = false;
+    setWorkloadState({ loading: true });
     setMessage("");
 
     try {
         const bookings = await apiRequest(`/api/v1/bookings/reception/search/?q=${encodeURIComponent(query)}`);
-        if (sequence !== searchRequestSequence) return;
-        renderSearchResults(bookings);
+        if (sequence !== workloadRequestSequence || !searchMode) return;
+        renderBookings(bookings, { searched: true });
     } catch (error) {
-        if (sequence !== searchRequestSequence) return;
-        clearSearchStates();
-        one("[data-search-idle]").hidden = false;
-        setMessage(errorMessage(error, "Smart Q could not search branch bookings."), "error");
+        if (sequence !== workloadRequestSequence) return;
+        setWorkloadState({ empty: true, emptyText: "Search could not be completed." });
+        setMessage(errorMessage(error, "Smart Q could not search customers."), "error");
     }
 }
 
@@ -173,13 +196,18 @@ async function checkInBooking(bookingId, button) {
 
     try {
         const booking = await apiRequest(`/api/v1/bookings/${bookingId}/staff-check-in/`, { method: "POST" });
-        const queueNumber = booking.queue_ticket?.queue_number || "the live queue";
-        setMessage(`${booking.customer_name} checked in successfully. Queue number ${queueNumber}.`, "success");
-        const query = one("[data-search-input]").value.trim();
-        if (query.length >= 2) await searchBookings(query);
+        const queueNumber = booking.queue_ticket?.queue_number || "";
+        setMessage(`${booking.customer_name} checked in${queueNumber ? ` · ${queueNumber}` : ""}.`, "success");
+
+        if (searchMode) {
+            const query = one("[data-search-input]").value.trim();
+            if (query.length >= 2) await searchBookings(query);
+        } else {
+            await loadToday();
+        }
         await refreshQueue();
     } catch (error) {
-        let message = errorMessage(error, "Smart Q could not check in this booking.");
+        let message = errorMessage(error, "Smart Q could not check in this customer.");
         if (error instanceof ApiError && error.data?.check_in_opens_at) {
             message = `${message} Opens ${dateTimeLabel(error.data.check_in_opens_at)}.`;
         }
@@ -196,11 +224,8 @@ function renderQueue(tickets) {
     const body = one("[data-queue-body]");
 
     loading.hidden = true;
-    one("[data-queue-count]").textContent = tickets.length;
-    one("[data-priority-count]").textContent = tickets.filter((ticket) => ticket.queue_type === "priority").length;
-    one("[data-general-count]").textContent = tickets.filter((ticket) => ticket.queue_type === "general").length;
-
     body.replaceChildren();
+
     if (!tickets.length) {
         table.hidden = true;
         empty.hidden = false;
@@ -210,41 +235,27 @@ function renderQueue(tickets) {
     empty.hidden = true;
     for (const ticket of tickets) {
         const row = document.createElement("tr");
-        const cells = [
-            ticket.queue_number || "—",
-            ticket.customer_name || "—",
-            ticket.service_name || "—",
-            dateTimeLabel(ticket.checked_in_at),
-            label(ticket.queue_type),
-            label(ticket.status),
-        ];
-        cells.forEach((value, index) => {
-            const cell = document.createElement("td");
-            if (index === 0 || index === 1 || index === 2) {
-                const primary = document.createElement("span");
-                primary.className = "table-primary";
-                primary.textContent = value;
-                cell.append(primary);
-            } else if (index === 4 || index === 5) {
-                const state = document.createElement("span");
-                state.className = badge(index === 5 ? ticket.status : "", index === 4 ? ticket.queue_type : "");
-                state.textContent = value;
-                cell.append(state);
-            } else {
-                cell.textContent = value;
-            }
-            row.append(cell);
-        });
+        const queueCell = createTextCell(ticket.queue_number || "—");
+        const customerCell = createTextCell(ticket.customer_name || "Customer");
+        const serviceCell = createTextCell(ticket.service_name || "—");
+        const statusCell = document.createElement("td");
+        const statusNode = document.createElement("span");
+        statusNode.className = "badge badge--waiting";
+        statusNode.textContent = label(ticket.status || "waiting");
+        statusCell.append(statusNode);
+        row.append(queueCell, customerCell, serviceCell, statusCell);
         body.append(row);
     }
     table.hidden = false;
 }
 
-async function refreshQueue() {
+async function refreshQueue({ silent = false } = {}) {
     if (!branchId) return;
     const sequence = ++queueRequestSequence;
-    one("[data-queue-loading]").hidden = false;
-    one("[data-queue-empty]").hidden = true;
+    if (!silent) {
+        one("[data-queue-loading]").hidden = false;
+        one("[data-queue-empty]").hidden = true;
+    }
 
     try {
         const tickets = await apiRequest(`/api/v1/queues/branches/${branchId}/waiting/`);
@@ -253,14 +264,14 @@ async function refreshQueue() {
     } catch (error) {
         if (sequence !== queueRequestSequence) return;
         one("[data-queue-loading]").hidden = true;
-        setMessage(errorMessage(error, "Smart Q could not load the branch queue."), "error");
+        if (!silent) setMessage(errorMessage(error, "Smart Q could not load the live queue."), "error");
     }
 }
 
 async function loadBranchServices() {
     const select = one("[data-walkin-service]");
     select.disabled = true;
-    select.innerHTML = '<option value="">Loading branch services...</option>';
+    select.replaceChildren(new Option("Loading services...", ""));
 
     try {
         const services = await apiRequest(`/api/v1/services/branches/${branchId}/`);
@@ -272,27 +283,18 @@ async function loadBranchServices() {
             if (id == null || !name) continue;
             select.append(new Option(name, String(id)));
         }
-        select.disabled = false;
-        if (select.options.length === 1) {
-            select.options[0].textContent = "No active services at this branch";
-            select.disabled = true;
-        }
+        select.disabled = select.options.length === 1;
+        if (select.disabled) select.options[0].textContent = "No services available";
     } catch (error) {
         select.replaceChildren(new Option("Services unavailable", ""));
-        setWalkInMessage(errorMessage(error, "Smart Q could not load branch services."));
+        setWalkInMessage(errorMessage(error, "Smart Q could not load services."));
     }
 }
 
-function renderWalkInConfirmation(booking) {
-    const confirmation = one("[data-walkin-confirmation]");
-    const ticket = booking.queue_ticket || {};
-    one("[data-confirmation-number]").textContent = ticket.queue_number || "—";
-    one("[data-confirmation-customer]").textContent = booking.customer_name || "—";
-    one("[data-confirmation-service]").textContent = booking.service_name || "—";
-    one("[data-confirmation-type]").textContent = label(ticket.queue_type);
-    one("[data-confirmation-status]").textContent = label(ticket.status);
-    confirmation.hidden = false;
-    confirmation.scrollIntoView({ behavior: "smooth", block: "nearest" });
+function resetWalkInForm(form) {
+    form.reset();
+    one("[data-walkin-pregnancy]").hidden = true;
+    one('[name="full_name"]', form)?.focus();
 }
 
 async function createWalkIn(form) {
@@ -310,44 +312,52 @@ async function createWalkIn(form) {
 
     setWalkInMessage("");
     submit.disabled = true;
-    submit.textContent = "Creating ticket...";
+    submit.textContent = "Adding...";
+
     try {
         const booking = await apiRequest("/api/v1/bookings/reception/walk-ins/", {
             method: "POST",
             body: payload,
         });
-        setWalkInMessage("Guest walk-in created and added to the live queue.", "success");
-        renderWalkInConfirmation(booking);
+        const queueNumber = booking.queue_ticket?.queue_number || "";
+        setWalkInMessage(`${booking.customer_name} added to queue${queueNumber ? ` · ${queueNumber}` : ""}.`, "success");
+        resetWalkInForm(form);
+        if (!searchMode) await loadToday();
         await refreshQueue();
     } catch (error) {
-        setWalkInMessage(errorMessage(error, "Smart Q could not create the guest walk-in."), "error");
+        setWalkInMessage(errorMessage(error, "Smart Q could not add this walk-in."), "error");
     } finally {
         submit.disabled = false;
-        submit.textContent = "Create walk-in ticket";
+        submit.textContent = "Add to queue";
     }
 }
 
-function resetWalkIn() {
-    const form = one("[data-walkin-form]");
-    form.reset();
-    one("[data-walkin-confirmation]").hidden = true;
-    one("[data-walkin-pregnancy]").hidden = true;
-    setWalkInMessage("");
-    one('[name="full_name"]', form)?.focus();
+function clearSearch() {
+    searchMode = false;
+    one("[data-search-input]").value = "";
+    one("[data-search-clear]").hidden = true;
+    setMessage("");
+    loadToday();
 }
 
 function bindEvents() {
     one("[data-search-form]")?.addEventListener("submit", (event) => {
         event.preventDefault();
         const query = one("[data-search-input]").value.trim();
+        if (!query) {
+            clearSearch();
+            return;
+        }
         if (query.length < 2) {
-            setMessage("Enter at least two characters before searching.", "error");
+            setMessage("Enter at least two characters.", "error");
             return;
         }
         searchBookings(query);
     });
 
-    one("[data-search-body]")?.addEventListener("click", (event) => {
+    one("[data-search-clear]")?.addEventListener("click", clearSearch);
+
+    one("[data-today-body]")?.addEventListener("click", (event) => {
         const button = event.target.closest("[data-check-in]");
         if (!button) return;
         checkInBooking(button.dataset.checkIn, button);
@@ -359,7 +369,7 @@ function bindEvents() {
         button.textContent = "Refreshing...";
         await refreshQueue();
         button.disabled = false;
-        button.textContent = "Refresh queue";
+        button.textContent = "Refresh";
     });
 
     one("[data-walkin-gender]")?.addEventListener("change", (event) => {
@@ -376,14 +386,19 @@ function bindEvents() {
         createWalkIn(event.currentTarget);
     });
 
-    one("[data-new-walkin]")?.addEventListener("click", resetWalkIn);
-
-    document.addEventListener("keydown", (event) => {
-        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
-            event.preventDefault();
-            one("[data-search-input]")?.focus();
-        }
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState !== "visible") return;
+        refreshQueue({ silent: true });
+        if (!searchMode) loadToday({ silent: true });
     });
+}
+
+function startAutoRefresh() {
+    window.setInterval(() => {
+        if (document.visibilityState !== "visible") return;
+        refreshQueue({ silent: true });
+        if (!searchMode) loadToday({ silent: true });
+    }, AUTO_REFRESH_MS);
 }
 
 async function bootstrapReception() {
@@ -401,9 +416,7 @@ async function bootstrapReception() {
             window.location.replace(routeForRole(account.role));
             return;
         }
-        if (!account.branch_id) {
-            throw new Error("Receptionist account has no assigned branch.");
-        }
+        if (!account.branch_id) throw new Error("Receptionist account has no assigned branch.");
 
         branchId = account.branch_id;
         for (const node of all("[data-reception-branch]")) node.textContent = account.branch_name || `Branch ${branchId}`;
@@ -411,15 +424,15 @@ async function bootstrapReception() {
         one("[data-walkin-dob]").max = new Date().toISOString().slice(0, 10);
 
         bindEvents();
-        await Promise.all([loadBranchServices(), refreshQueue()]);
+        await Promise.all([loadBranchServices(), loadToday(), refreshQueue()]);
         loading.hidden = true;
         content.hidden = false;
-        one("[data-search-input]")?.focus();
+        startAutoRefresh();
     } catch (error) {
         loading.hidden = true;
         const shellError = one("[data-shell-error]");
         shellError.hidden = false;
-        shellError.textContent = errorMessage(error, "Smart Q could not load the reception workspace.");
+        shellError.textContent = errorMessage(error, "Smart Q could not load reception.");
     }
 }
 
