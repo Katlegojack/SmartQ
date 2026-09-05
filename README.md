@@ -2,61 +2,100 @@
 
 **Where Time Meets Priority**
 
-Smart Q is a Django + Django REST Framework Queue Intelligence Platform designed to make queues more predictable, transparent, fair, and operationally efficient.
-
-> **Current development state:** Backend v1 is complete through Day 40, the planned frontend roadmap is complete through Day 50, and live-product refinement is complete through Day 51. Day 51 simplifies the Receptionist workflow around today's customers, the live queue and walk-ins, makes the Customer → Reception → Counter handoff visible through shared authoritative queue state, and is merged and verified on `main`.
+Smart Q is a queue-intelligence platform built with Django, Django REST Framework, React and TypeScript. It is designed to make appointments and live queues more predictable for customers while giving service teams clear operational control across Reception, Counters, Branch Management and System Administration.
 
 ## Product principle
 
 Smart Q exists so customers do not need to stand physically in a queue just to hold a place in it.
 
-A check-in means **live-queue activation**. It may happen online or in person.
+A check-in means **live-queue activation**.
 
 ```text
 ADVANCE APPOINTMENT
-        ↓
+        |
+        v
 SCHEDULED
-        ↓
-6 HOURS BEFORE APPOINTMENT
-        ↓
-CHECK-IN OPENS
-        ↓
-ONLINE CHECK-IN OR STAFF CHECK-IN
-        ↓
+        |
+        v
+CHECK-IN WINDOW OPENS
+        |
+        v
+ONLINE OR STAFF CHECK-IN
+        |
+        v
 WAITING
-        ↓
+        |
+        v
 CALL NEXT
-        ↓
+        |
+        v
 SERVING
-   ├── COMPLETED
-   └── NO_SHOW
+   +----+----+
+   |         |
+COMPLETED  NO_SHOW
 ```
 
-A registered Customer may also join a live queue without an appointment. That self-service walk-in creates the same `Booking + QueueTicket` lifecycle used by Reception and Counter Staff.
+A registered customer may also join a live queue without an appointment. That creates the same authoritative `Booking + QueueTicket` lifecycle used by Reception and Counter Staff.
 
-If appointment time passes without check-in, the booking becomes `CANCELLED` because the customer never entered the live queue.
+---
 
-## Architecture
+## Current architecture
+
+Day 53 reengineers the runtime frontend around React + TypeScript without replacing the backend built and hardened through the earlier milestones.
 
 ```text
-Django Templates + Vanilla JS ES Modules
-        ↓
-HTTPS + CORS/CSRF/session security
-        ↓
-Django REST Framework APIs
-        ↓
-Authentication + Role/Branch/Counter/Ownership Permissions
-        ↓
-Serializers / Read Models / Workflow APIs
-        ↓
-Business Logic / Aggregation / Transaction Services
-        ↓
+React 18 + TypeScript
+React Router + TanStack Query
+        |
+        | same-origin HTTP + CSRF/session security
+        v
+Django REST Framework /api/v1/*
+        |
+        v
+Authentication + role/branch/counter/ownership permissions
+        |
+        v
+Serializers + read models + workflow APIs
+        |
+        v
+Domain services + transactions + reporting
+        |
+        v
 Django ORM
-        ↓
+        |
+        v
 SQLite3
 ```
 
-Current apps:
+Django still owns the application URL entry points and backend authority. Vite builds the React runtime into Django static assets:
+
+```text
+static/react/app.js
+static/react/app.css
+```
+
+The browser does **not** recreate server-owned rules such as queue priority, queue numbering, slot generation, capacity, check-in eligibility, staff scope, disruption impact or rescheduling validity.
+
+---
+
+## Technology stack
+
+| Layer | Technology |
+|---|---|
+| Runtime frontend | React 18 + TypeScript |
+| Frontend build | Vite 5 |
+| Routing | React Router 6 |
+| Server-state management | TanStack Query 5 |
+| Backend | Django 6 |
+| API | Django REST Framework |
+| Authentication | Django sessions + CSRF |
+| Authorization | Profile role + branch/counter/ownership scope |
+| Database | SQLite3 |
+| Browser origin policy | django-cors-headers + Django CSRF |
+| Tests | Django / DRF + Day 53 React contract tests |
+| CI | GitHub Actions + Node 22 + React build + full Django regression |
+
+Current Django apps:
 
 ```text
 accounts
@@ -70,19 +109,48 @@ rescheduling
 dashboard
 ```
 
+---
+
 ## Roles
 
-| Role | Operational scope |
+| Role | Operational responsibility |
 |---|---|
-| Customer | Own account, appointment booking/rescheduling, self-service live queue, booking history, security, disruption recovery options |
-| Receptionist | Today's own-branch customers, assisted check-in, guest walk-ins, live queue visibility and customer handoff |
-| Counter Staff | Assigned-counter serving lifecycle and matching waiting queue visibility |
-| Branch Manager | Own-branch dashboard, staffing, historical reporting, audit history and disruption control |
-| System Admin | Global staff/branch/service/capacity administration plus global branch reporting/audit inspection |
+| Customer | Appointments, rescheduling, check-in, live queue, history, security and recovery options |
+| Receptionist | Today's branch workload, assisted check-in, guest walk-ins and live queue handoff |
+| Counter Staff | Assigned-counter lifecycle and serving customers |
+| Branch Manager | Own-branch live operations, staffing, history, reporting and disruptions |
+| System Admin | Global staff, branch, service and capacity configuration plus reporting access |
 
-Smart Q's `SYSTEM_ADMIN` business role is intentionally separate from Django `is_superuser`.
+`SYSTEM_ADMIN` is a Smart Q business role. It is intentionally separate from Django `is_superuser`.
 
-## Authentication and account APIs
+---
+
+## Frontend routes
+
+The Day 53 React migration preserves the existing product URLs.
+
+```text
+/                       public Smart Q entry
+/login/                 customer sign in
+/staff-login/           staff role sign in
+/register/              customer registration
+/app/                   authenticated role router
+/app/customer/          customer experience
+/app/reception/         Receptionist operations
+/app/counter/           Counter Staff console
+/app/manager/           Branch Manager operations
+/app/admin/             System Admin console
+/app/history/           Manager/Admin reporting + disruptions
+/app/recovery/          customer disruption recovery
+```
+
+All frontend routes now boot one React runtime through the thin Django host template.
+
+---
+
+# Authentication and security
+
+Core account APIs:
 
 ```http
 POST /api/v1/accounts/register/
@@ -93,73 +161,21 @@ GET  /api/v1/accounts/me/
 POST /api/v1/accounts/change-password/
 ```
 
-Public registration always creates a Customer account and does not silently sign the new account in. Customers and staff use the same authentication backend, while the browser sign-in page asks the user to choose the intended Smart Q role. The backend verifies that the selected role matches the authenticated account before establishing the session.
+Public registration always creates a Customer account and does not silently log the new account in.
 
-Browser login is CSRF-protected, password changes reuse Django password validators, and the current trusted session is preserved after successful password rotation.
+Staff sign-in explicitly selects the intended role. The backend verifies that the selected role matches the authenticated Smart Q profile before starting the session.
 
-Day 50 shares one in-flight `/accounts/me/` restoration result across page modules, clears/refetches that cache at explicit identity boundaries, and safely returns users to approved secondary workspaces after sign-in.
+Protected React workspaces restore `/api/v1/accounts/me/`, verify the exact expected role and redirect mismatched roles to their own approved workspace.
 
-## Frontend roadmap and workspaces
+The shared React shell includes Account Security for every operational role. Password rotation continues to use Django password validation and preserves the current trusted session after success.
 
-```text
-Day 41 -> shared design system + frontend foundation
-Day 42 -> authentication + session restoration + role-aware app shell
-Day 43 -> live Customer Dashboard
-Day 44 -> booking + availability + normal rescheduling
-Day 45 -> Receptionist Workspace
-Day 46 -> Counter Staff Workspace
-Day 47 -> Branch Manager Workspace
-Day 48 -> System Admin control plane
-Day 49 -> historical reporting + audit + disruption/recovery UX
-Day 50 -> full frontend integration + responsive/release audit
-Day 51 -> Receptionist workflow simplification + customer handoff
-```
+Safe secondary routes are allowlisted. Customer can return to `/app/recovery/`; Branch Manager and System Admin can return to `/app/history/`. Arbitrary external `next` destinations are not accepted.
 
-Frontend routes:
+---
 
-```text
-/                       public Smart Q entry
-/login/                 explicit five-role sign in
-/register/              customer registration
-/app/                   role-routing entry
-/app/customer/          customer dashboard + booking + live queue
-/app/reception/         receptionist operations workspace
-/app/counter/           Counter Staff serving workspace
-/app/manager/           Branch Manager operations workspace
-/app/admin/             System Admin control plane
-/app/history/           Manager/Admin history and reporting workspace
-/app/recovery/          Customer disruption recovery workspace
-```
+# Customer workflow
 
-The browser presents backend state and coordinates requests. It does not recreate server-owned rules such as queue priority, queue numbering, slot generation, capacity, disruption impact or rescheduling validity.
-
-## Day 50 release integration safeguards
-
-The final planned frontend audit adds cross-product protections rather than another feature surface.
-
-```text
-Shared account restoration
-        ↓
-Role-aware primary + secondary workspace routing
-        ↓
-Safe allowlisted login return paths
-        ↓
-Mid-session-expiry redirect through shared shell
-        ↓
-Primary role security/password-change parity
-        ↓
-Last active System Admin protected across deactivation AND role demotion
-        ↓
-JavaScript syntax gate + Day 50 integration regression suite
-```
-
-Approved secondary login-return routes are role constrained. For example, Customer may return to `/app/recovery/`, while Branch Manager or System Admin may return to `/app/history/`. Arbitrary external `next` destinations are not accepted.
-
-When an authenticated session expires after a workspace has already loaded, the shared API client distinguishes the explicit unauthenticated DRF response from an ordinary permission-denied 403 and sends the user back to sign-in with the current workspace path preserved.
-
-The System Admin invariant applies to every relevant mutation path: Smart Q rejects both deactivation and role demotion when either would remove the last active System Admin. If another active admin remains and an admin legitimately changes their own role, the browser refreshes `/accounts/me/` and immediately routes away from the admin control plane.
-
-## Customer booking, check-in and live queue
+Customer APIs:
 
 ```http
 POST  /api/v1/bookings/
@@ -167,18 +183,53 @@ GET   /api/v1/bookings/my/
 POST  /api/v1/bookings/walk-ins/
 GET   /api/v1/bookings/<id>/
 POST  /api/v1/bookings/<id>/check-in/
-POST  /api/v1/bookings/<id>/staff-check-in/
 PATCH /api/v1/bookings/<id>/cancel/
+PATCH /api/v1/bookings/<id>/reschedule/
+GET   /api/v1/queues/my-current/
+GET   /api/v1/queues/bookings/<booking_id>/timeline/
+```
+
+### Appointments
+
+Availability is generated by the backend and revalidated during the final write.
+
+```http
+GET /api/v1/services/branches/<branch_id>/<service_id>/availability/?date=YYYY-MM-DD
+```
+
+Smart Q uses South African local time (`Africa/Johannesburg`). Same-day appointment times that have already passed are not offered and are rejected if submitted manually.
+
+### Check-in
+
+Check-in opens according to the server-owned check-in rule. After a successful check-in, the React Customer workspace no longer renders a Check in action for that booking. Cancel remains available while the booking is non-final.
+
+Customer booking and active queue state refresh every 5 seconds. Same-day appointment availability refreshes every 15 seconds while being selected.
+
+### Rescheduling
+
+Normal rescheduling uses the backend contract:
+
+```http
 PATCH /api/v1/bookings/<id>/reschedule/
 ```
 
-Availability is generated by the backend and revalidated on the final write. Check-in opens exactly six hours before appointment time. Rescheduling returns the ticket to `SCHEDULED`, clears check-in state and requires a fresh check-in.
+The booking returns to `PENDING`, its ticket returns to `SCHEDULED`, check-in is cleared and a fresh check-in is required.
 
-Customer self-service live queue entry creates a walk-in booking for today and immediately activates its ticket to `WAITING`. A customer cannot create multiple simultaneous active `WAITING`/`SERVING` tickets. A waiting customer may leave the live queue through the owned cancellation flow.
+### Live queue entry
+
+A registered customer may join one live branch queue without an appointment:
+
+```http
+POST /api/v1/bookings/walk-ins/
+```
+
+The backend prevents multiple simultaneous `WAITING`/`SERVING` queue tickets.
+
+---
 
 ## Priority policy
 
-Queue type is backend-controlled:
+Queue type remains backend-controlled.
 
 ```text
 age >= 55
@@ -186,9 +237,13 @@ OR disability status
 OR female + pregnancy for the visit
 ```
 
-The same policy applies to registered customers and guest walk-ins. Reception and customers never manually select General/Priority.
+Reception and customers do not manually choose General or Priority.
 
-## Reception APIs and Day 51 handoff
+---
+
+# Reception workflow
+
+Reception APIs:
 
 ```http
 GET  /api/v1/bookings/reception/today/
@@ -198,181 +253,98 @@ POST /api/v1/bookings/<id>/staff-check-in/
 GET  /api/v1/queues/branches/<branch_id>/waiting/
 ```
 
-Day 51 adds the `reception/today/` read contract so Reception opens directly on today's non-final own-branch workload instead of an empty search form. Search remains available for exceptions.
-
-The Reception workspace is intentionally reduced to three operational blocks:
+The React Reception workspace is deliberately task-first:
 
 ```text
+Search
 Today's customers
 Live queue
-Add walk-in
+Add customer
 ```
 
-The browser refreshes Today's customers and the Live queue every 15 seconds while the tab is visible. An active search is kept stable rather than overwritten by background refresh. Staff check-in and walk-in creation immediately refresh the authoritative workload and queue views.
+Today's workload and the branch waiting queue refresh every 5 seconds. Search remains an exception workflow rather than the default screen.
 
-Customer and Reception coordination uses shared backend state:
+Guest-walk-in forms reset only after a successful server write. Failed submissions keep their values so Reception can correct the issue instead of retyping the customer.
+
+Customer-to-Reception coordination still uses shared backend state:
 
 ```text
 Customer books OR joins queue
-        ↓
+        |
+        v
 Booking + QueueTicket
-        ↓
-Reception sees today's workload
-        ↓
-Check in if needed
-        ↓
+        |
+        v
+Reception sees branch workload
+        |
+        v
+Check in if required
+        |
+        v
 WAITING
-        ↓
-Counter Staff Call Next
+        |
+        v
+Counter Staff calls next
 ```
 
-Reception remains branch-scoped. Guest walk-ins do not need a Smart Q account and enter `WAITING` immediately after the backend determines queue type and queue number.
+---
 
-## Counter lifecycle
+# Counter Staff workflow
+
+Counter APIs:
 
 ```http
 GET  /api/v1/counters/my/
-GET  /api/v1/counters/branches/<branch_id>/
-GET  /api/v1/counters/branches/<branch_id>/counter-staff/
-POST /api/v1/counters/<counter_id>/assign/
-POST /api/v1/counters/<counter_id>/unassign/
 POST /api/v1/counters/<counter_id>/open/
 POST /api/v1/counters/<counter_id>/pause/
 POST /api/v1/counters/<counter_id>/resume/
 POST /api/v1/counters/<counter_id>/close/
-```
 
-Serving APIs:
-
-```http
 GET  /api/v1/queues/counters/<counter_id>/current/
 POST /api/v1/queues/counters/<counter_id>/call-next/
 POST /api/v1/queues/counters/<counter_id>/complete/
 POST /api/v1/queues/counters/<counter_id>/no-show/
 ```
 
-Counter Staff operate only their assigned counter. The waiting table is read-only; the backend chooses the next eligible customer.
+Counter Staff operate only their assigned counter. The backend chooses the next eligible customer.
 
-## Queue number and live ETA contracts
+The React Counter workspace is a serving console, not an analytics dashboard. Current counter/customer/waiting state refreshes every 5 seconds and backend operation failures are shown directly to the operator.
 
-Queue numbers are allocated by the database-backed sequence scoped by:
+---
 
-```text
-branch + booking date + queue type
-```
+# Branch Manager workflow
 
-The live wait estimate remains deterministic:
-
-```text
-Estimated Wait = People Ahead × Service.average_service_time
-```
-
-Counter count does **not** divide the ETA formula.
-
-## Branch Manager dashboard
+Manager APIs:
 
 ```http
 GET /api/v1/dashboard/branches/<branch_id>/
-GET /api/v1/dashboard/branches/<branch_id>/?date=YYYY-MM-DD
+GET /api/v1/counters/branches/<branch_id>/counter-staff/
+GET /api/v1/counters/branches/<branch_id>/
+POST /api/v1/counters/<counter_id>/assign/
+POST /api/v1/counters/<counter_id>/unassign/
 ```
 
-Branch Manager sees only the assigned branch. System Admin may inspect any active branch. Historical customer metrics and live counter state remain explicitly separate concepts.
+Branch Manager sees only the assigned branch.
 
-## Historical reporting and QueueEvent audit — Day 49
-
-Historical reporting reads append-only `QueueEvent` facts rather than live dashboard state.
-
-```http
-GET /api/v1/queues/branches/<branch_id>/reports/operational/
-GET /api/v1/queues/branches/<branch_id>/reports/operational/?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
-GET /api/v1/queues/branches/<branch_id>/events/
-```
-
-Reports include check-ins, calls, completions, no-shows, cancellations, actual wait time, actual service time, completion/no-show rates, service breakdowns, daily activity, queue-type mix and source mix. The default period is 30 days and the maximum accepted range is 366 days.
-
-`QueueEvent` remains the historical source of truth for lifecycle/audit facts including:
+The React manager view emphasizes operational state:
 
 ```text
-TICKET_SCHEDULED
-CHECKED_IN
-CALLED
-COMPLETED
-NO_SHOW
-CANCELLED
-RESCHEDULED
-DISRUPTION_RESCHEDULED
-COUNTER_STAFF_ASSIGNED
-COUNTER_STAFF_UNASSIGNED
-COUNTER_OPENED
-COUNTER_PAUSED
-COUNTER_RESUMED
-COUNTER_CLOSED
+Customers today
+Waiting
+Serving
+Open counters
+Busy counters
+Counter / Staff / Status / Current customer / Controls
+Service demand
 ```
 
-Customer-owned lifecycle history is available at:
+The dashboard refreshes every 5 seconds. Historical reporting and disruption control remain on `/app/history/`.
 
-```http
-GET /api/v1/queues/bookings/<booking_id>/timeline/
-```
+---
 
-## Disruption and customer recovery — Day 49
+# System Admin control plane
 
-```text
-Branch Manager pauses a service
-        ↓
-Pause is persisted and can be restored after refresh
-        ↓
-Backend reports current impact
-        ↓
-Manager resumes the service
-        ↓
-Backend finalizes affected/risk records
-        ↓
-Notifications + future replacement options are generated
-        ↓
-Affected customer reviews own recommendation
-        ↓
-Customer chooses a replacement slot
-        ↓
-Backend revalidates slot/capacity atomically
-        ↓
-Booking becomes PENDING
-Ticket becomes SCHEDULED + Priority
-        ↓
-Fresh check-in required
-```
-
-Manager disruption APIs:
-
-```http
-GET  /api/v1/rescheduling/branches/<branch_id>/pauses/
-POST /api/v1/rescheduling/branches/<branch_id>/pauses/
-GET  /api/v1/rescheduling/pauses/<pause_id>/
-POST /api/v1/rescheduling/pauses/<pause_id>/resume/
-```
-
-The branch-scoped pause `GET` is the Day 49 restoration contract that makes persistent disruption state recoverable after page refresh. Active pauses are returned before ended history.
-
-Customer disruption APIs:
-
-```http
-GET  /api/v1/rescheduling/recommendations/my/
-POST /api/v1/rescheduling/options/<option_id>/select/
-```
-
-A stale/full/invalid replacement slot is rejected by the server. The browser cannot force an outdated option through.
-
-## Day 49 frontend engineering safeguards
-
-The history workspace uses independent request sequence guards for reports, audit events, branch services and pause history. An older asynchronous response cannot overwrite a newer branch/date selection.
-
-The branch-service serializer exposes both a mapping `id` and the actual `service_id`. Day 49 deliberately sends `service_id` when creating a disruption and has regression coverage protecting that contract.
-
-The audit table displays at most the most recent 100 matching rows after client-side filtering so a large event history does not produce an uncontrolled DOM render.
-
-## System Admin control plane
-
-Protected System Admin APIs include:
+Protected administration APIs:
 
 ```http
 GET/POST   /api/v1/accounts/admin/staff/
@@ -389,109 +361,198 @@ GET/POST   /api/v1/services/admin/branch-services/
 GET/PATCH  /api/v1/services/admin/branch-services/<id>/
 ```
 
-Core operational configuration uses deactivation rather than destructive hard delete so historical references remain intact.
-
-## Branch-service mapping and capacity
+The React System Admin console provides real create/update workflows for:
 
 ```text
-slot duration = Service.average_service_time
-capacity = BranchService.max_bookings_per_slot
+Branches
+Services
+BranchService capacity mappings
+Staff accounts
 ```
 
-Public service APIs:
+Branch operating hours are editable. The browser performs an early `closing_time > opening_time` check and the backend independently enforces the invariant.
+
+BranchService identity is locked while editing an existing mapping; capacity and active state can be updated safely.
+
+Staff creation includes the full required account/profile fields. Staff edit exposes only fields supported truthfully by the current read/write contract. Branch-scoped roles require an active branch; System Admin uses no branch.
+
+Operational configuration uses deactivation rather than hard delete so historical references remain intact.
+
+---
+
+# Historical reporting and audit
 
 ```http
-GET /api/v1/services/
-GET /api/v1/services/branches/<branch_id>/
-GET /api/v1/services/branches/<branch_id>/<service_id>/availability/?date=YYYY-MM-DD
+GET /api/v1/queues/branches/<branch_id>/reports/operational/
+GET /api/v1/queues/branches/<branch_id>/events/
 ```
 
-The backend rejects unoffered services, invalid generated times, past slots and fully-booked slots.
+Historical reporting reads append-only `QueueEvent` facts rather than pretending current live state is historical data.
 
-## Check-in reminders
+Reports include check-ins, calls, completions, no-shows, cancellations, actual wait time, service time, completion/no-show rates, service breakdown and daily activity.
 
-Advance online appointments receive hourly in-app reminders during the six-hour check-in window until check-in.
+---
 
-```powershell
-python manage.py process_check_in_reminders
+# Disruptions and customer recovery
+
+Manager/Admin disruption APIs:
+
+```http
+GET/POST /api/v1/rescheduling/branches/<branch_id>/pauses/
+GET      /api/v1/rescheduling/pauses/<pause_id>/
+POST     /api/v1/rescheduling/pauses/<pause_id>/resume/
 ```
 
-The processor also cancels unchecked appointments after appointment time passes.
+Customer recovery APIs:
 
-## Production and SQLite3 hardening
+```http
+GET  /api/v1/rescheduling/recommendations/my/
+POST /api/v1/rescheduling/options/<option_id>/select/
+```
 
-Smart Q currently uses SQLite3 for development, testing and the current deployment scope.
+The backend revalidates stale/full/invalid replacement slots during selection.
 
-Production mode requires environment-driven settings such as:
+---
+
+# Queue number and live ETA contracts
+
+Queue numbers are allocated by database-backed sequence scoped by:
 
 ```text
-SMARTQ_ENV=production
-DJANGO_SECRET_KEY
-DJANGO_DEBUG=false
-ALLOWED_HOSTS
-SMARTQ_SQLITE_PATH=/app/data/db.sqlite3
-CORS_ALLOWED_ORIGINS
-CSRF_TRUSTED_ORIGINS
-SECURE_SSL_REDIRECT
+branch + booking date + queue type
 ```
 
-SQLite3 must live on persistent storage in deployment, with regular backup copies and a tested restore process.
-
-## Responsive and accessibility release contract
-
-Day 50 verified the shared shell and every shipped role/workflow stylesheet retain phone-width responsive rules. Dense management tables remain readable by preserving minimum widths inside horizontal `.table-wrap` overflow instead of compressing columns into unusable layouts.
-
-The shared design system retains:
+The approved live estimate remains:
 
 ```text
-visible :focus-visible outlines
-keyboard skip links
+Estimated Wait = People Ahead x Service.average_service_time
+```
+
+Counter count does not divide the ETA formula.
+
+---
+
+# Live frontend state strategy
+
+Day 53 uses TanStack Query to manage server state and query invalidation.
+
+Current polling cadence:
+
+```text
+Customer bookings / active queue   5 seconds
+Reception workload / live queue    5 seconds
+Counter / current / waiting         5 seconds
+Manager dashboard                   5 seconds
+Same-day availability              15 seconds
+```
+
+Successful local writes invalidate the related queries immediately, so the initiating browser does not wait for the next polling interval.
+
+WebSockets or Server-Sent Events remain a future option if sub-second cross-client updates become operationally necessary. Day 53 deliberately avoids adding that infrastructure while the existing HTTP contracts satisfy the current scale.
+
+---
+
+# Responsive and accessibility baseline
+
+The React design system includes:
+
+```text
+keyboard-visible focus outlines
+skip link and semantic main target
 prefers-reduced-motion handling
-semantic main targets
-status/error live regions in operational workflows
+responsive <=760px layouts
+horizontal preservation for dense operational tables
+status/error live feedback
 ```
 
-This is a verified engineering baseline, not a claim of formal WCAG certification.
+This is an engineering baseline, not a claim of formal WCAG certification.
 
-## Automated verification
+---
 
-GitHub Actions uses the SQLite3 regression path. The pipeline runs missing-migration checks, Django system checks, app-specific suites, historical reporting/audit tests, frontend milestone suites, JavaScript syntax validation and the complete Smart Q test suite.
+# Build and run
 
-Day 49 retains its focused gate:
-
-```powershell
-python manage.py test smartq.test_day49_history_recovery
-```
-
-Day 50 retains the release gates:
+## Codespaces / Linux / macOS
 
 ```bash
-find static/js -name '*.js' -print0 | xargs -0 -n1 node --check
+git pull
+pip install -r requirements.txt
+
+cd frontend
+npm install
+npm run build
+cd ..
+
+python manage.py migrate
+python manage.py bootstrap_demo
+python manage.py runserver 0.0.0.0:8000
 ```
+
+The React build is required before Django can serve `static/react/app.js` and `static/react/app.css`.
+
+## Windows PowerShell
 
 ```powershell
-python manage.py test smartq.test_day50_frontend_release
+pip install -r requirements.txt
+cd frontend
+npm install
+npm run build
+cd ..
+python manage.py migrate
+python manage.py bootstrap_demo
+python manage.py runserver
 ```
 
-Day 51 adds a focused receptionist coordination gate:
+## Frontend development server
 
-```powershell
-python manage.py test smartq.test_day51_receptionist_workflow
+Terminal 1:
+
+```bash
+python manage.py runserver 0.0.0.0:8000
 ```
 
-The Day 51 suite protects the job-first Reception surface, own-branch Today read model, Customer → Reception live-queue handoff, permission denial for Customers, and background refresh/search-stability contract.
+Terminal 2:
 
-Verified Day 51 state:
-
-```text
-Feature head c4189c34b0bbb3f589837b0db0f8ef8e29160108
-Feature push CI #360 / 33969260110 / success
-PR #49 CI #361 / 33969775826 / success
-Merge commit 7cd2f727c8b7227849fab8d1c0effd67acfd23f7
-Post-merge main CI #362 / 33970217999 / success
+```bash
+cd frontend
+npm install
+npm run dev
 ```
 
-## Permanent engineering documentation
+Vite proxies `/api` to Django at `127.0.0.1:8000`.
+
+---
+
+# Verification
+
+Local React checks:
+
+```bash
+cd frontend
+npm run typecheck
+npm run build
+cd ..
+```
+
+Django checks:
+
+```bash
+python manage.py makemigrations --check --dry-run
+python manage.py check
+python manage.py test smartq.test_day53_react_frontend
+python manage.py test
+```
+
+GitHub Actions performs the React build before the Django suites and then runs every major historical Smart Q regression gate plus the complete test suite.
+
+Legacy Day 41–52 frontend source remains temporarily in the repository as migration evidence, but the primary runtime routes now target the React host. Removal of obsolete legacy assets should happen only after live validation of the React runtime.
+
+---
+
+# Engineering documentation
+
+Permanent milestone documents live in `docs/`.
+
+Current major documents include:
 
 ```text
 docs/DAY28_OPERATIONAL_CORE.md
@@ -518,81 +579,26 @@ docs/DAY48_SYSTEM_ADMIN_WORKSPACE.md
 docs/DAY49_HISTORY_REPORTING_RECOVERY.md
 docs/DAY50_FRONTEND_RELEASE_AUDIT.md
 docs/DAY51_RECEPTIONIST_WORKFLOW.md
+docs/DAY53_REACT_FRONTEND_REENGINEERING.md
 ```
 
-## Frontend capabilities through Day 51
+Day 52 is protected by `smartq/test_day52_live_admin_controls.py` and covers South African local-time availability, live Customer state and System Admin configuration controls.
 
-Smart Q now includes a minimal public Vision/Mission entry page, explicit five-role sign-in, customer registration without automatic login, customer appointment booking and self-service live queue entry, live customer queue tracking, a job-first branch-scoped Receptionist Workspace with automatic Today/queue refresh, an assigned-counter Counter Staff Workspace, an own-branch Branch Manager Workspace, a global System Admin control plane, historical reporting/audit, disruption controls with refresh-safe restoration, customer-owned disruption recovery, unified account-security access across primary role workspaces, and release safeguards for session expiry, role transitions and JavaScript/regression verification.
+---
 
-## Roadmap
+# Milestone roadmap
 
 ```text
-Day 33  Counter Lifecycle + Staff Assignment       COMPLETE / MERGED
-Day 34  Manager Dashboard APIs                    COMPLETE / MERGED
-Day 35  Disruption + Rescheduling Repair          COMPLETE / MERGED
-Day 36  QueueEvent / Timeline / Audit             COMPLETE / MERGED
-Day 37  Admin + Account/Security Hardening        COMPLETE / MERGED
-Day 38  SQLite3 + Production Hardening            COMPLETE / MERGED
-Day 39  Historical Reporting + Performance        COMPLETE / MERGED
-Day 40  Full Backend Integration + Security Audit COMPLETE / MERGED
-Day 41  Frontend Foundation + Design System       COMPLETE / MERGED
-Day 42  Authentication + Role-Aware App Shell     COMPLETE / MERGED
-Day 43  Customer Dashboard                        COMPLETE / MERGED
-Day 44  Booking + Availability + Rescheduling     COMPLETE / MERGED
-Day 45  Receptionist Workspace                    COMPLETE / MERGED
-Day 46  Counter Staff Workspace                   COMPLETE / MERGED
-Day 47  Branch Manager Workspace                  COMPLETE / MERGED
-Day 48  System Admin Workspace                    COMPLETE / MERGED
-Day 49  Reporting + Disruption/Rescheduling UX    COMPLETE / MERGED
-Day 50  Full Frontend Integration + Release Audit COMPLETE / MERGED
-Day 51  Receptionist Workflow + Customer Handoff COMPLETE / MERGED
+Day 28-40 Backend/API/security foundation                 COMPLETE
+Day 41-50 Planned frontend roadmap                       COMPLETE
+Day 51    Reception workflow + customer handoff          COMPLETE
+Day 52    Live customer state + admin controls           COMPLETE
+Day 53    React + TypeScript frontend reengineering      CURRENT RELEASE
 ```
 
-## Technology stack
+Day 53 is considered complete only after React build/type-check, the focused Day 53 suite, every historical regression gate, the full suite, PR verification, merge and post-merge main verification succeed.
 
-| Layer | Technology |
-|---|---|
-| Backend | Django 6 |
-| API | Django REST Framework |
-| Frontend | Django templates + HTML5 + CSS3 + vanilla JavaScript ES modules |
-| Authentication | Django sessions + CSRF |
-| Authorization | Profile roles + branch/counter/ownership scope |
-| Database | SQLite3 |
-| Browser origin policy | django-cors-headers + Django CSRF |
-| Tests | Django + DRF APITestCase/TransactionTestCase |
-| CI | GitHub Actions: SQLite3 regression + frontend JavaScript syntax/release gates |
-
-## Local setup
-
-```powershell
-git clone https://github.com/Katlegojack/SmartQ.git
-cd SmartQ
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-python manage.py migrate
-python manage.py runserver
-```
-
-For a local/Codespaces demo dataset with all five Smart Q roles:
-
-```powershell
-python manage.py bootstrap_demo
-```
-
-Local verification:
-
-```powershell
-python manage.py makemigrations --check --dry-run
-python manage.py check
-python manage.py test
-```
-
-Optional frontend parse verification when Node.js is installed:
-
-```bash
-find static/js -name '*.js' -print0 | xargs -0 -n1 node --check
-```
+---
 
 ## Final project statement
 
