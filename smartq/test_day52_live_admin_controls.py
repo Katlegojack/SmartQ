@@ -1,4 +1,4 @@
-from datetime import datetime, time
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -26,7 +26,7 @@ class Day52LiveStateAndAdminControlTests(APITestCase):
         )
         Profile.objects.create(
             user=self.admin,
-            date_of_birth=timezone.localdate().replace(year=1990),
+            date_of_birth=date(1990, 1, 1),
             gender=Profile.OTHER,
             role=Profile.SYSTEM_ADMIN,
         )
@@ -39,7 +39,7 @@ class Day52LiveStateAndAdminControlTests(APITestCase):
         )
         Profile.objects.create(
             user=self.customer,
-            date_of_birth=timezone.localdate().replace(year=1995),
+            date_of_birth=date(1995, 1, 1),
             gender=Profile.OTHER,
             role=Profile.CUSTOMER,
         )
@@ -194,7 +194,7 @@ class Day52LiveStateAndAdminControlTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         self.branch.refresh_from_db()
-        future_date = timezone.localdate() + timezone.timedelta(days=1)
+        future_date = timezone.localdate() + timedelta(days=1)
         slots = get_slot_availability(self.branch, self.service, future_date)
         times = [slot["time"] for slot in slots]
 
