@@ -105,5 +105,8 @@ jobs:
       - name: Run live smoke demo bootstrap tests
         run: python manage.py test smartq.test_live_smoke_demo
 
+      - name: Run Day 51 receptionist workflow tests
+        run: python manage.py test smartq.test_day51_receptionist_workflow
+
       - name: Run full test suite
         run: python manage.py test
