@@ -342,6 +342,7 @@ function editStaff(id) {
 async function submitStaff(event) {
     event.preventDefault();
     const form = event.currentTarget;
+    if (!form.reportValidity()) return;
     const submit = one("[data-staff-submit]");
     const restore = setBusy(submit);
     setFormMessage("staff", "");
@@ -380,9 +381,10 @@ async function submitStaff(event) {
             }
         }
 
-        setMessage(editingId ? "Staff account updated." : "Staff account created.", "success");
         resetStaffForm();
         await refreshCatalogues({ silent: true });
+        setFormMessage("staff", editingId ? "Staff account updated." : "Staff account created.", "success");
+        setMessage(editingId ? "Staff account updated." : "Staff account created.", "success");
     } catch (error) {
         setFormMessage("staff", errorText(error, "Smart Q could not save this staff account."));
     } finally {
@@ -417,6 +419,7 @@ function resetBranchForm() {
     form.elements.is_active.checked = true;
     one("[data-branch-form-mode]").textContent = "Create";
     one("[data-branch-form-title]").textContent = "New branch";
+    one("[data-branch-submit]").textContent = "Create branch";
     setFormMessage("branch", "");
 }
 
@@ -432,32 +435,49 @@ function editBranch(id) {
     form.elements.is_active.checked = Boolean(branch.is_active);
     one("[data-branch-form-mode]").textContent = "Edit";
     one("[data-branch-form-title]").textContent = `Edit ${branch.name}`;
+    one("[data-branch-submit]").textContent = "Update branch";
     form.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function submitBranch(event) {
     event.preventDefault();
     const form = event.currentTarget;
+    if (!form.reportValidity()) return;
+    setFormMessage("branch", "");
+
+    const openingTime = form.elements.opening_time.value;
+    const closingTime = form.elements.closing_time.value;
+    if (openingTime && closingTime && openingTime >= closingTime) {
+        setFormMessage("branch", "Closing time must be later than opening time.");
+        form.elements.closing_time.focus();
+        return;
+    }
+
+    const editingId = state.branchEditId;
     const submit = one("[data-branch-submit]");
     const restore = setBusy(submit);
-    setFormMessage("branch", "");
     const payload = {
         branch_code: form.elements.branch_code.value.trim(),
         name: form.elements.name.value.trim(),
         address: form.elements.address.value.trim(),
         city: form.elements.city.value.trim(),
-        opening_time: form.elements.opening_time.value,
-        closing_time: form.elements.closing_time.value,
+        opening_time: openingTime,
+        closing_time: closingTime,
         is_active: form.elements.is_active.checked,
     };
     try {
-        await apiRequest(
-            state.branchEditId ? `/api/v1/branches/admin/${state.branchEditId}/` : "/api/v1/branches/admin/",
-            { method: state.branchEditId ? "PATCH" : "POST", body: payload },
+        const saved = await apiRequest(
+            editingId ? `/api/v1/branches/admin/${editingId}/` : "/api/v1/branches/admin/",
+            { method: editingId ? "PATCH" : "POST", body: payload },
         );
-        setMessage(state.branchEditId ? "Branch updated." : "Branch created.", "success");
-        resetBranchForm();
         await refreshCatalogues({ silent: true });
+        if (editingId) {
+            editBranch(saved.id);
+        } else {
+            resetBranchForm();
+        }
+        setFormMessage("branch", editingId ? "Branch updated." : "Branch created.", "success");
+        setMessage(editingId ? "Branch updated." : "Branch created.", "success");
     } catch (error) {
         setFormMessage("branch", errorText(error, "Smart Q could not save this branch."));
     } finally {
@@ -472,6 +492,7 @@ function resetServiceForm() {
     form.elements.is_active.checked = true;
     one("[data-service-form-mode]").textContent = "Create";
     one("[data-service-form-title]").textContent = "New service";
+    one("[data-service-submit]").textContent = "Create service";
     setFormMessage("service", "");
 }
 
@@ -488,12 +509,15 @@ function editService(id) {
     form.elements.is_active.checked = Boolean(service.is_active);
     one("[data-service-form-mode]").textContent = "Edit";
     one("[data-service-form-title]").textContent = `Edit ${service.name}`;
+    one("[data-service-submit]").textContent = "Update service";
     form.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function submitService(event) {
     event.preventDefault();
     const form = event.currentTarget;
+    if (!form.reportValidity()) return;
+    const editingId = state.serviceEditId;
     const submit = one("[data-service-submit]");
     const restore = setBusy(submit);
     setFormMessage("service", "");
@@ -505,13 +529,18 @@ async function submitService(event) {
         is_active: form.elements.is_active.checked,
     };
     try {
-        await apiRequest(
-            state.serviceEditId ? `/api/v1/services/admin/${state.serviceEditId}/` : "/api/v1/services/admin/",
-            { method: state.serviceEditId ? "PATCH" : "POST", body: payload },
+        const saved = await apiRequest(
+            editingId ? `/api/v1/services/admin/${editingId}/` : "/api/v1/services/admin/",
+            { method: editingId ? "PATCH" : "POST", body: payload },
         );
-        setMessage(state.serviceEditId ? "Service updated." : "Service created.", "success");
-        resetServiceForm();
         await refreshCatalogues({ silent: true });
+        if (editingId) {
+            editService(saved.id);
+        } else {
+            resetServiceForm();
+        }
+        setFormMessage("service", editingId ? "Service updated." : "Service created.", "success");
+        setMessage(editingId ? "Service updated." : "Service created.", "success");
     } catch (error) {
         setFormMessage("service", errorText(error, "Smart Q could not save this service."));
     } finally {
@@ -528,6 +557,7 @@ function resetMappingForm() {
     form.elements.service.disabled = false;
     one("[data-mapping-form-mode]").textContent = "Create";
     one("[data-mapping-form-title]").textContent = "New branch/service mapping";
+    one("[data-mapping-submit]").textContent = "Create mapping";
     setFormMessage("mapping", "");
 }
 
@@ -560,12 +590,15 @@ function editMapping(id) {
     form.elements.is_active.checked = Boolean(mapping.is_active);
     one("[data-mapping-form-mode]").textContent = "Edit";
     one("[data-mapping-form-title]").textContent = `${mapping.branch_name} · ${mapping.service_name}`;
+    one("[data-mapping-submit]").textContent = "Update mapping";
     form.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function submitMapping(event) {
     event.preventDefault();
     const form = event.currentTarget;
+    if (!form.reportValidity()) return;
+    const editingId = state.mappingEditId;
     const submit = one("[data-mapping-submit]");
     const restore = setBusy(submit);
     setFormMessage("mapping", "");
@@ -573,18 +606,23 @@ async function submitMapping(event) {
         max_bookings_per_slot: Number(form.elements.max_bookings_per_slot.value),
         is_active: form.elements.is_active.checked,
     };
-    if (!state.mappingEditId) {
+    if (!editingId) {
         payload.branch = Number(form.elements.branch.value);
         payload.service = Number(form.elements.service.value);
     }
     try {
-        await apiRequest(
-            state.mappingEditId ? `/api/v1/services/admin/branch-services/${state.mappingEditId}/` : "/api/v1/services/admin/branch-services/",
-            { method: state.mappingEditId ? "PATCH" : "POST", body: payload },
+        const saved = await apiRequest(
+            editingId ? `/api/v1/services/admin/branch-services/${editingId}/` : "/api/v1/services/admin/branch-services/",
+            { method: editingId ? "PATCH" : "POST", body: payload },
         );
-        setMessage(state.mappingEditId ? "Branch capacity updated." : "Branch/service mapping created.", "success");
-        resetMappingForm();
         await refreshCatalogues({ silent: true });
+        if (editingId) {
+            editMapping(saved.id);
+        } else {
+            resetMappingForm();
+        }
+        setFormMessage("mapping", editingId ? "Branch capacity updated." : "Branch/service mapping created.", "success");
+        setMessage(editingId ? "Branch capacity updated." : "Branch/service mapping created.", "success");
     } catch (error) {
         setFormMessage("mapping", errorText(error, "Smart Q could not save this branch/service mapping."));
     } finally {
@@ -625,6 +663,14 @@ async function inspectBranch(button) {
     }
 }
 
+function resetFromButton(button, resetFn, formSelector, firstField) {
+    resetFn();
+    if (!button.textContent.trim().toLowerCase().startsWith("new")) return;
+    const form = one(formSelector);
+    form?.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.setTimeout(() => form?.elements?.[firstField]?.focus(), 250);
+}
+
 function bindEvents() {
     one("[data-refresh-admin]")?.addEventListener("click", () => refreshCatalogues());
     one("[data-staff-role]")?.addEventListener("change", syncStaffRoleBranch);
@@ -634,10 +680,18 @@ function bindEvents() {
     one("[data-mapping-form]")?.addEventListener("submit", submitMapping);
     one("[data-inspect-branch]")?.addEventListener("click", (event) => inspectBranch(event.currentTarget));
 
-    for (const button of root.querySelectorAll("[data-reset-staff-form]")) button.addEventListener("click", resetStaffForm);
-    for (const button of root.querySelectorAll("[data-reset-branch-form]")) button.addEventListener("click", resetBranchForm);
-    for (const button of root.querySelectorAll("[data-reset-service-form]")) button.addEventListener("click", resetServiceForm);
-    for (const button of root.querySelectorAll("[data-reset-mapping-form]")) button.addEventListener("click", resetMappingForm);
+    for (const button of root.querySelectorAll("[data-reset-staff-form]")) {
+        button.addEventListener("click", () => resetFromButton(button, resetStaffForm, "[data-staff-form]", "username"));
+    }
+    for (const button of root.querySelectorAll("[data-reset-branch-form]")) {
+        button.addEventListener("click", () => resetFromButton(button, resetBranchForm, "[data-branch-form]", "branch_code"));
+    }
+    for (const button of root.querySelectorAll("[data-reset-service-form]")) {
+        button.addEventListener("click", () => resetFromButton(button, resetServiceForm, "[data-service-form]", "service_code"));
+    }
+    for (const button of root.querySelectorAll("[data-reset-mapping-form]")) {
+        button.addEventListener("click", () => resetFromButton(button, resetMappingForm, "[data-mapping-form]", "branch"));
+    }
 
     one("[data-staff-body]")?.addEventListener("click", async (event) => {
         const edit = event.target.closest("[data-edit-staff]");
