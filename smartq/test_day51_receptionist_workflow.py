@@ -104,9 +104,7 @@ class Day51ReceptionistWorkflowTests(APITestCase):
         response = self.client.get(reverse("frontend_reception_workspace"))
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        for required in ["Today's customers", "Live queue", "Add walk-in", "Check in"]:
-            if required == "Check in":
-                continue
+        for required in ["Today's customers", "Live queue", "Add walk-in"]:
             self.assertContains(response, required)
         for banned in [
             "Day 45 operational workspace",
