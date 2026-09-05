@@ -1,0 +1,36 @@
+.admin-record-button {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.admin-record-button strong {
+  font-size: 12px;
+}
+
+.admin-record-button span {
+  font-size: 10px;
+  color: #728079;
+}
+
+.admin-list-row.is-selected {
+  background: #f1f7f3;
+}
+
+.admin-list-row--static > div:last-child {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 760px) {
+  .admin-list-row {
+    gap: 12px;
+  }
+}
