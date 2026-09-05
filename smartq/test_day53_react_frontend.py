@@ -28,7 +28,7 @@ class Day53ReactFrontendReengineeringTests(TestCase):
             encoding="utf-8"
         )
 
-    def test_existing_frontend_routes_now_boot_one_react_runtime(self):
+    def test_existing_frontend_routes_boot_one_react_runtime(self):
         for route_name, (page_kind, role) in self.ROUTES.items():
             with self.subTest(route=route_name):
                 response = self.client.get(reverse(route_name))
@@ -55,9 +55,10 @@ class Day53ReactFrontendReengineeringTests(TestCase):
         ]:
             self.assertIn(dependency, package)
         self.assertIn('"build": "tsc -b && vite build"', package)
-        self.assertIn('outDir: resolve(__dirname, "../static/react")', vite)
+        self.assertIn('resolve(here, "../static/react")', vite)
         self.assertIn("QueryClientProvider", main)
         self.assertIn("BrowserRouter", main)
+        self.assertIn('import "./accessibility.css"', main)
 
     def test_react_build_outputs_are_available_to_django(self):
         self.assertIsNotNone(finders.find("react/app.js"))
@@ -80,7 +81,7 @@ class Day53ReactFrontendReengineeringTests(TestCase):
         ]:
             self.assertIn(route, app)
 
-    def test_role_routes_remain_explicit(self):
+    def test_role_routes_remain_explicit_and_allowlisted(self):
         auth = self.frontend_text("src/auth.ts")
         for contract in [
             'customer: "/app/customer/"',
@@ -91,38 +92,58 @@ class Day53ReactFrontendReengineeringTests(TestCase):
         ]:
             self.assertIn(contract, auth)
         self.assertIn("safeNextRoute", auth)
+        self.assertIn('customer: ["/app/customer/", "/app/recovery/"]', auth)
+        self.assertIn('branch_manager: ["/app/manager/", "/app/history/"]', auth)
 
-    def test_customer_surface_uses_authoritative_booking_and_queue_contracts(self):
+    def test_customer_surface_uses_live_authoritative_contracts(self):
         source = self.frontend_text("src/pages/CustomerPage.tsx")
         for endpoint in [
             '"/api/v1/bookings/my/"',
             '"/api/v1/queues/my-current/"',
             '"/api/v1/bookings/walk-ins/"',
-            '`/api/v1/bookings/${bookingId}/check-in/`',
-            '`/api/v1/bookings/${bookingId}/cancel/`',
+            '`/api/v1/bookings/${id}/check-in/`',
+            '`/api/v1/bookings/${id}/cancel/`',
         ]:
             self.assertIn(endpoint, source)
-        self.assertIn("refetchInterval: 8_000", source)
-        self.assertIn("booking.is_checked_in ? \"Checked in\" : \"Check in\"", source)
-        self.assertIn("That appointment time is no longer available", source)
+        self.assertIn("refetchInterval: 5_000", source)
+        self.assertIn("refetchInterval: date === today() ? 15_000 : false", source)
+        self.assertIn("!next.is_checked_in ?", source)
+        self.assertIn("!item.is_checked_in ?", source)
+        self.assertNotIn("Checked in</button>", source)
 
     def test_reception_counter_and_manager_are_role_specific_operational_surfaces(self):
         reception = self.frontend_text("src/pages/ReceptionPage.tsx")
         counter = self.frontend_text("src/pages/CounterPage.tsx")
         manager = self.frontend_text("src/pages/ManagerPage.tsx")
 
-        self.assertIn('"/api/v1/bookings/reception/today/"', reception)
-        self.assertIn("Today's customers", reception)
-        self.assertIn("Add walk-in", reception)
+        for contract in [
+            '"/api/v1/bookings/reception/today/"',
+            '"/api/v1/bookings/reception/walk-ins/"',
+            '`/api/v1/bookings/${id}/staff-check-in/`',
+            "Today's customers",
+            "Add walk-in",
+            "refetchInterval: 5_000",
+        ]:
+            self.assertIn(contract, reception)
 
-        self.assertIn('"/api/v1/counters/my/"', counter)
-        self.assertIn("Call next", counter)
-        self.assertIn("Complete service", counter)
+        for contract in [
+            '"/api/v1/counters/my/"',
+            "call-next",
+            "complete/",
+            "no-show/",
+            "Call next customer",
+            "Complete service",
+        ]:
+            self.assertIn(contract, counter)
 
-        self.assertIn("/api/v1/dashboard/branches/", manager)
-        self.assertIn("Queue pressure", manager)
-        self.assertIn("Counter operations", manager)
-        self.assertNotIn('to: "/app/history/", label: "History"', reception)
+        for contract in [
+            "/api/v1/dashboard/branches/",
+            "/counter-staff/",
+            "Live floor",
+            "Counters",
+            "Services today",
+        ]:
+            self.assertIn(contract, manager)
 
     def test_admin_react_console_uses_real_create_update_and_operating_hours_apis(self):
         source = self.frontend_text("src/pages/AdminPage.tsx")
@@ -133,25 +154,45 @@ class Day53ReactFrontendReengineeringTests(TestCase):
             '"/api/v1/services/admin/branch-services/"',
             "opening_time",
             "closing_time",
-            "Closing time must be later than opening time.",
+            "Create branch",
+            "Update branch",
+            "Create service",
+            "Update service",
+            "Create mapping",
+            "Create staff account",
         ]:
             self.assertIn(contract, source)
-        self.assertIn("Create branch", source)
-        self.assertIn("Update branch", source)
-        self.assertIn("Create service", source)
-        self.assertIn("Update service", source)
+        self.assertIn('method:editingBranch?"PATCH":"POST"', source)
+        self.assertIn('method:editingService?"PATCH":"POST"', source)
 
-    def test_design_system_is_custom_role_specific_and_responsive(self):
-        css = self.frontend_text("src/styles.css")
-        for selector in [
-            ".landing",
-            ".customer-home",
-            ".workspace-shell",
-            ".service-console",
-            ".manager-scoreboard",
-            ".admin-console",
+    def test_history_and_customer_recovery_are_reimplemented_in_react(self):
+        history = self.frontend_text("src/pages/HistoryPage.tsx")
+        recovery = self.frontend_text("src/pages/RecoveryPage.tsx")
+        for contract in [
+            "/reports/operational/",
+            "/events/",
+            "/api/v1/rescheduling/branches/",
+            "/api/v1/rescheduling/pauses/",
         ]:
-            self.assertIn(selector, css)
-        self.assertIn("@media (max-width: 760px)", css)
-        self.assertIn(":focus-visible", css)
-        self.assertIn("@media (prefers-reduced-motion: reduce)", css)
+            self.assertIn(contract, history)
+        self.assertIn('"/api/v1/rescheduling/recommendations/my/"', recovery)
+        self.assertIn("/api/v1/rescheduling/options/", recovery)
+
+    def test_design_system_is_custom_role_specific_responsive_and_accessible(self):
+        styles = self.frontend_text("src/styles.css")
+        workspaces = self.frontend_text("src/workspaces.css")
+        accessibility = self.frontend_text("src/accessibility.css")
+
+        for selector in [".hero", ".priority-panel", ".reception-grid", ".workspace-shell"]:
+            self.assertIn(selector, styles)
+        for selector in [
+            ".counter-console",
+            ".manager-metrics",
+            ".admin-tabs",
+            ".history-grid",
+            ".recovery-card",
+        ]:
+            self.assertIn(selector, workspaces)
+        self.assertIn("@media(max-width:760px)", styles)
+        self.assertIn(":focus-visible", accessibility)
+        self.assertIn("@media (prefers-reduced-motion: reduce)", accessibility)
