@@ -205,7 +205,11 @@ if env_bool("USE_X_FORWARDED_PROTO", default=IS_PRODUCTION):
 
 
 LANGUAGE_CODE = "en-us"
-TIME_ZONE = "UTC"
+# Smart Q's current operating deployment is South African. Appointment clocks,
+# check-in windows and branch operating hours must therefore use local SAST by
+# default rather than UTC. Future multi-region deployments can override this
+# without changing code until per-branch time zones are introduced.
+TIME_ZONE = os.getenv("SMARTQ_TIME_ZONE", "Africa/Johannesburg")
 USE_I18N = True
 USE_TZ = True
 

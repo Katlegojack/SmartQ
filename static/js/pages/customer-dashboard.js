@@ -3,6 +3,7 @@ import { getCurrentAccount, logoutAccount, routeForRole } from "../auth/session.
 
 const root = document.querySelector("[data-customer-dashboard]");
 const FINAL = new Set(["completed", "cancelled", "no_show"]);
+const LIVE_REFRESH_MS = 15000;
 const labels = {
     pending: "Pending", confirmed: "Confirmed", completed: "Completed",
     cancelled: "Cancelled", no_show: "No show", scheduled: "Scheduled",
@@ -28,6 +29,7 @@ let liveQueue = null;
 let bookingMode = { kind: "create", booking: null };
 let selectedSlot = "";
 let availabilityRequest = 0;
+let dashboardRefreshRequest = 0;
 
 function one(selector, context = document) { return context.querySelector(selector); }
 function all(selector, context = document) { return [...context.querySelectorAll(selector)]; }
@@ -317,19 +319,26 @@ function renderBookings() {
     one("[data-history-empty]").hidden = Boolean(history.length);
 }
 
-async function refresh() {
-    message();
-    showError();
-    setLoading(true);
+async function refresh({ silent = false } = {}) {
+    const requestId = ++dashboardRefreshRequest;
+    if (!silent) {
+        message();
+        showError();
+        setLoading(true);
+    }
     try {
         const [items, queue] = await Promise.all([myBookings(), currentQueue()]);
+        if (requestId !== dashboardRefreshRequest) return;
         bookings = items;
         renderQueue(queue);
         renderBookings();
-        setLoading(false);
+        if (!silent) setLoading(false);
     } catch (error) {
-        setLoading(false);
-        showError(firstApiError(error, "Smart Q could not load your dashboard. Refresh and try again."));
+        if (requestId !== dashboardRefreshRequest) return;
+        if (!silent) {
+            setLoading(false);
+            showError(firstApiError(error, "Smart Q could not load your dashboard. Refresh and try again."));
+        }
     }
 }
 
@@ -356,16 +365,22 @@ function resetSlots(help = "Choose a branch, service and date.") {
     one("[data-booking-submit]").disabled = true;
     one("[data-booking-review]").hidden = true;
 }
-function renderAvailability(data) {
+function renderAvailability(data, { preferredSlot = "" } = {}) {
     const grid = one("[data-slot-grid]");
     grid.replaceChildren();
     const slots = Array.isArray(data?.slots) ? data.slots : [];
     const available = slots.filter(slot => slot.is_available);
+    let preferredStillAvailable = false;
+
     if (!available.length) {
+        selectedSlot = "";
+        one("[data-booking-review]").hidden = true;
+        one("[data-booking-submit]").disabled = true;
         setText("[data-slot-help]", "No times available. Try another date.");
         one("[data-slot-fieldset]").disabled = false;
         return;
     }
+
     setText("[data-slot-help]", `${available.length} time${available.length === 1 ? "" : "s"} available.`);
     for (const slot of slots) {
         const labelElement = document.createElement("label");
@@ -376,6 +391,10 @@ function renderAvailability(data) {
         input.value = slot.time;
         input.disabled = !slot.is_available;
         input.dataset.slotChoice = "";
+        if (preferredSlot && slot.is_available && slot.time === preferredSlot) {
+            input.checked = true;
+            preferredStillAvailable = true;
+        }
         const main = document.createElement("strong");
         main.textContent = fmtSlotTime(slot.time);
         const detail = document.createElement("small");
@@ -385,22 +404,35 @@ function renderAvailability(data) {
     }
     one("[data-slot-fieldset]").disabled = false;
     setBookingStep(4);
+
+    if (preferredStillAvailable) {
+        selectedSlot = preferredSlot;
+        updateReview();
+    } else if (preferredSlot) {
+        selectedSlot = "";
+        one("[data-booking-review]").hidden = true;
+        one("[data-booking-submit]").disabled = true;
+        setBookingMessage("That appointment time is no longer available. Choose another time.", "error");
+    }
 }
-async function loadAvailability() {
+async function loadAvailability({ silent = false, preserveSelection = false } = {}) {
     const branchId = one("[data-booking-branch]").value;
     const serviceId = one("[data-booking-service]").value;
     const bookingDate = one("[data-booking-date]").value;
-    resetSlots("Loading times...");
+    const preferredSlot = preserveSelection ? selectedSlot : "";
+    if (!silent) resetSlots("Loading times...");
     if (!branchId || !serviceId || !bookingDate) return;
     const requestId = ++availabilityRequest;
     try {
         const data = await apiRequest(`/api/v1/services/branches/${branchId}/${serviceId}/availability/?date=${encodeURIComponent(bookingDate)}`);
         if (requestId !== availabilityRequest) return;
-        renderAvailability(data);
+        renderAvailability(data, { preferredSlot });
     } catch (error) {
         if (requestId !== availabilityRequest) return;
-        setText("[data-slot-help]", firstApiError(error, "Could not load times for this date."));
-        one("[data-slot-fieldset]").disabled = false;
+        if (!silent) {
+            setText("[data-slot-help]", firstApiError(error, "Could not load times for this date."));
+            one("[data-slot-fieldset]").disabled = false;
+        }
     }
 }
 function updateReview() {
@@ -562,24 +594,30 @@ async function submitQueueJoin(event) {
 function bookingFor(id) { return bookings.find(item => String(item.id) === String(id)); }
 async function checkIn(id, button) {
     const old = button.textContent;
+    let completed = false;
     button.disabled = true;
     button.textContent = "Checking in...";
     message();
     try {
-        await apiRequest(`/api/v1/bookings/${id}/check-in/`, { method: "POST" });
-        await refresh();
+        const updated = await apiRequest(`/api/v1/bookings/${id}/check-in/`, { method: "POST" });
+        completed = true;
+        bookings = bookings.map(item => String(item.id) === String(id) ? updated : item);
+        renderBookings();
+        await refresh({ silent: true });
         message("Check-in complete.", "success");
     } catch (error) {
         if (error instanceof ApiError) {
-            if (error.status === 409) await refresh();
+            if (error.status === 409) await refresh({ silent: true });
             const opens = error.data?.check_in_opens_at;
             message(opens ? `${error.message} Opens ${fmtDateTime(opens)}.` : firstApiError(error, error.message), "error");
         } else {
             message("Could not complete check-in.", "error");
         }
     } finally {
-        button.disabled = false;
-        button.textContent = old;
+        if (!completed && button.isConnected) {
+            button.disabled = false;
+            button.textContent = old;
+        }
     }
 }
 async function cancel(id, button) {
@@ -720,6 +758,25 @@ function bindBookingWorkflow() {
     one("[data-booking-reset]").addEventListener("click", () => resetBookingForm());
 }
 
+async function refreshVisibleCustomerState() {
+    if (document.visibilityState !== "visible") return;
+    await refresh({ silent: true });
+
+    const branchId = one("[data-booking-branch]")?.value;
+    const serviceId = one("[data-booking-service]")?.value;
+    const bookingDate = one("[data-booking-date]")?.value;
+    if (branchId && serviceId && bookingDate) {
+        await loadAvailability({ silent: true, preserveSelection: true });
+    }
+}
+
+function startLiveRefresh() {
+    window.setInterval(refreshVisibleCustomerState, LIVE_REFRESH_MS);
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") refreshVisibleCustomerState();
+    });
+}
+
 async function bootstrap() {
     if (!root) return;
     account = await getCurrentAccount();
@@ -739,6 +796,7 @@ async function bootstrap() {
     await Promise.all([loadBranches(), refresh()]);
     await resetBookingForm();
     updateQueueJoinState();
+    startLiveRefresh();
 }
 
 document.addEventListener("click", event => {
