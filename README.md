@@ -4,7 +4,7 @@
 
 Smart Q is a Django + Django REST Framework Queue Intelligence Platform designed to make queues more predictable, transparent, fair, and operationally efficient.
 
-> **Current development state:** Backend v1 is complete through Day 40, the planned frontend roadmap is complete through Day 50, and live-product refinement is implemented through Day 51. Day 51 simplifies the Receptionist workflow around today's customers, the live queue and walk-ins, and makes the Customer → Reception → Counter handoff visible through shared authoritative queue state.
+> **Current development state:** Backend v1 is complete through Day 40, the planned frontend roadmap is complete through Day 50, and live-product refinement is complete through Day 51. Day 51 simplifies the Receptionist workflow around today's customers, the live queue and walk-ins, makes the Customer → Reception → Counter handoff visible through shared authoritative queue state, and is merged and verified on `main`.
 
 ## Product principle
 
@@ -481,6 +481,16 @@ python manage.py test smartq.test_day51_receptionist_workflow
 
 The Day 51 suite protects the job-first Reception surface, own-branch Today read model, Customer → Reception live-queue handoff, permission denial for Customers, and background refresh/search-stability contract.
 
+Verified Day 51 state:
+
+```text
+Feature head c4189c34b0bbb3f589837b0db0f8ef8e29160108
+Feature push CI #360 / 33969260110 / success
+PR #49 CI #361 / 33969775826 / success
+Merge commit 7cd2f727c8b7227849fab8d1c0effd67acfd23f7
+Post-merge main CI #362 / 33970217999 / success
+```
+
 ## Permanent engineering documentation
 
 ```text
@@ -535,7 +545,7 @@ Day 47  Branch Manager Workspace                  COMPLETE / MERGED
 Day 48  System Admin Workspace                    COMPLETE / MERGED
 Day 49  Reporting + Disruption/Rescheduling UX    COMPLETE / MERGED
 Day 50  Full Frontend Integration + Release Audit COMPLETE / MERGED
-Day 51  Receptionist Workflow + Customer Handoff IMPLEMENTED
+Day 51  Receptionist Workflow + Customer Handoff COMPLETE / MERGED
 ```
 
 ## Technology stack
