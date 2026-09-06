@@ -5,10 +5,12 @@ import { ApiError, api, errorMessage } from "../api";
 import { EmptyState, ErrorState, FormMessage, ProtectedWorkspace, SectionHeader, StatusPill } from "../components";
 import type { Account, Counter, QueueTicket } from "../types";
 
-const durationClock = (seconds: number) => {
+const durationMinutes = (seconds: number, mode: "elapsed" | "remaining" = "remaining") => {
   const safe = Math.max(0, Math.floor(seconds));
-  const minutes = Math.floor(safe / 60);
-  return `${minutes}:${String(safe % 60).padStart(2, "0")}`;
+  if (safe === 0) return "0 min";
+  if (mode === "elapsed" && safe < 60) return "<1 min";
+  const minutes = mode === "elapsed" ? Math.floor(safe / 60) : Math.ceil(safe / 60);
+  return `${Math.max(minutes, 1)} min`;
 };
 
 async function assignedCounter(): Promise<Counter | null> {
@@ -105,7 +107,7 @@ function CounterBody({ account }: { account: Account }) {
           <strong className="ticket-number">{ticket.queue_number}</strong>
           <h3>{ticket.customer_name}</h3>
           <p>{ticket.service_name}</p>
-          <p>Elapsed {durationClock(liveServiceElapsedSeconds)} · Target remaining {durationClock(serviceRemainingSeconds)}</p>
+          <p>Elapsed {durationMinutes(liveServiceElapsedSeconds, "elapsed")} · Target remaining {durationMinutes(serviceRemainingSeconds)}</p>
           <div className="counter-primary-actions">
             <button className="button button--primary button--large" disabled={working} onClick={() => action.mutate({ path: `queues/counters/${c.id}/complete/` })}>Complete service</button>
             <button className="button button--quiet button--danger" disabled={working} onClick={() => action.mutate({ path: `queues/counters/${c.id}/no-show/` })}>No show</button>
