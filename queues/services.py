@@ -317,7 +317,7 @@ def get_waiting_tickets(branch, booking_date=None, queue_type=None):
 
 @transaction.atomic
 def call_next_ticket(counter, booking_date=None, *, actor=None):
-    """Assign the next checked-in waiting customer to an OPEN counter."""
+    """Assign the next checked-in waiting customer to an OPEN counter and start the service clock."""
     if counter.status != Counter.OPEN:
         return None
     if booking_date is None:
@@ -330,7 +330,9 @@ def call_next_ticket(counter, booking_date=None, *, actor=None):
     if current_ticket:
         return None
 
-    ticket = QueueTicket.objects.select_for_update().filter(
+    ticket = QueueTicket.objects.select_for_update().select_related(
+        "booking", "booking__service"
+    ).filter(
         queue_type=counter.queue_type,
         booking__branch=counter.branch,
         booking__booking_date=booking_date,
@@ -343,10 +345,30 @@ def call_next_ticket(counter, booking_date=None, *, actor=None):
     if ticket is None:
         return None
 
+    now = timezone.now()
+    service_target_seconds = max(
+        int(round((ticket.booking.service.average_service_time or 0) * 60)),
+        0,
+    )
     old_booking_status = ticket.booking.status
     ticket.assigned_counter = counter
     ticket.status = QueueTicket.SERVING
-    ticket.save(update_fields=["assigned_counter", "status"])
+    ticket.service_started_at = now
+    ticket.service_completed_at = None
+    ticket.service_target_seconds = service_target_seconds
+    ticket.actual_service_seconds = None
+    ticket.service_variance_seconds = None
+    ticket.save(
+        update_fields=[
+            "assigned_counter",
+            "status",
+            "service_started_at",
+            "service_completed_at",
+            "service_target_seconds",
+            "actual_service_seconds",
+            "service_variance_seconds",
+        ]
+    )
 
     if ticket.booking.status == Booking.PENDING:
         ticket.booking.status = Booking.CONFIRMED
@@ -362,6 +384,11 @@ def call_next_ticket(counter, booking_date=None, *, actor=None):
         to_ticket_status=QueueTicket.SERVING,
         from_booking_status=old_booking_status,
         to_booking_status=ticket.booking.status,
+        occurred_at=now,
+        metadata={
+            "service_started_at": now.isoformat(),
+            "service_target_seconds": service_target_seconds,
+        },
     )
     return ticket
 
@@ -371,14 +398,53 @@ def complete_current_ticket(counter, *, actor=None):
     ticket = QueueTicket.objects.select_for_update().filter(
         assigned_counter=counter,
         status=QueueTicket.SERVING,
-    ).select_related("booking").first()
+    ).select_related("booking", "booking__service").first()
     if ticket is None:
         return None
+
+    now = timezone.now()
+    service_started_at = ticket.service_started_at
+    if service_started_at is None:
+        called_event = QueueEvent.objects.filter(
+            ticket=ticket,
+            event_type=QueueEvent.CALLED,
+        ).order_by("occurred_at", "id").first()
+        service_started_at = called_event.occurred_at if called_event else now
+
+    service_target_seconds = ticket.service_target_seconds
+    if service_target_seconds is None:
+        service_target_seconds = max(
+            int(round((ticket.booking.service.average_service_time or 0) * 60)),
+            0,
+        )
+
+    actual_service_seconds = max(
+        int(round((now - service_started_at).total_seconds())),
+        0,
+    )
+    service_variance_seconds = actual_service_seconds - service_target_seconds
+    service_minutes_saved = round(max(-service_variance_seconds, 0) / 60, 2)
+    service_overrun_minutes = round(max(service_variance_seconds, 0) / 60, 2)
 
     old_booking_status = ticket.booking.status
     ticket.status = QueueTicket.COMPLETED
     ticket.assigned_counter = None
-    ticket.save(update_fields=["status", "assigned_counter"])
+    ticket.service_started_at = service_started_at
+    ticket.service_completed_at = now
+    ticket.service_target_seconds = service_target_seconds
+    ticket.actual_service_seconds = actual_service_seconds
+    ticket.service_variance_seconds = service_variance_seconds
+    ticket.save(
+        update_fields=[
+            "status",
+            "assigned_counter",
+            "service_started_at",
+            "service_completed_at",
+            "service_target_seconds",
+            "actual_service_seconds",
+            "service_variance_seconds",
+        ]
+    )
 
     ticket.booking.status = Booking.COMPLETED
     ticket.booking.save(update_fields=["status"])
@@ -393,6 +459,16 @@ def complete_current_ticket(counter, *, actor=None):
         to_ticket_status=QueueTicket.COMPLETED,
         from_booking_status=old_booking_status,
         to_booking_status=Booking.COMPLETED,
+        occurred_at=now,
+        metadata={
+            "service_started_at": service_started_at.isoformat(),
+            "service_completed_at": now.isoformat(),
+            "service_target_seconds": service_target_seconds,
+            "actual_service_seconds": actual_service_seconds,
+            "service_variance_seconds": service_variance_seconds,
+            "service_minutes_saved": service_minutes_saved,
+            "service_overrun_minutes": service_overrun_minutes,
+        },
     )
     return ticket
 
