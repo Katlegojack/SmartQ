@@ -129,5 +129,8 @@ jobs:
       - name: Run Day 53 React frontend reengineering tests
         run: python manage.py test smartq.test_day53_react_frontend
 
+      - name: Run Day 54 public UI guardrail tests
+        run: python manage.py test smartq.test_day54_public_ui_guardrails
+
       - name: Run full test suite
         run: python manage.py test
