@@ -110,7 +110,7 @@ class Day56CsrfSessionStabilityTests(TestCase):
 
         manager_payload = self.staff_payload("day56_manager", Profile.BRANCH_MANAGER)
         stale_response = browser.post(
-            reverse("api_admin_staff"),
+            reverse("api_admin_staff_list_create"),
             data=json.dumps(manager_payload),
             content_type="application/json",
             HTTP_X_CSRFTOKEN=stale_token,
@@ -120,7 +120,7 @@ class Day56CsrfSessionStabilityTests(TestCase):
 
         fresh_token = browser.get(reverse("api_csrf_token")).json()["csrfToken"]
         manager_response = browser.post(
-            reverse("api_admin_staff"),
+            reverse("api_admin_staff_list_create"),
             data=json.dumps(manager_payload),
             content_type="application/json",
             HTTP_X_CSRFTOKEN=fresh_token,
@@ -130,7 +130,7 @@ class Day56CsrfSessionStabilityTests(TestCase):
         self.assertEqual(manager_response.json()["branch_id"], self.branch.id)
 
         receptionist_response = browser.post(
-            reverse("api_admin_staff"),
+            reverse("api_admin_staff_list_create"),
             data=json.dumps(self.staff_payload("day56_reception", Profile.RECEPTIONIST)),
             content_type="application/json",
             HTTP_X_CSRFTOKEN=fresh_token,
