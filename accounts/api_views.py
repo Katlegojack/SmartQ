@@ -8,6 +8,7 @@ from django.contrib.auth.models import User
 from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404
 from django.utils.decorators import method_decorator
+from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
 from rest_framework import status
 from rest_framework.generics import ListAPIView
@@ -58,9 +59,10 @@ class CustomerRegistrationAPIView(APIView):
         )
 
 
+@method_decorator(never_cache, name="dispatch")
 @method_decorator(ensure_csrf_cookie, name="dispatch")
 class CSRFTokenAPIView(APIView):
-    """Issue the CSRF cookie/token required before a browser session login."""
+    """Issue a fresh, non-cacheable CSRF token before browser mutations."""
 
     permission_classes = [AllowAny]
 
