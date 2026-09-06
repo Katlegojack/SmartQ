@@ -6,13 +6,9 @@ from django.urls import reverse
 
 
 class Day53ReactFrontendReengineeringTests(TestCase):
-    """Protect the React runtime cutover and role-specific product surfaces."""
+    """Protect the React role workspaces and preserved Smart Q public entry screens."""
 
-    ROUTES = {
-        "frontend_home": ("home", ""),
-        "frontend_login": ("login", ""),
-        "frontend_staff_login": ("staff_login", ""),
-        "frontend_register": ("register", ""),
+    REACT_ROUTES = {
         "frontend_app": ("router", ""),
         "frontend_customer_workspace": ("customer", "customer"),
         "frontend_reception_workspace": ("reception", "receptionist"),
@@ -28,8 +24,8 @@ class Day53ReactFrontendReengineeringTests(TestCase):
             encoding="utf-8"
         )
 
-    def test_existing_frontend_routes_boot_one_react_runtime(self):
-        for route_name, (page_kind, role) in self.ROUTES.items():
+    def test_authenticated_frontend_routes_boot_one_react_runtime(self):
+        for route_name, (page_kind, role) in self.REACT_ROUTES.items():
             with self.subTest(route=route_name):
                 response = self.client.get(reverse(route_name))
                 self.assertEqual(response.status_code, 200)
@@ -39,6 +35,26 @@ class Day53ReactFrontendReengineeringTests(TestCase):
                 self.assertContains(response, f'data-page-kind="{page_kind}"')
                 if role:
                     self.assertContains(response, f'data-expected-role="{role}"')
+
+    def test_public_entry_routes_preserve_approved_django_templates(self):
+        home = self.client.get(reverse("frontend_home"))
+        self.assertEqual(home.status_code, 200)
+        self.assertContains(home, "Vision")
+        self.assertContains(home, "Mission")
+        self.assertNotContains(home, 'id="smartq-react-root"')
+
+        for route_name in ["frontend_login", "frontend_staff_login"]:
+            with self.subTest(route=route_name):
+                response = self.client.get(reverse(route_name))
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, 'class="role-options"')
+                self.assertContains(response, 'value="system_admin"')
+                self.assertNotContains(response, 'id="smartq-react-root"')
+
+        register = self.client.get(reverse("frontend_register"))
+        self.assertEqual(register.status_code, 200)
+        self.assertContains(register, "Create account")
+        self.assertNotContains(register, 'id="smartq-react-root"')
 
     def test_react_toolchain_is_typescript_vite_router_and_query(self):
         package = self.frontend_text("package.json")
@@ -101,6 +117,7 @@ class Day53ReactFrontendReengineeringTests(TestCase):
         self.assertIn('"/api/v1/accounts/change-password/"', components)
         self.assertIn("New password and confirmation must match.", components)
         self.assertIn("Account security", components)
+        self.assertIn(">Log out</button>", components)
 
     def test_customer_surface_uses_live_authoritative_booking_contracts(self):
         source = self.frontend_text("src/pages/CustomerPage.tsx")

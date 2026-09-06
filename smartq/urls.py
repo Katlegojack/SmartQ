@@ -1,9 +1,10 @@
 """
 URL configuration for Smart Q.
 
-Django + Django REST Framework remain Smart Q's backend and authority. Day 53
-moves the browser runtime to a single React + TypeScript application while
-preserving the existing public URLs and named routes during the migration.
+Django + Django REST Framework remain Smart Q's backend and authority. The
+React + TypeScript runtime is used for authenticated role workspaces, while the
+approved Smart Q landing, registration and role-selection sign-in screens stay
+on their established Django templates.
 """
 
 from django.contrib import admin
@@ -37,9 +38,27 @@ urlpatterns = [
     path("api/v1/rescheduling/", include("rescheduling.api_urls")),
     path("api/v1/dashboard/", include("dashboard.api_urls")),
 
-    path("login/", react_entry("login"), name="frontend_login"),
-    path("staff-login/", react_entry("staff_login"), name="frontend_staff_login"),
-    path("register/", react_entry("register"), name="frontend_register"),
+    path(
+        "login/",
+        TemplateView.as_view(
+            template_name="frontend/login.html",
+            extra_context={"initial_role": "customer"},
+        ),
+        name="frontend_login",
+    ),
+    path(
+        "staff-login/",
+        TemplateView.as_view(
+            template_name="frontend/login.html",
+            extra_context={"initial_role": "receptionist"},
+        ),
+        name="frontend_staff_login",
+    ),
+    path(
+        "register/",
+        TemplateView.as_view(template_name="frontend/register.html"),
+        name="frontend_register",
+    ),
 
     path("app/", react_entry("router"), name="frontend_app"),
     path(
@@ -69,5 +88,9 @@ urlpatterns = [
     ),
     path("app/history/", react_entry("history"), name="frontend_history_reporting_workspace"),
     path("app/recovery/", react_entry("recovery"), name="frontend_customer_recovery_workspace"),
-    path("", react_entry("home"), name="frontend_home"),
+    path(
+        "",
+        TemplateView.as_view(template_name="frontend/index.html"),
+        name="frontend_home",
+    ),
 ]
