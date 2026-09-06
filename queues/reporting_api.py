@@ -10,6 +10,7 @@ from rest_framework.views import APIView
 from accounts.permissions import IsBranchManager
 from branches.models import Branch
 
+from .forecasting import build_forecasting_summary
 from .reporting import build_branch_operational_report
 
 
@@ -72,5 +73,25 @@ class BranchOperationalReportAPIView(APIView):
         start_date, end_date = period
         return Response(
             build_branch_operational_report(branch, start_date, end_date),
+            status=status.HTTP_200_OK,
+        )
+
+
+class BranchForecastingSummaryAPIView(APIView):
+    """Data-collection quality summary for own-branch Managers and System Admins."""
+
+    permission_classes = [IsBranchManager]
+
+    def get(self, request, branch_id):
+        branch = get_object_or_404(Branch, pk=branch_id, is_active=True)
+        self.check_object_permissions(request, branch)
+
+        period, error = resolve_report_period(request)
+        if error is not None:
+            return error
+
+        start_date, end_date = period
+        return Response(
+            build_forecasting_summary(branch, start_date, end_date),
             status=status.HTTP_200_OK,
         )

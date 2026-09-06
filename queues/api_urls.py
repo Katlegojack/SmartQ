@@ -10,7 +10,7 @@ from .api_views import (
     MyCurrentQueueTicketAPIView,
     NoShowCurrentTicketAPIView,
 )
-from .reporting_api import BranchOperationalReportAPIView
+from .reporting_api import BranchForecastingSummaryAPIView, BranchOperationalReportAPIView
 
 
 urlpatterns = [
@@ -48,6 +48,11 @@ urlpatterns = [
         "branches/<int:branch_id>/reports/operational/",
         BranchOperationalReportAPIView.as_view(),
         name="api_branch_operational_report",
+    ),
+    path(
+        "branches/<int:branch_id>/reports/forecasting/",
+        BranchForecastingSummaryAPIView.as_view(),
+        name="api_branch_forecasting_summary",
     ),
 
     # Staff queue-operation APIs.

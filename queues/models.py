@@ -62,6 +62,74 @@ class QueueTicket(models.Model):
         return self.queue_number
 
 
+class QueueForecastObservation(models.Model):
+    """
+    Immutable-at-entry operational snapshot plus later outcomes for forecasting.
+
+    One ticket can have more than one observation over its lifetime because a
+    booking may be rescheduled and activated into the live queue again. Keeping
+    observations separate avoids silently overwriting an earlier queue-entry
+    context. The model intentionally stores no customer name, email, phone, date
+    of birth, gender, disability or pregnancy fields.
+    """
+
+    ticket = models.ForeignKey(
+        "queues.QueueTicket",
+        on_delete=models.CASCADE,
+        related_name="forecast_observations",
+    )
+    branch = models.ForeignKey(
+        "branches.Branch",
+        on_delete=models.PROTECT,
+        related_name="queue_forecast_observations",
+    )
+    service = models.ForeignKey(
+        "services.Service",
+        on_delete=models.PROTECT,
+        related_name="queue_forecast_observations",
+    )
+
+    queue_type = models.CharField(max_length=20, choices=QueueTicket.QUEUE_TYPES)
+    booking_source = models.CharField(max_length=20)
+    checked_in_at = models.DateTimeField(db_index=True)
+
+    # Baseline features captured at queue entry. These are facts available before
+    # the customer's eventual wait outcome is known, which prevents target leakage.
+    baseline_estimated_wait_seconds = models.PositiveIntegerField(null=True, blank=True)
+    people_ahead = models.PositiveIntegerField(default=0)
+    open_counter_count = models.PositiveIntegerField(default=0)
+    serving_count = models.PositiveIntegerField(default=0)
+
+    # Wait-time label populated when the customer is actually called.
+    called_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    actual_wait_seconds = models.PositiveIntegerField(null=True, blank=True)
+    wait_variance_seconds = models.IntegerField(null=True, blank=True)
+
+    # Service-duration label populated as the visit progresses/completes.
+    service_target_seconds = models.PositiveIntegerField(null=True, blank=True)
+    service_completed_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    actual_service_seconds = models.PositiveIntegerField(null=True, blank=True)
+    service_variance_seconds = models.IntegerField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["checked_in_at", "id"]
+        indexes = [
+            models.Index(
+                fields=["branch", "checked_in_at"],
+                name="queue_fc_branch_time",
+            ),
+            models.Index(
+                fields=["service", "checked_in_at"],
+                name="queue_fc_service_time",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.ticket_id}:{self.checked_in_at.isoformat()}"
+
+
 class QueueNumberSequence(models.Model):
     """
     Database-backed allocator for queue numbers.

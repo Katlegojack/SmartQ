@@ -145,5 +145,8 @@ jobs:
       - name: Run Day 58 real-time service timing tests
         run: python manage.py test smartq.test_day58_realtime_service_timing
 
+      - name: Run Day 59 forecasting observation tests
+        run: python manage.py test smartq.test_day59_forecasting_observations
+
       - name: Run full test suite
         run: python manage.py test
