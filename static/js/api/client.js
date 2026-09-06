@@ -2,6 +2,7 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS", "TRACE"]);
 const SESSION_EXPIRED_DETAIL = "Authentication credentials were not provided.";
 const CSRF_FAILURE_MARKERS = [
     "CSRF verification failed",
+    "CSRF Failed:",
     "CSRF token from the 'X-Csrftoken' HTTP header incorrect",
     'CSRF token from the "X-Csrftoken" HTTP header incorrect',
     "CSRF cookie not set",
@@ -15,6 +16,18 @@ export class ApiError extends Error {
         this.status = status;
         this.data = data;
     }
+}
+
+function detailFrom(data) {
+    if (!data || typeof data !== "object") return "";
+    return typeof data.detail === "string" ? data.detail : "";
+}
+
+function isCsrfFailure(data) {
+    if (!data || typeof data !== "object") return false;
+    if (data.csrfFailure) return true;
+    const detail = detailFrom(data);
+    return CSRF_FAILURE_MARKERS.some(marker => detail.includes(marker));
 }
 
 async function parseResponse(response) {
@@ -32,7 +45,7 @@ async function parseResponse(response) {
         const csrfFailure = response.status === 403 && CSRF_FAILURE_MARKERS.some(marker => text.includes(marker));
         return {
             detail: csrfFailure
-                ? "Your secure session changed. Smart Q is refreshing it; please try again."
+                ? "Smart Q is refreshing your secure session."
                 : "The request could not be completed.",
             csrfFailure,
         };
@@ -42,7 +55,7 @@ async function parseResponse(response) {
 }
 
 function signalExpiredSession(response, data) {
-    if (response.status !== 403 || data?.detail !== SESSION_EXPIRED_DETAIL) return;
+    if (response.status !== 403 || isCsrfFailure(data) || data?.detail !== SESSION_EXPIRED_DETAIL) return;
     clearCsrfToken();
     if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("smartq:session-expired"));
@@ -59,7 +72,8 @@ export async function ensureCsrfToken({ force = false } = {}) {
     const response = await fetch("/api/v1/accounts/csrf/", {
         method: "GET",
         credentials: "same-origin",
-        headers: { Accept: "application/json" },
+        cache: "no-store",
+        headers: { Accept: "application/json", "Cache-Control": "no-cache" },
     });
     const data = await parseResponse(response);
 
@@ -104,7 +118,12 @@ export async function apiRequest(path, options = {}) {
 
     let result = await send();
 
-    if (!SAFE_METHODS.has(method) && result.response.status === 403 && result.data?.csrfFailure) {
+    // Django's csrf_protect can return an HTML 403 while DRF session
+    // authentication returns JSON beginning with "CSRF Failed:". Both mean the
+    // browser has a stale token, not that the user's Smart Q session is dead.
+    // Refresh immediately and retry so forms and logout remain one-click.
+    for (let retry = 0; retry < 2; retry += 1) {
+        if (SAFE_METHODS.has(method) || result.response.status !== 403 || !isCsrfFailure(result.data)) break;
         clearCsrfToken();
         await ensureCsrfToken({ force: true });
         result = await send();
@@ -112,7 +131,9 @@ export async function apiRequest(path, options = {}) {
 
     if (!result.response.ok) {
         signalExpiredSession(result.response, result.data);
-        const message = result.data?.detail || "The request could not be completed.";
+        const message = isCsrfFailure(result.data)
+            ? "Smart Q could not refresh the secure session. Reload the page once and try again."
+            : result.data?.detail || "The request could not be completed.";
         throw new ApiError(message, result.response.status, result.data);
     }
 
