@@ -48,6 +48,16 @@ class QueueTicket(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=SCHEDULED)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # Service timing is captured at the ticket itself so live ETA calculations and
+    # future forecasting models can use the exact operational observation rather
+    # than trying to reconstruct it later from changing service averages.
+    service_started_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    service_completed_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    service_target_seconds = models.PositiveIntegerField(null=True, blank=True)
+    actual_service_seconds = models.PositiveIntegerField(null=True, blank=True)
+    # Signed residual: actual - target. Negative means the service finished early.
+    service_variance_seconds = models.IntegerField(null=True, blank=True)
+
     def __str__(self):
         return self.queue_number
 
@@ -61,7 +71,6 @@ class QueueNumberSequence(models.Model):
     next number, preventing concurrent requests from reading the same "latest"
     ticket and generating duplicates.
     """
-
     branch = models.ForeignKey(
         "branches.Branch",
         on_delete=models.CASCADE,
