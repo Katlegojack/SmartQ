@@ -65,8 +65,11 @@ export async function login(username: string, password: string, role: Role): Pro
 }
 
 export async function logout(): Promise<void> {
-  await api("/api/v1/accounts/logout/", { method: "POST" });
-  clearCsrfToken();
+  try {
+    await api("/api/v1/accounts/logout/", { method: "POST" });
+  } finally {
+    clearCsrfToken();
+  }
 }
 
 export async function registerCustomer(payload: Record<string, unknown>): Promise<unknown> {
