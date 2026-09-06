@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#0d2e4b">
     <title>Smart Q</title>
-    <link rel="stylesheet" href="{% static 'react/app.css' %}">
+    <link rel="stylesheet" href="{% static 'react/app.css' %}?v={{ frontend_asset_version }}">
 </head>
 <body
     data-react-frontend
@@ -81,6 +81,6 @@
         {% endif %}
     </template>
 
-    <script type="module" src="{% static 'react/app.js' %}"></script>
+    <script type="module" src="{% static 'react/app.js' %}?v={{ frontend_asset_version }}"></script>
 </body>
 </html>

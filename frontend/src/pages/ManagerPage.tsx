@@ -28,7 +28,13 @@ type Dashboard = {
   };
 };
 
-type Staff = { id: number; display_name: string; assigned_counter_id: number | null };
+type Staff = {
+  id: number;
+  username: string;
+  display_name: string;
+  assigned_counter_id: number | null;
+  assigned_counter_number?: string | null;
+};
 
 function ManagerBody({ account }: { account: Account }) {
   const branchId = account.branch_id!;
@@ -44,6 +50,7 @@ function ManagerBody({ account }: { account: Account }) {
   const staff = useQuery({
     queryKey: ["counter-staff", branchId],
     queryFn: () => api<Staff[]>(`/api/v1/counters/branches/${branchId}/counter-staff/`),
+    refetchInterval: 5_000,
   });
 
   const refresh = () => Promise.all([
@@ -69,6 +76,8 @@ function ManagerBody({ account }: { account: Account }) {
 
   const data = dashboard.data;
   const working = counterAction.isPending;
+  const counters = data.counters.counters;
+  const counterStaff = staff.data || [];
 
   return <>
     <FormMessage message={message} error={operationError} />
@@ -84,15 +93,23 @@ function ManagerBody({ account }: { account: Account }) {
       <section className="surface">
         <SectionHeader eyebrow="Live floor" title="Counters" action={<span className="live-indicator">Live · 5s</span>} />
         {staff.isError ? <ErrorState error={staff.error} message="Could not load available Counter Staff." /> : null}
-        <div className="counter-table">
+        {!counters.length ? <EmptyState
+          title="No counters configured"
+          detail={`System Admin must create at least one counter for ${data.branch.name} before staff can be assigned.`}
+        /> : null}
+        {counters.length > 0 && !staff.isLoading && !staff.isError && counterStaff.length === 0 ? <EmptyState
+          title="No Counter Staff in this branch"
+          detail={`System Admin must create or move a Counter Staff account to ${data.branch.name}.`}
+        /> : null}
+        {counters.length ? <div className="counter-table">
           <div className="counter-table-head"><span>Counter</span><span>Staff</span><span>Status</span><span>Customer</span><span>Controls</span></div>
-          {data.counters.counters.map((counter) => <div className="counter-table-row" key={counter.id}>
+          {counters.map((counter) => <div className="counter-table-row" key={counter.id}>
             <strong>{counter.counter_number}</strong>
             <div>
-              {counter.assigned_staff_username || "Unassigned"}
+              <strong>{counter.assigned_staff_username || "Unassigned"}</strong>
               {counter.status === "closed" ? <select
                 value={counter.assigned_staff_id || ""}
-                disabled={working}
+                disabled={working || staff.isLoading || staff.isError}
                 aria-label={`Assign Counter Staff to counter ${counter.counter_number}`}
                 onChange={(event) => {
                   const id = Number(event.target.value);
@@ -101,18 +118,28 @@ function ManagerBody({ account }: { account: Account }) {
                   }
                 }}
               >
-                <option value="">Assign staff</option>
-                {staff.data?.filter((person) => !person.assigned_counter_id || person.assigned_counter_id === counter.id).map((person) => <option key={person.id} value={person.id}>{person.display_name}</option>)}
-              </select> : null}
+                <option value="">{counterStaff.length ? "Assign staff" : "No staff available"}</option>
+                {counterStaff
+                  .filter((person) => !person.assigned_counter_id || person.assigned_counter_id === counter.id)
+                  .map((person) => <option key={person.id} value={person.id}>{person.display_name}</option>)}
+              </select> : <small className="muted">Close counter to change staff.</small>}
             </div>
             <StatusPill value={counter.status} />
             <div>{counter.current_customer ? <><strong>{counter.current_customer.queue_number}</strong><small>{counter.current_customer.customer_name}</small></> : <span className="muted">Free</span>}</div>
             <div className="row-actions">
-              {counter.status === "closed" ? <button className="text-action" disabled={working || !counter.assigned_staff_id} onClick={() => counterAction.mutate({ path: `counters/${counter.id}/open/` })}>Open</button> : counter.status === "paused" ? <button className="text-action" disabled={working} onClick={() => counterAction.mutate({ path: `counters/${counter.id}/resume/` })}>Resume</button> : <button className="text-action" disabled={working} onClick={() => counterAction.mutate({ path: `counters/${counter.id}/pause/` })}>Pause</button>}
-              {counter.status === "closed" && counter.assigned_staff_id ? <button className="text-action text-action--danger" disabled={working} onClick={() => counterAction.mutate({ path: `counters/${counter.id}/unassign/` })}>Unassign</button> : null}
+              {counter.status === "closed" ? <>
+                <button className="text-action" disabled={working || !counter.assigned_staff_id} onClick={() => counterAction.mutate({ path: `counters/${counter.id}/open/` })}>Open</button>
+                {counter.assigned_staff_id ? <button className="text-action text-action--danger" disabled={working} onClick={() => counterAction.mutate({ path: `counters/${counter.id}/unassign/` })}>Unassign</button> : null}
+              </> : counter.status === "paused" ? <>
+                <button className="text-action" disabled={working} onClick={() => counterAction.mutate({ path: `counters/${counter.id}/resume/` })}>Resume</button>
+                <button className="text-action text-action--danger" disabled={working || counter.is_busy} onClick={() => counterAction.mutate({ path: `counters/${counter.id}/close/` })}>Close</button>
+              </> : <>
+                <button className="text-action" disabled={working} onClick={() => counterAction.mutate({ path: `counters/${counter.id}/pause/` })}>Pause</button>
+                <button className="text-action text-action--danger" disabled={working || counter.is_busy} onClick={() => counterAction.mutate({ path: `counters/${counter.id}/close/` })}>Close</button>
+              </>}
             </div>
           </div>)}
-        </div>
+        </div> : null}
       </section>
 
       <section className="surface">

@@ -1,6 +1,7 @@
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS", "TRACE"]);
 const SESSION_EXPIRED_DETAIL = "Authentication credentials were not provided.";
 const LOGOUT_PATH = "/api/v1/accounts/logout/";
+const CSRF_COOKIE_NAME = "csrftoken";
 const CSRF_FAILURE_MARKERS = [
     "CSRF verification failed",
     "CSRF Failed:",
@@ -29,6 +30,21 @@ function isCsrfFailure(data) {
     if (data.csrfFailure) return true;
     const detail = detailFrom(data);
     return CSRF_FAILURE_MARKERS.some(marker => detail.includes(marker));
+}
+
+function readCookie(name) {
+    if (typeof document === "undefined") return "";
+    const prefix = `${name}=`;
+    for (const part of document.cookie.split(";")) {
+        const cookie = part.trim();
+        if (!cookie.startsWith(prefix)) continue;
+        try {
+            return decodeURIComponent(cookie.slice(prefix.length));
+        } catch {
+            return cookie.slice(prefix.length);
+        }
+    }
+    return "";
 }
 
 async function parseResponse(response) {
@@ -68,6 +84,14 @@ export function clearCsrfToken() {
 }
 
 export async function ensureCsrfToken({ force = false } = {}) {
+    // Prefer the browser's current cookie on every unsafe request. Django
+    // rotates this cookie during login, while an old module-level token can
+    // otherwise stay stale until the user retries a form.
+    const cookieToken = readCookie(CSRF_COOKIE_NAME);
+    if (cookieToken && !force) {
+        csrfToken = cookieToken;
+        return cookieToken;
+    }
     if (csrfToken && !force) return csrfToken;
 
     const response = await fetch("/api/v1/accounts/csrf/", {
@@ -86,7 +110,7 @@ export async function ensureCsrfToken({ force = false } = {}) {
         );
     }
 
-    csrfToken = data.csrfToken;
+    csrfToken = readCookie(CSRF_COOKIE_NAME) || data.csrfToken;
     return csrfToken;
 }
 
@@ -122,7 +146,6 @@ export async function apiRequest(path, options = {}) {
     // Django's csrf_protect can return an HTML 403 while DRF session
     // authentication returns JSON beginning with "CSRF Failed:". Both mean the
     // browser has a stale token, not that the user's Smart Q session is dead.
-    // Refresh immediately and retry so forms and logout remain one-click.
     for (let retry = 0; retry < 2; retry += 1) {
         if (SAFE_METHODS.has(method) || result.response.status !== 403 || !isCsrfFailure(result.data)) break;
         clearCsrfToken();
@@ -137,9 +160,6 @@ export async function apiRequest(path, options = {}) {
 
         if (result.response.status === 403 && result.data?.detail === SESSION_EXPIRED_DETAIL) {
             clearCsrfToken();
-
-            // If logout reaches an already-ended session, logout has already
-            // achieved its goal. Do not surface a fake session-expired error.
             if (path === LOGOUT_PATH) return null;
         }
 

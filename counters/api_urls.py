@@ -1,5 +1,6 @@
 from django.urls import path
 
+from .admin_api import CounterAdminDetailAPIView, CounterAdminListCreateAPIView
 from .api_views import (
     BranchCounterListAPIView,
     CounterAssignStaffAPIView,
@@ -15,6 +16,8 @@ from .manager_api import BranchCounterStaffListAPIView
 
 urlpatterns = [
     path("my/", MyAssignedCounterAPIView.as_view(), name="api_my_assigned_counter"),
+    path("admin/", CounterAdminListCreateAPIView.as_view(), name="api_counter_admin_list_create"),
+    path("admin/<int:pk>/", CounterAdminDetailAPIView.as_view(), name="api_counter_admin_detail"),
     path(
         "branches/<int:branch_id>/",
         BranchCounterListAPIView.as_view(),

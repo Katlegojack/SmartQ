@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { api, clearCsrfToken } from "./api";
+import { api, clearCsrfToken, markAuthTransition } from "./api";
 import type { Account, Role } from "./types";
 
 export const roleRoutes: Record<Role, string> = {
@@ -15,7 +15,7 @@ const roleReturnRoutes: Record<Role, readonly string[]> = {
   receptionist: ["/app/reception/"],
   counter_staff: ["/app/counter/"],
   branch_manager: ["/app/manager/", "/app/history/"],
-  system_admin: ["/app/admin/", "/app/history/"],
+  system_admin: ["/app/admin/", "/app/admin/counters/", "/app/history/"],
 };
 
 export function safeNextRoute(role: Role, requested: string | null | undefined): string {
@@ -40,7 +40,10 @@ export const roleLabels: Record<Role, string> = {
 };
 
 export async function getCurrentAccount(): Promise<Account> {
-  return api<Account>("/api/v1/accounts/me/");
+  return api<Account>("/api/v1/accounts/me/", {
+    cache: "no-store",
+    suppressSessionExpiry: true,
+  });
 }
 
 export function useCurrentAccountQuery() {
@@ -53,21 +56,25 @@ export function useCurrentAccountQuery() {
 }
 
 export async function login(username: string, password: string, role: Role): Promise<Account> {
+  markAuthTransition();
   const result = await api<{ user: Account }>("/api/v1/accounts/login/", {
     method: "POST",
     body: { username, password, role },
   });
 
-  // Django rotates the CSRF secret when a login succeeds. Never keep using the
-  // pre-login token for workspace mutations or logout.
+  // Django rotates the authenticated session and CSRF secret after login.
+  // Move to a new epoch so responses started during the transition are stale.
+  markAuthTransition();
   clearCsrfToken();
   return result.user;
 }
 
 export async function logout(): Promise<void> {
+  markAuthTransition();
   try {
     await api("/api/v1/accounts/logout/", { method: "POST" });
   } finally {
+    markAuthTransition();
     clearCsrfToken();
   }
 }
