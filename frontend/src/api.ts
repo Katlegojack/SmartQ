@@ -1,4 +1,11 @@
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS", "TRACE"]);
+const SESSION_EXPIRED_DETAIL = "Authentication credentials were not provided.";
+const CSRF_FAILURE_MARKERS = [
+  "CSRF verification failed",
+  "CSRF token from the 'X-Csrftoken' HTTP header incorrect",
+  'CSRF token from the "X-Csrftoken" HTTP header incorrect',
+  "CSRF cookie not set",
+];
 let csrfToken: string | null = null;
 
 export class ApiError extends Error {
@@ -13,12 +20,40 @@ export class ApiError extends Error {
   }
 }
 
+type ParsedErrorPayload = {
+  detail?: string;
+  csrfFailure?: boolean;
+  [key: string]: unknown;
+};
+
+function detailFrom(data: unknown): string {
+  if (!data || typeof data !== "object" || !("detail" in data)) return "";
+  return String((data as ParsedErrorPayload).detail || "");
+}
+
+function isCsrfFailure(data: unknown): boolean {
+  return Boolean(data && typeof data === "object" && (data as ParsedErrorPayload).csrfFailure);
+}
+
 async function parseResponse(response: Response): Promise<unknown> {
   if (response.status === 204) return null;
   const contentType = response.headers.get("content-type") || "";
   if (contentType.includes("application/json")) return response.json();
+
   const text = await response.text();
-  return text ? { detail: text } : null;
+  if (!text) return null;
+
+  if (contentType.includes("text/html")) {
+    const csrfFailure = response.status === 403 && CSRF_FAILURE_MARKERS.some((marker) => text.includes(marker));
+    return {
+      detail: csrfFailure
+        ? "Your secure session changed. Smart Q is refreshing it; please try again."
+        : "The request could not be completed.",
+      csrfFailure,
+    } satisfies ParsedErrorPayload;
+  }
+
+  return { detail: text } satisfies ParsedErrorPayload;
 }
 
 export function clearCsrfToken() {
@@ -32,11 +67,11 @@ export async function ensureCsrfToken(force = false): Promise<string> {
     credentials: "same-origin",
     headers: { Accept: "application/json" },
   });
-  const data = (await parseResponse(response)) as { csrfToken?: string; detail?: string } | null;
+  const data = (await parseResponse(response)) as ParsedErrorPayload | null;
   if (!response.ok || !data?.csrfToken) {
-    throw new ApiError(data?.detail || "Unable to establish a secure browser session.", response.status, data);
+    throw new ApiError(detailFrom(data) || "Unable to establish a secure browser session.", response.status, data);
   }
-  csrfToken = data.csrfToken;
+  csrfToken = String(data.csrfToken);
   return csrfToken;
 }
 
@@ -49,8 +84,6 @@ export async function api<T = unknown>(path: string, options: ApiOptions = {}): 
   const headers = new Headers(options.headers || {});
   headers.set("Accept", "application/json");
 
-  if (!SAFE_METHODS.has(method)) headers.set("X-CSRFToken", await ensureCsrfToken());
-
   let body: BodyInit | undefined;
   if (options.body instanceof FormData || typeof options.body === "string") {
     body = options.body;
@@ -59,32 +92,45 @@ export async function api<T = unknown>(path: string, options: ApiOptions = {}): 
     body = JSON.stringify(options.body);
   }
 
-  const response = await fetch(path, {
-    ...options,
-    method,
-    headers,
-    body,
-    credentials: "same-origin",
-  });
+  async function send() {
+    if (!SAFE_METHODS.has(method)) headers.set("X-CSRFToken", await ensureCsrfToken());
 
-  const data = await parseResponse(response);
-  if (!response.ok) {
-    const detail = typeof data === "object" && data && "detail" in data ? String((data as { detail?: unknown }).detail || "") : "";
-    if (response.status === 403 && detail === "Authentication credentials were not provided.") {
+    const response = await fetch(path, {
+      ...options,
+      method,
+      headers,
+      body,
+      credentials: "same-origin",
+    });
+    const data = await parseResponse(response);
+    return { response, data };
+  }
+
+  let result = await send();
+
+  if (!SAFE_METHODS.has(method) && result.response.status === 403 && isCsrfFailure(result.data)) {
+    clearCsrfToken();
+    await ensureCsrfToken(true);
+    result = await send();
+  }
+
+  if (!result.response.ok) {
+    const detail = detailFrom(result.data);
+    if (result.response.status === 403 && detail === SESSION_EXPIRED_DETAIL) {
       clearCsrfToken();
       window.dispatchEvent(new CustomEvent("smartq:session-expired"));
     }
-    throw new ApiError(detail || "The request could not be completed.", response.status, data);
+    throw new ApiError(detail || "The request could not be completed.", result.response.status, result.data);
   }
 
-  return data as T;
+  return result.data as T;
 }
 
 export function errorMessage(error: unknown, fallback = "The request could not be completed."): string {
   if (!(error instanceof ApiError)) return fallback;
   if (error.data && typeof error.data === "object") {
     for (const [field, value] of Object.entries(error.data as Record<string, unknown>)) {
-      if (field === "detail") continue;
+      if (field === "detail" || field === "csrfFailure") continue;
       if (Array.isArray(value) && typeof value[0] === "string") return value[0];
       if (typeof value === "string") return value;
     }

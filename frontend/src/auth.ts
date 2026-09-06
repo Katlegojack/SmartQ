@@ -10,7 +10,6 @@ export const roleRoutes: Record<Role, string> = {
   system_admin: "/app/admin/",
 };
 
-
 const roleReturnRoutes: Record<Role, readonly string[]> = {
   customer: ["/app/customer/", "/app/recovery/"],
   receptionist: ["/app/reception/"],
@@ -44,7 +43,6 @@ export async function getCurrentAccount(): Promise<Account> {
   return api<Account>("/api/v1/accounts/me/");
 }
 
-
 export function useCurrentAccountQuery() {
   return useQuery({
     queryKey: ["account"],
@@ -59,12 +57,19 @@ export async function login(username: string, password: string, role: Role): Pro
     method: "POST",
     body: { username, password, role },
   });
+
+  // Django rotates the CSRF secret when a login succeeds. Never keep using the
+  // pre-login token for workspace mutations or logout.
+  clearCsrfToken();
   return result.user;
 }
 
 export async function logout(): Promise<void> {
-  await api("/api/v1/accounts/logout/", { method: "POST" });
-  clearCsrfToken();
+  try {
+    await api("/api/v1/accounts/logout/", { method: "POST" });
+  } finally {
+    clearCsrfToken();
+  }
 }
 
 export async function registerCustomer(payload: Record<string, unknown>): Promise<unknown> {

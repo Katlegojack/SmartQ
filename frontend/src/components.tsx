@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from "react";
-import { Navigate, NavLink, useNavigate } from "react-router-dom";
+import { Navigate, NavLink } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { api, errorMessage } from "./api";
@@ -36,12 +36,13 @@ export function Metric({ label, value, detail }: { label: string; value: ReactNo
 }
 
 export function WorkspaceShell({ account, title, children, secondary }: { account: Account; title: string; subtitle?: string; children: ReactNode; secondary?: ReactNode }) {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [securityOpen, setSecurityOpen] = useState(false);
   const [securityBusy, setSecurityBusy] = useState(false);
   const [securityMessage, setSecurityMessage] = useState("");
   const [securityError, setSecurityError] = useState("");
+  const [logoutBusy, setLogoutBusy] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
 
   const navigation: Partial<Record<Role, Array<[string, string]>>> = {
     customer: [["Overview", "/app/customer/"], ["Recovery", "/app/recovery/"]],
@@ -52,9 +53,17 @@ export function WorkspaceShell({ account, title, children, secondary }: { accoun
   };
 
   async function signOut() {
-    await logout();
-    queryClient.clear();
-    navigate(account.role === "customer" ? "/login/" : "/staff-login/", { replace: true });
+    if (logoutBusy) return;
+    setLogoutBusy(true);
+    setLogoutError("");
+    try {
+      await logout();
+      queryClient.clear();
+      window.location.replace(account.role === "customer" ? "/login/" : "/staff-login/");
+    } catch (error) {
+      setLogoutError(errorMessage(error, "Smart Q could not log you out. Please try again."));
+      setLogoutBusy(false);
+    }
   }
 
   async function changePassword(event: FormEvent<HTMLFormElement>) {
@@ -106,7 +115,8 @@ export function WorkspaceShell({ account, title, children, secondary }: { accoun
         <div><span className="eyebrow">{roleLabels[account.role]}</span><h1>{title}</h1></div>
         <div className="workspace-header-actions">
           {secondary}
-          <button className="button button--quiet workspace-logout" type="button" onClick={signOut}>Log out</button>
+          {logoutError ? <span className="workspace-logout-error" role="alert">{logoutError}</span> : null}
+          <button className="button button--quiet workspace-logout" type="button" onClick={signOut} disabled={logoutBusy}>Log out</button>
         </div>
       </header>
       {children}

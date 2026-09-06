@@ -132,5 +132,8 @@ jobs:
       - name: Run Day 54 public UI guardrail tests
         run: python manage.py test smartq.test_day54_public_ui_guardrails
 
+      - name: Run Day 55 authentication and session reliability tests
+        run: python manage.py test smartq.test_day55_auth_session_ui
+
       - name: Run full test suite
         run: python manage.py test

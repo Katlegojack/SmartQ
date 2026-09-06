@@ -17,7 +17,7 @@ class Day42FrontendAuthenticationTests(TestCase):
         self.assertEqual(login.status_code, 200)
         self.assertEqual(staff_login.status_code, 200)
         self.assertEqual(register.status_code, 200)
-        self.assertContains(login, "Registered users")
+        self.assertContains(login, "Sign in")
         self.assertContains(login, "Account type")
         self.assertContains(login, "data-role-selector")
         for label in ["Customer", "Receptionist", "Counter Staff", "Branch Manager", "System Admin"]:
@@ -29,6 +29,7 @@ class Day42FrontendAuthenticationTests(TestCase):
         self.assertContains(login, "/static/js/pages/login.js")
         self.assertContains(staff_login, "/static/js/pages/login.js")
         self.assertContains(register, "/static/js/pages/register.js")
+        self.assertNotContains(login, "Run the queue.")
 
     def test_registration_frontend_does_not_auto_login_new_customer(self):
         register_path = Path(finders.find("js/pages/register.js"))
