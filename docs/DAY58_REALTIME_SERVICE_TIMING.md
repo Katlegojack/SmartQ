@@ -13,7 +13,21 @@ Smart Q now separates two concepts:
 1. **Live operational state** — what is happening at the counter right now.
 2. **Learning data** — what the system predicted versus what actually happened.
 
-## Service clock
+## User-facing time unit
+
+Smart Q presents queue and service timing to users in **minutes**, not seconds.
+
+Examples:
+
+```text
+Estimated wait: 15 min
+Service elapsed: 7 min
+Target remaining: 13 min
+```
+
+Second-resolution timestamps and integer second values are retained internally because they are useful for accurate measurement, deterministic calculations and future model training. They are implementation data, not the customer-facing display unit.
+
+## Service timing
 
 When Counter Staff calls a customer, Smart Q records:
 
@@ -28,7 +42,7 @@ While the customer is being served, the UI derives:
 - target time remaining
 - target overrun, when applicable
 
-The customer and counter workspaces tick locally once per second. Server state is refreshed every two seconds, so completion/counter transitions are picked up without requiring a manual refresh.
+The browser may update its internal second-resolution clock so minute boundaries change promptly, but the visible values are rounded/formatted as minutes. Authoritative server state is refreshed every two seconds, so completion and counter transitions are picked up without requiring a manual refresh.
 
 ## Waiting ETA
 
@@ -60,9 +74,9 @@ The completion QueueEvent also stores:
 
 Example: a 20-minute target completed in 15 minutes becomes:
 
-- target = `1200` seconds
-- actual = `900` seconds
-- variance = `-300` seconds
+- target = `1200` seconds internally
+- actual = `900` seconds internally
+- variance = `-300` seconds internally
 - minutes saved = `5.0`
 
 The five minutes are not discarded. They become a labelled historical residual that a future model can learn from.
@@ -75,7 +89,16 @@ Instead, Day 58 captures immutable per-service observations. A later forecasting
 
 ## Real-time boundary
 
-The visible clocks tick every second in the browser. Operational server state is polled every two seconds. This provides a live countdown and near-real-time state synchronization without introducing WebSocket infrastructure yet.
+Smart Q does not claim WebSocket real-time behavior in Day 58.
+
+```text
+Visible time unit          minutes
+Internal timing precision  seconds / timestamps
+Operational API refresh    every 2 seconds
+Transport                   normal HTTP polling
+```
+
+This gives users a simple minute-based estimate while keeping enough measurement precision for correct queue calculations and future forecasting work.
 
 ## Database migration
 
@@ -87,9 +110,12 @@ Migration `queues/0009_queueticket_service_timing.py` adds the service timing fi
 
 - current service being counted ahead of a waiting customer
 - 20-minute service target decreasing to 15 minutes after five elapsed minutes
-- live elapsed/remaining clock for a serving customer
-- 20-minute target completed in 15 minutes retaining a `-300` second residual and `5.0` minutes saved
+- elapsed/remaining service timing for a serving customer
+- 20-minute target completed in 15 minutes retaining a `-300` second internal residual and `5.0` minutes saved
 - parallel open counters reducing wait when another counter is immediately available
-- per-second customer countdown and two-second operational refresh contracts
+- minute-based Customer and Counter Staff presentation
+- absence of `M:SS` / visible seconds formatting
+- two-second authoritative operational refresh
+- retention of second-resolution internal timing fields for forecasting
 
 The Day 58 test gate runs before the complete Django regression suite in CI.
