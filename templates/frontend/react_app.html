@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#101915">
+    <meta name="theme-color" content="#0d2e4b">
     <title>Smart Q</title>
     <link rel="stylesheet" href="{% static 'react/app.css' %}">
 </head>
@@ -19,10 +19,9 @@
     </main>
 
     {#
-      The Day 41-52 Django frontend tests are part of Smart Q's engineering
-      history. Keep their route markers inert during the React cutover so the
-      old runtime can be retired without deleting regression evidence in the
-      same change. Nothing inside this template element executes or renders.
+      Historical frontend contract markers remain inert so regression tests can
+      verify retired routes without placing engineering notes in the product UI.
+      Nothing inside this template element executes or renders.
     #}
     <template id="legacy-frontend-contract">
         {% if page_kind == "home" %}
