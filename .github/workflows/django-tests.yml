@@ -148,5 +148,8 @@ jobs:
       - name: Run Day 59 forecasting observation tests
         run: python manage.py test smartq.test_day59_forecasting_observations
 
+      - name: Run Day 60 workspace shell cleanup tests
+        run: python manage.py test smartq.test_day60_workspace_shell_cleanup
+
       - name: Run full test suite
         run: python manage.py test
