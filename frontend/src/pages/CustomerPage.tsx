@@ -18,11 +18,12 @@ const FINAL = new Set(["completed", "cancelled", "no_show"]);
 const today = () => new Date().toLocaleDateString("en-CA");
 const niceDate = (value: string) => new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short" }).format(new Date(`${value}T00:00:00`));
 const niceTime = (value: string) => value.slice(0, 5);
-const durationClock = (seconds: number) => {
+const durationMinutes = (seconds: number, mode: "elapsed" | "remaining" = "remaining") => {
   const safe = Math.max(0, Math.floor(seconds));
-  const minutes = Math.floor(safe / 60);
-  const remainder = safe % 60;
-  return `${minutes}:${String(remainder).padStart(2, "0")}`;
+  if (safe === 0) return "0 min";
+  if (mode === "elapsed" && safe < 60) return "<1 min";
+  const minutes = mode === "elapsed" ? Math.floor(safe / 60) : Math.ceil(safe / 60);
+  return `${Math.max(minutes, 1)} min`;
 };
 
 async function getCurrentQueue(): Promise<CurrentQueue | null> {
@@ -209,11 +210,11 @@ function CustomerBody({ account }: { account: Account }) {
       <div><span className="eyebrow">Live queue</span><div className="queue-number">{activeQueue.ticket.queue_number}</div><h2>{activeQueue.ticket.service_name}</h2><p>{activeQueue.ticket.branch_name}</p></div>
       <div className="queue-facts">
         {isServing ? <>
-          <Metric label="Service elapsed" value={durationClock(liveServiceElapsedSeconds)} />
-          <Metric label="Target remaining" value={durationClock(liveServiceRemainingSeconds)} />
+          <Metric label="Service elapsed" value={durationMinutes(liveServiceElapsedSeconds, "elapsed")} />
+          <Metric label="Target remaining" value={durationMinutes(liveServiceRemainingSeconds)} />
         </> : <>
           <Metric label="People ahead" value={activeQueue.prediction.people_ahead} />
-          <Metric label="Live wait" value={durationClock(liveWaitSeconds)} />
+          <Metric label="Estimated wait" value={durationMinutes(liveWaitSeconds)} />
         </>}
         <Metric label="Status" value={<StatusPill value={activeQueue.ticket.status} />} />
       </div>
