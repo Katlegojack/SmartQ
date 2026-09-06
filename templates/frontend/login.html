@@ -6,10 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="Sign in to Smart Q.">
     <title>Sign in | Smart Q</title>
-    <link rel="stylesheet" href="{% static 'css/smartq.css' %}">
-    <link rel="stylesheet" href="{% static 'css/auth-shell.css' %}">
-    <link rel="stylesheet" href="{% static 'css/login.css' %}">
-    <script type="module" src="{% static 'js/pages/login.js' %}" defer></script>
+    <link rel="stylesheet" href="{% static 'css/smartq.css' %}?v={{ frontend_asset_version }}">
+    <link rel="stylesheet" href="{% static 'css/auth-shell.css' %}?v={{ frontend_asset_version }}">
+    <link rel="stylesheet" href="{% static 'css/login.css' %}?v={{ frontend_asset_version }}">
+    <script type="module" src="{% static 'js/pages/login.js' %}?v={{ frontend_asset_version }}" defer></script>
 </head>
 <body class="auth-page">
     <a class="skip-link" href="#main-content">Skip to content</a>

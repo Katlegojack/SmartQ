@@ -138,5 +138,8 @@ jobs:
       - name: Run Day 56 CSRF and session stability tests
         run: python manage.py test smartq.test_day56_csrf_session_stability
 
+      - name: Run Day 57 session and counter staffing tests
+        run: python manage.py test smartq.test_day57_session_counter_staffing
+
       - name: Run full test suite
         run: python manage.py test

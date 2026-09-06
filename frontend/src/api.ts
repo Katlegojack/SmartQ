@@ -1,6 +1,8 @@
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS", "TRACE"]);
 const SESSION_EXPIRED_DETAIL = "Authentication credentials were not provided.";
 const LOGOUT_PATH = "/api/v1/accounts/logout/";
+const CURRENT_ACCOUNT_PATH = "/api/v1/accounts/me/";
+const CSRF_COOKIE_NAME = "csrftoken";
 const CSRF_FAILURE_MARKERS = [
   "CSRF verification failed",
   "CSRF Failed:",
@@ -9,6 +11,8 @@ const CSRF_FAILURE_MARKERS = [
   "CSRF cookie not set",
 ];
 let csrfToken: string | null = null;
+let authEpoch = 0;
+let sessionValidationPromise: Promise<boolean> | null = null;
 
 export class ApiError extends Error {
   status: number;
@@ -41,6 +45,21 @@ function isCsrfFailure(data: unknown): boolean {
   return CSRF_FAILURE_MARKERS.some((marker) => detail.includes(marker));
 }
 
+function readCookie(name: string): string {
+  if (typeof document === "undefined") return "";
+  const prefix = `${name}=`;
+  for (const part of document.cookie.split(";")) {
+    const cookie = part.trim();
+    if (!cookie.startsWith(prefix)) continue;
+    try {
+      return decodeURIComponent(cookie.slice(prefix.length));
+    } catch {
+      return cookie.slice(prefix.length);
+    }
+  }
+  return "";
+}
+
 async function parseResponse(response: Response): Promise<unknown> {
   if (response.status === 204) return null;
   const contentType = response.headers.get("content-type") || "";
@@ -66,8 +85,47 @@ export function clearCsrfToken() {
   csrfToken = null;
 }
 
+export function markAuthTransition() {
+  authEpoch += 1;
+  clearCsrfToken();
+}
+
+async function confirmAuthenticatedSession(): Promise<boolean> {
+  if (sessionValidationPromise) return sessionValidationPromise;
+
+  sessionValidationPromise = (async () => {
+    try {
+      const response = await fetch(CURRENT_ACCOUNT_PATH, {
+        method: "GET",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { Accept: "application/json", "Cache-Control": "no-cache" },
+      });
+      if (response.ok) return true;
+      if (response.status === 401 || response.status === 403) return false;
+      // A server/network-side problem must not be misrepresented as logout.
+      return true;
+    } catch {
+      return true;
+    }
+  })().finally(() => {
+    sessionValidationPromise = null;
+  });
+
+  return sessionValidationPromise;
+}
+
 export async function ensureCsrfToken(force = false): Promise<string> {
+  // Django's default CSRF cookie is readable by browser JavaScript. Prefer the
+  // live cookie on every mutation so a login in this tab never leaves us using
+  // an in-memory token that Django has already rotated.
+  const cookieToken = readCookie(CSRF_COOKIE_NAME);
+  if (cookieToken && !force) {
+    csrfToken = cookieToken;
+    return cookieToken;
+  }
   if (csrfToken && !force) return csrfToken;
+
   const response = await fetch("/api/v1/accounts/csrf/", {
     method: "GET",
     credentials: "same-origin",
@@ -78,17 +136,21 @@ export async function ensureCsrfToken(force = false): Promise<string> {
   if (!response.ok || !data?.csrfToken) {
     throw new ApiError(detailFrom(data) || "Unable to establish a secure browser session.", response.status, data);
   }
-  csrfToken = String(data.csrfToken);
+
+  csrfToken = readCookie(CSRF_COOKIE_NAME) || String(data.csrfToken);
   return csrfToken;
 }
 
 export interface ApiOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
+  suppressSessionExpiry?: boolean;
 }
 
 export async function api<T = unknown>(path: string, options: ApiOptions = {}): Promise<T> {
-  const method = (options.method || "GET").toUpperCase();
-  const headers = new Headers(options.headers || {});
+  const { suppressSessionExpiry = false, ...requestOptions } = options;
+  const requestEpoch = authEpoch;
+  const method = (requestOptions.method || "GET").toUpperCase();
+  const headers = new Headers(requestOptions.headers || {});
   headers.set("Accept", "application/json");
 
   let body: BodyInit | undefined;
@@ -103,7 +165,7 @@ export async function api<T = unknown>(path: string, options: ApiOptions = {}): 
     if (!SAFE_METHODS.has(method)) headers.set("X-CSRFToken", await ensureCsrfToken());
 
     const response = await fetch(path, {
-      ...options,
+      ...requestOptions,
       method,
       headers,
       body,
@@ -115,15 +177,41 @@ export async function api<T = unknown>(path: string, options: ApiOptions = {}): 
 
   let result = await send();
 
-  // Django middleware can return HTML CSRF failures while DRF's
-  // SessionAuthentication returns JSON with a "CSRF Failed:" detail. Treat
-  // both as the same recoverable browser-state problem. Retry immediately
-  // with a forced, non-cached token so the user never has to resubmit a form.
+  // A request that started under an older login/logout transition must never
+  // revive itself under the new account. This removes a race where an old
+  // polling request could kick a freshly logged-in user back to Sign in.
   for (let retry = 0; retry < 2; retry += 1) {
-    if (SAFE_METHODS.has(method) || result.response.status !== 403 || !isCsrfFailure(result.data)) break;
+    if (
+      requestEpoch !== authEpoch
+      || SAFE_METHODS.has(method)
+      || result.response.status !== 403
+      || !isCsrfFailure(result.data)
+    ) break;
     clearCsrfToken();
     await ensureCsrfToken(true);
     result = await send();
+  }
+
+  let confirmedAuthenticated: boolean | null = null;
+  const missingSession = () => (
+    result.response.status === 403
+    && !isCsrfFailure(result.data)
+    && detailFrom(result.data) === SESSION_EXPIRED_DETAIL
+  );
+
+  // Before declaring a session dead, confirm the browser's CURRENT cookie with
+  // /me/. If the original response belonged to an old request, retry once and
+  // keep the valid new session instead of redirecting the user.
+  if (
+    !suppressSessionExpiry
+    && path !== LOGOUT_PATH
+    && missingSession()
+    && requestEpoch === authEpoch
+  ) {
+    confirmedAuthenticated = await confirmAuthenticatedSession();
+    if (confirmedAuthenticated && requestEpoch === authEpoch) {
+      result = await send();
+    }
   }
 
   if (!result.response.ok) {
@@ -136,11 +224,17 @@ export async function api<T = unknown>(path: string, options: ApiOptions = {}): 
       clearCsrfToken();
 
       // Logout is idempotent: if the server session is already gone, the user
-      // is already in the desired logged-out state. Do not convert that into a
-      // fake "session expired" redirect/error.
+      // is already in the desired logged-out state.
       if (path === LOGOUT_PATH) return null as T;
 
-      window.dispatchEvent(new CustomEvent("smartq:session-expired"));
+      if (!suppressSessionExpiry && requestEpoch === authEpoch) {
+        if (confirmedAuthenticated === null) {
+          confirmedAuthenticated = await confirmAuthenticatedSession();
+        }
+        if (!confirmedAuthenticated && requestEpoch === authEpoch) {
+          window.dispatchEvent(new CustomEvent("smartq:session-expired"));
+        }
+      }
     }
     throw new ApiError(detail || "The request could not be completed.", result.response.status, result.data);
   }

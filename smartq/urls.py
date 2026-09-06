@@ -7,21 +7,38 @@ approved Smart Q landing, registration and role-selection sign-in screens stay
 on their established Django templates.
 """
 
+import os
+import time
+
 from django.contrib import admin
 from django.urls import include, path
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import never_cache
 from django.views.generic import TemplateView
 
 
 REACT_TEMPLATE = "frontend/react_app.html"
+FRONTEND_ASSET_VERSION = os.getenv("SMARTQ_FRONTEND_ASSET_VERSION") or str(time.time_ns())
+
+
+@method_decorator(never_cache, name="dispatch")
+class FrontendTemplateView(TemplateView):
+    """Never cache Smart Q entry shells that point at mutable frontend assets."""
+
+
+def frontend_page(template_name, **extra_context):
+    context = {"frontend_asset_version": FRONTEND_ASSET_VERSION, **extra_context}
+    return FrontendTemplateView.as_view(
+        template_name=template_name,
+        extra_context=context,
+    )
 
 
 def react_entry(page_kind, *, expected_role=""):
-    return TemplateView.as_view(
-        template_name=REACT_TEMPLATE,
-        extra_context={
-            "page_kind": page_kind,
-            "expected_role": expected_role,
-        },
+    return frontend_page(
+        REACT_TEMPLATE,
+        page_kind=page_kind,
+        expected_role=expected_role,
     )
 
 
@@ -40,23 +57,23 @@ urlpatterns = [
 
     path(
         "login/",
-        TemplateView.as_view(
-            template_name="frontend/login.html",
-            extra_context={"initial_role": "customer"},
+        frontend_page(
+            "frontend/login.html",
+            initial_role="customer",
         ),
         name="frontend_login",
     ),
     path(
         "staff-login/",
-        TemplateView.as_view(
-            template_name="frontend/login.html",
-            extra_context={"initial_role": "receptionist"},
+        frontend_page(
+            "frontend/login.html",
+            initial_role="receptionist",
         ),
         name="frontend_staff_login",
     ),
     path(
         "register/",
-        TemplateView.as_view(template_name="frontend/register.html"),
+        frontend_page("frontend/register.html"),
         name="frontend_register",
     ),
 
@@ -86,11 +103,16 @@ urlpatterns = [
         react_entry("admin", expected_role="system_admin"),
         name="frontend_admin_workspace",
     ),
+    path(
+        "app/admin/counters/",
+        react_entry("admin_counters", expected_role="system_admin"),
+        name="frontend_admin_counter_workspace",
+    ),
     path("app/history/", react_entry("history"), name="frontend_history_reporting_workspace"),
     path("app/recovery/", react_entry("recovery"), name="frontend_customer_recovery_workspace"),
     path(
         "",
-        TemplateView.as_view(template_name="frontend/index.html"),
+        frontend_page("frontend/index.html"),
         name="frontend_home",
     ),
 ]

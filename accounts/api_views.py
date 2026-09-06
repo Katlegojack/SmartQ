@@ -70,6 +70,7 @@ class CSRFTokenAPIView(APIView):
         return Response({"csrfToken": get_token(request)})
 
 
+@method_decorator(never_cache, name="dispatch")
 @method_decorator(csrf_protect, name="dispatch")
 class LoginAPIView(APIView):
     """Authenticate credentials, verify the selected Smart Q role, then start a session."""
@@ -126,6 +127,7 @@ class LoginAPIView(APIView):
         )
 
 
+@method_decorator(never_cache, name="dispatch")
 class LogoutAPIView(APIView):
     """End the authenticated user's Django session."""
 
@@ -136,6 +138,7 @@ class LogoutAPIView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+@method_decorator(never_cache, name="dispatch")
 class CurrentAccountAPIView(APIView):
     """Return the logged-in user's identity, Smart Q role, and branch scope."""
 
@@ -166,8 +169,6 @@ class ChangePasswordAPIView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
 
-        # Changing a Django password changes the session auth hash. Preserve the
-        # current trusted session instead of unexpectedly logging the user out.
         update_session_auth_hash(request, user)
 
         return Response(

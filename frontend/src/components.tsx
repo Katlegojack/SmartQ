@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Navigate, NavLink } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -8,6 +8,13 @@ import type { Account, Role } from "./types";
 
 export function PageLoading({ label = "Loading" }: { label?: string }) {
   return <div className="page-state"><span className="spinner" aria-hidden="true" /><p>{label}</p></div>;
+}
+
+export function ServerRedirect({ to }: { to: string }) {
+  useEffect(() => {
+    window.location.replace(to);
+  }, [to]);
+  return <PageLoading label="Opening Smart Q" />;
 }
 
 export function ErrorState({ error, message = "Smart Q could not load this view." }: { error: unknown; message?: string }) {
@@ -49,7 +56,7 @@ export function WorkspaceShell({ account, title, children, secondary }: { accoun
     receptionist: [["Reception", "/app/reception/"]],
     counter_staff: [["Counter", "/app/counter/"]],
     branch_manager: [["Operations", "/app/manager/"], ["History", "/app/history/"]],
-    system_admin: [["Administration", "/app/admin/"], ["History", "/app/history/"]],
+    system_admin: [["Administration", "/app/admin/"], ["Counters", "/app/admin/counters/"], ["History", "/app/history/"]],
   };
 
   async function signOut() {
@@ -139,7 +146,7 @@ export function WorkspaceShell({ account, title, children, secondary }: { accoun
 export function ProtectedWorkspace({ role, title, children, secondary }: { role: Role; title: string; subtitle?: string; children: (account: Account) => ReactNode; secondary?: ReactNode }) {
   const account = useCurrentAccountQuery();
   if (account.isLoading) return <PageLoading label="Opening Smart Q" />;
-  if (account.isError || !account.data) return <Navigate to={role === "customer" ? "/login/" : "/staff-login/"} replace />;
+  if (account.isError || !account.data) return <ServerRedirect to={role === "customer" ? "/login/" : "/staff-login/"} />;
   if (account.data.role !== role) return <Navigate to={roleRoutes[account.data.role]} replace />;
   return <WorkspaceShell account={account.data} title={title} secondary={secondary}>{children(account.data)}</WorkspaceShell>;
 }
