@@ -116,7 +116,7 @@ export function WorkspaceShell({ account, title, children, secondary }: { accoun
         <div className="workspace-header-actions">
           {secondary}
           {logoutError ? <span className="workspace-logout-error" role="alert">{logoutError}</span> : null}
-          <button className="button button--quiet workspace-logout" type="button" onClick={signOut} disabled={logoutBusy}>{logoutBusy ? "Logging out…" : "Log out"}</button>
+          <button className="button button--quiet workspace-logout" type="button" onClick={signOut} disabled={logoutBusy}>Log out</button>
         </div>
       </header>
       {children}
