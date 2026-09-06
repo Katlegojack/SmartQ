@@ -69,6 +69,13 @@
   white-space: nowrap;
 }
 
+.workspace-logout-error {
+  max-width: 260px;
+  color: #943d34;
+  font-size: 11px;
+  text-align: right;
+}
+
 .surface {
   padding: 18px;
 }
@@ -159,6 +166,143 @@
   margin-top: 18px;
 }
 
+/* Keep authenticated React workspaces visually consistent with the approved
+   blue Smart Q landing page. Semantic success/warning/error colours remain
+   untouched; only brand/chrome colours are normalised. */
+:root {
+  --ink: #172033;
+  --muted: #667484;
+  --line: #d8dee4;
+  --paper: #ffffff;
+  --soft: #f4f7fa;
+  --brand: #2878c8;
+  --brand-dark: #2268ae;
+  --nav: #0d2e4b;
+}
+
+html,
+body {
+  background: #f6f8fa;
+  color: #172033;
+}
+
+.brand-mark {
+  background: #2878c8;
+}
+
+.workspace-nav {
+  background: #0d2e4b;
+}
+
+.workspace-nav .brand small,
+.nav-account small {
+  color: #a9bac9;
+}
+
+.nav-link {
+  color: #b8c6d2;
+}
+
+.nav-link:hover,
+.nav-link.is-active {
+  background: #163b5c;
+  color: #ffffff;
+}
+
+.nav-account {
+  border-top-color: #234966;
+}
+
+.link-button {
+  color: #c5d2dc;
+}
+
+.text-action,
+.auth-switch a,
+.live-indicator {
+  color: #2878c8;
+}
+
+.button--secondary {
+  border-color: #b8cce0;
+  color: #1f5f99;
+  background: #f8fbfe;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: #2878c8;
+  box-shadow: 0 0 0 3px rgba(40, 120, 200, 0.13);
+}
+
+.slot.is-selected {
+  background: #2878c8;
+  border-color: #2878c8;
+}
+
+.priority-panel,
+.counter-console {
+  background: #0d2e4b;
+}
+
+.priority-panel .metric {
+  border-left-color: #31526d;
+}
+
+.priority-panel .queue-message {
+  border-top-color: #31526d;
+}
+
+.priority-panel .status {
+  background: #163b5c;
+  color: #dce9f4;
+}
+
+.admin-list-row.is-selected {
+  background: #f1f6fb;
+}
+
+.dialog-backdrop {
+  background: rgba(13, 46, 75, 0.48);
+}
+
+.dialog {
+  border-color: #d8dee4;
+  box-shadow: 0 18px 50px rgba(13, 46, 75, 0.18);
+}
+
+/* The public landing page already carries the product story. If the React
+   development route is opened directly, keep auth focused on the form instead
+   of showing a second marketing panel. Django remains the production owner of
+   /login/, /staff-login/ and /register/. */
+.auth-page {
+  grid-template-columns: 1fr;
+  background: #f6f8fa;
+}
+
+.auth-brand {
+  display: none;
+}
+
+.auth-panel {
+  min-height: 100vh;
+  padding: 40px 20px;
+}
+
+.auth-panel form {
+  width: min(520px, 100%);
+  padding: 30px;
+  border: 1px solid #d8dee4;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 14px 34px rgba(13, 46, 75, 0.08);
+}
+
+.auth-panel--wide form {
+  width: min(700px, 100%);
+}
+
 @media (max-width: 1050px) {
   .workspace-shell {
     grid-template-columns: 196px minmax(0, 1fr);
@@ -187,6 +331,10 @@
 
   .workspace-header-actions {
     flex: 0 0 auto;
+  }
+
+  .workspace-logout-error {
+    display: none;
   }
 
   .workspace-logout {
@@ -219,5 +367,13 @@
   .dialog {
     width: 100%;
     border-radius: 12px 12px 8px 8px;
+  }
+
+  .auth-panel {
+    padding: 24px 14px;
+  }
+
+  .auth-panel form {
+    padding: 22px;
   }
 }
