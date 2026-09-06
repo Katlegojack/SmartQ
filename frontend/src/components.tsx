@@ -35,7 +35,7 @@ export function Metric({ label, value, detail }: { label: string; value: ReactNo
   return <div className="metric"><span>{label}</span><strong>{value}</strong>{detail ? <small>{detail}</small> : null}</div>;
 }
 
-export function WorkspaceShell({ account, title, children, secondary }: { account: Account; title: string; children: ReactNode; secondary?: ReactNode }) {
+export function WorkspaceShell({ account, title, children, secondary }: { account: Account; title: string; subtitle?: string; children: ReactNode; secondary?: ReactNode }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [securityOpen, setSecurityOpen] = useState(false);
@@ -126,7 +126,7 @@ export function WorkspaceShell({ account, title, children, secondary }: { accoun
   </div>;
 }
 
-export function ProtectedWorkspace({ role, title, children, secondary }: { role: Role; title: string; children: (account: Account) => ReactNode; secondary?: ReactNode }) {
+export function ProtectedWorkspace({ role, title, children, secondary }: { role: Role; title: string; subtitle?: string; children: (account: Account) => ReactNode; secondary?: ReactNode }) {
   const account = useCurrentAccountQuery();
   if (account.isLoading) return <PageLoading label="Opening Smart Q" />;
   if (account.isError || !account.data) return <Navigate to={role === "customer" ? "/login/" : "/staff-login/"} replace />;
