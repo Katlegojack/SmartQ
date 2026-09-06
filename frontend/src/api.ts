@@ -1,5 +1,6 @@
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS", "TRACE"]);
 const SESSION_EXPIRED_DETAIL = "Authentication credentials were not provided.";
+const LOGOUT_PATH = "/api/v1/accounts/logout/";
 const CSRF_FAILURE_MARKERS = [
   "CSRF verification failed",
   "CSRF Failed:",
@@ -130,8 +131,15 @@ export async function api<T = unknown>(path: string, options: ApiOptions = {}): 
     const detail = csrfFailure
       ? "Smart Q could not refresh the secure session. Reload the page once and try again."
       : detailFrom(result.data);
+
     if (!csrfFailure && result.response.status === 403 && detail === SESSION_EXPIRED_DETAIL) {
       clearCsrfToken();
+
+      // Logout is idempotent: if the server session is already gone, the user
+      // is already in the desired logged-out state. Do not convert that into a
+      // fake "session expired" redirect/error.
+      if (path === LOGOUT_PATH) return null as T;
+
       window.dispatchEvent(new CustomEvent("smartq:session-expired"));
     }
     throw new ApiError(detail || "The request could not be completed.", result.response.status, result.data);
