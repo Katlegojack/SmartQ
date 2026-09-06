@@ -140,7 +140,7 @@ class Day59ForecastingObservationTests(TestCase):
         self.assertEqual(observation.actual_service_seconds, 13 * 60)
         self.assertEqual(observation.service_variance_seconds, -7 * 60)
 
-    def test_training_row_is_operational_and_excludes_customer_pii(self):
+    def test_training_row_and_storage_exclude_customer_pii(self):
         _, second_booking = self.run_two_customer_early_finish_journey()
         observation = QueueForecastObservation.objects.get(
             ticket=second_booking.queueticket
@@ -163,6 +163,8 @@ class Day59ForecastingObservationTests(TestCase):
             "is_pregnant",
         }
         self.assertTrue(forbidden.isdisjoint(row.keys()))
+        model_fields = {field.name for field in QueueForecastObservation._meta.get_fields()}
+        self.assertTrue(forbidden.isdisjoint(model_fields))
 
     def test_forecasting_summary_reports_baseline_error_without_claiming_ml(self):
         self.run_two_customer_early_finish_journey()
@@ -236,3 +238,18 @@ class Day59ForecastingObservationTests(TestCase):
         self.assertIn("baseline_estimated_wait_seconds", forecast_source)
         self.assertIn("actual_wait_seconds", forecast_source)
         self.assertIn("wait_variance_seconds", forecast_source)
+
+    def test_manager_history_ui_exposes_collection_quality_without_claiming_ml(self):
+        root = Path(__file__).resolve().parents[1]
+        history = (root / "frontend" / "src" / "pages" / "HistoryPage.tsx").read_text(
+            encoding="utf-8"
+        )
+        readme = (root / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("reports/forecasting/", history)
+        self.assertIn("Data collection quality", history)
+        self.assertIn("Wait baseline MAE", history)
+        self.assertIn("Service target MAE", history)
+        self.assertIn("No machine-learning model is active yet.", history)
+        self.assertIn("machine_learning_enabled = false", readme)
+        self.assertIn("export_forecasting_dataset", readme)
