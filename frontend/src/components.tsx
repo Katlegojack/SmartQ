@@ -35,7 +35,7 @@ export function Metric({ label, value, detail }: { label: string; value: ReactNo
   return <div className="metric"><span>{label}</span><strong>{value}</strong>{detail ? <small>{detail}</small> : null}</div>;
 }
 
-export function WorkspaceShell({ account, title, subtitle, children, secondary }: { account: Account; title: string; subtitle?: string; children: ReactNode; secondary?: ReactNode }) {
+export function WorkspaceShell({ account, title, children, secondary }: { account: Account; title: string; children: ReactNode; secondary?: ReactNode }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [securityOpen, setSecurityOpen] = useState(false);
@@ -79,7 +79,7 @@ export function WorkspaceShell({ account, title, subtitle, children, secondary }
         body: { current_password: currentPassword, new_password: newPassword },
       });
       form.reset();
-      setSecurityMessage("Password updated. Your current session remains active.");
+      setSecurityMessage("Password updated.");
     } catch (error) {
       setSecurityError(errorMessage(error, "Smart Q could not update the password."));
     } finally {
@@ -98,16 +98,20 @@ export function WorkspaceShell({ account, title, subtitle, children, secondary }
         <small>{roleLabels[account.role]}{account.branch_name ? ` · ${account.branch_name}` : ""}</small>
         <div className="nav-account-actions">
           <button className="link-button" type="button" onClick={() => { setSecurityOpen(true); setSecurityMessage(""); setSecurityError(""); }}>Security</button>
-          <button className="link-button" type="button" onClick={signOut}>Sign out</button>
         </div>
       </div>
     </aside>
     <div className="workspace-content">
-      <header className="workspace-header"><div><span className="eyebrow">{roleLabels[account.role]}</span><h1>{title}</h1>{subtitle ? <p>{subtitle}</p> : null}</div>{secondary}</header>
+      <header className="workspace-header">
+        <div><span className="eyebrow">{roleLabels[account.role]}</span><h1>{title}</h1></div>
+        <div className="workspace-header-actions">
+          {secondary}
+          <button className="button button--quiet workspace-logout" type="button" onClick={signOut}>Log out</button>
+        </div>
+      </header>
       {children}
     </div>
     <SimpleDialog open={securityOpen} title="Account security" onClose={() => setSecurityOpen(false)}>
-      <p className="dialog-intro">Change your Smart Q password without ending the current trusted session.</p>
       <form onSubmit={changePassword}>
         <Field label="Current password"><input name="current_password" type="password" autoComplete="current-password" required /></Field>
         <Field label="New password"><input name="new_password" type="password" autoComplete="new-password" required /></Field>
@@ -122,12 +126,12 @@ export function WorkspaceShell({ account, title, subtitle, children, secondary }
   </div>;
 }
 
-export function ProtectedWorkspace({ role, title, subtitle, children, secondary }: { role: Role; title: string; subtitle?: string; children: (account: Account) => ReactNode; secondary?: ReactNode }) {
+export function ProtectedWorkspace({ role, title, children, secondary }: { role: Role; title: string; children: (account: Account) => ReactNode; secondary?: ReactNode }) {
   const account = useCurrentAccountQuery();
   if (account.isLoading) return <PageLoading label="Opening Smart Q" />;
   if (account.isError || !account.data) return <Navigate to={role === "customer" ? "/login/" : "/staff-login/"} replace />;
   if (account.data.role !== role) return <Navigate to={roleRoutes[account.data.role]} replace />;
-  return <WorkspaceShell account={account.data} title={title} subtitle={subtitle} secondary={secondary}>{children(account.data)}</WorkspaceShell>;
+  return <WorkspaceShell account={account.data} title={title} secondary={secondary}>{children(account.data)}</WorkspaceShell>;
 }
 
 export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
