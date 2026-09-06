@@ -17,7 +17,7 @@ from services.models import Service
 
 
 class Day58RealtimeServiceTimingTests(TestCase):
-    """Protect live ETA countdowns and the service-duration data needed for forecasting."""
+    """Protect live ETA timing and the service-duration data needed for forecasting."""
 
     def repo_text(self, path):
         return (Path(__file__).resolve().parents[1] / path).read_text(encoding="utf-8")
@@ -187,19 +187,31 @@ class Day58RealtimeServiceTimingTests(TestCase):
         self.assertEqual(prediction["people_ahead"], 1)
         self.assertEqual(prediction["estimated_wait_seconds"], 0)
 
-    def test_customer_frontend_ticks_locally_and_refreshes_operational_state(self):
+    def test_frontend_displays_minutes_while_internal_timing_stays_second_resolution(self):
         customer = self.repo_text("frontend/src/pages/CustomerPage.tsx")
+        counter = self.repo_text("frontend/src/pages/CounterPage.tsx")
         types = self.repo_text("frontend/src/types.ts")
+
+        for source in [customer, counter]:
+            self.assertIn("const durationMinutes", source)
+            self.assertIn('return "0 min"', source)
+            self.assertIn('return "<1 min"', source)
+            self.assertIn('return `${Math.max(minutes, 1)} min`', source)
+            self.assertNotIn("durationClock", source)
+            self.assertNotIn("padStart(2", source)
 
         for contract in [
             "window.setInterval(() => setClockMs(Date.now()), 1_000)",
             "refetchInterval: 2_000",
-            'Metric label="Live wait"',
+            'Metric label="Estimated wait"',
             'Metric label="Service elapsed"',
             'Metric label="Target remaining"',
             "estimated_wait_seconds",
         ]:
             self.assertIn(contract, customer)
+
+        self.assertIn('Elapsed {durationMinutes(liveServiceElapsedSeconds, "elapsed")}', counter)
+        self.assertIn("Target remaining {durationMinutes(serviceRemainingSeconds)}", counter)
 
         for contract in [
             "service_started_at",
