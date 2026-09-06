@@ -32,6 +32,11 @@ class QueueTicketSerializer(serializers.ModelSerializer):
             "booking_time",
             "checked_in_at",
             "customer_name",
+            "service_started_at",
+            "service_completed_at",
+            "service_target_seconds",
+            "actual_service_seconds",
+            "service_variance_seconds",
             "created_at",
         ]
         read_only_fields = fields
