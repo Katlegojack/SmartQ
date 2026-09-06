@@ -1,9 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ApiError, api, errorMessage } from "../api";
 import { EmptyState, ErrorState, FormMessage, ProtectedWorkspace, SectionHeader, StatusPill } from "../components";
 import type { Account, Counter, QueueTicket } from "../types";
+
+const durationClock = (seconds: number) => {
+  const safe = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(safe / 60);
+  return `${minutes}:${String(safe % 60).padStart(2, "0")}`;
+};
 
 async function assignedCounter(): Promise<Counter | null> {
   try {
@@ -28,6 +34,7 @@ function CounterBody({ account }: { account: Account }) {
   const client = useQueryClient();
   const [message, setMessage] = useState("");
   const [operationError, setOperationError] = useState("");
+  const [clockMs, setClockMs] = useState(() => Date.now());
 
   const counter = useQuery({
     queryKey: ["counter", "mine"],
@@ -39,7 +46,7 @@ function CounterBody({ account }: { account: Account }) {
     queryKey: ["counter", counterId, "current"],
     queryFn: () => currentTicket(counterId),
     enabled: Boolean(counterId),
-    refetchInterval: 5_000,
+    refetchInterval: 2_000,
   });
   const waiting = useQuery({
     queryKey: ["queue", "branch", account.branch_id],
@@ -66,13 +73,27 @@ function CounterBody({ account }: { account: Account }) {
     },
   });
 
+  const ticket = current.data;
+
+  useEffect(() => {
+    if (!ticket?.service_started_at) return undefined;
+    setClockMs(Date.now());
+    const timer = window.setInterval(() => setClockMs(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [ticket?.id, ticket?.service_started_at]);
+
   if (counter.isError) return <ErrorState error={counter.error} />;
   if (!counter.data) return <EmptyState title="No counter assigned" detail="Ask your Branch Manager to assign you to a counter before starting service." />;
 
   const c = counter.data;
-  const ticket = current.data;
   const canCall = c.status === "open" && !ticket;
   const working = action.isPending;
+  const serviceStartedAt = ticket?.service_started_at ? Date.parse(ticket.service_started_at) : Number.NaN;
+  const liveServiceElapsedSeconds = Number.isFinite(serviceStartedAt)
+    ? Math.max(0, Math.floor((clockMs - serviceStartedAt) / 1_000))
+    : 0;
+  const serviceTargetSeconds = ticket?.service_target_seconds ?? 0;
+  const serviceRemainingSeconds = Math.max(serviceTargetSeconds - liveServiceElapsedSeconds, 0);
 
   return <>
     <FormMessage message={message} error={operationError} />
@@ -84,6 +105,7 @@ function CounterBody({ account }: { account: Account }) {
           <strong className="ticket-number">{ticket.queue_number}</strong>
           <h3>{ticket.customer_name}</h3>
           <p>{ticket.service_name}</p>
+          <p>Elapsed {durationClock(liveServiceElapsedSeconds)} · Target remaining {durationClock(serviceRemainingSeconds)}</p>
           <div className="counter-primary-actions">
             <button className="button button--primary button--large" disabled={working} onClick={() => action.mutate({ path: `queues/counters/${c.id}/complete/` })}>Complete service</button>
             <button className="button button--quiet button--danger" disabled={working} onClick={() => action.mutate({ path: `queues/counters/${c.id}/no-show/` })}>No show</button>
