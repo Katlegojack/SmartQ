@@ -24,7 +24,7 @@ class Day54PublicUiGuardrailTests(TestCase):
         self.assertContains(response, 'href="/register/"')
         self.assertNotContains(response, 'id="smartq-react-root"')
 
-    def test_login_keeps_all_role_choices(self):
+    def test_login_keeps_all_role_choices_without_extra_marketing_copy(self):
         for route_name in ["frontend_login", "frontend_staff_login"]:
             with self.subTest(route=route_name):
                 response = self.client.get(reverse(route_name))
@@ -37,7 +37,9 @@ class Day54PublicUiGuardrailTests(TestCase):
                     "system_admin",
                 ]:
                     self.assertContains(response, f'value="{role}"')
-                self.assertContains(response, "Select your Smart Q role")
+                self.assertContains(response, "Account type")
+                self.assertNotContains(response, "Run the queue.")
+                self.assertNotContains(response, "Select your Smart Q role, then enter your credentials.")
                 self.assertNotContains(response, 'id="smartq-react-root"')
 
     def test_authenticated_workspaces_still_use_react_runtime(self):
@@ -63,6 +65,8 @@ class Day54PublicUiGuardrailTests(TestCase):
 
         self.assertIn("async function signOut()", components)
         self.assertIn("await logout();", components)
+        self.assertIn("queryClient.clear();", components)
+        self.assertIn("window.location.replace", components)
         self.assertIn('className="button button--quiet workspace-logout"', components)
         self.assertIn(">Log out</button>", components)
         self.assertNotIn(">Sign out</button>", components)
