@@ -64,6 +64,11 @@ export interface QueueTicket {
   booking_time: string;
   checked_in_at: string | null;
   customer_name: string;
+  service_started_at: string | null;
+  service_completed_at: string | null;
+  service_target_seconds: number | null;
+  actual_service_seconds: number | null;
+  service_variance_seconds: number | null;
   created_at: string;
 }
 
@@ -71,6 +76,13 @@ export interface QueuePrediction {
   queue_position: number;
   people_ahead: number;
   estimated_wait_time: number;
+  estimated_wait_seconds: number;
+  prediction_generated_at: string;
+  service_started_at: string | null;
+  service_target_seconds: number;
+  service_elapsed_seconds: number;
+  service_remaining_seconds: number;
+  service_overrun_seconds: number;
   [key: string]: unknown;
 }
 

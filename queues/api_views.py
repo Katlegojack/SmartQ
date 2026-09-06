@@ -203,7 +203,7 @@ class BranchWaitingQueueAPIView(APIView):
 
 
 class MyCurrentQueueTicketAPIView(APIView):
-    """Return the logged-in customer's active ticket and current queue prediction."""
+    """Return the logged-in customer's active ticket and current live queue prediction."""
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -224,16 +224,10 @@ class MyCurrentQueueTicketAPIView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        prediction = get_ticket_prediction(ticket)
-        if ticket.status == QueueTicket.SERVING:
-            prediction["people_ahead"] = 0
-            prediction["queue_position"] = 0
-            prediction["estimated_wait_time"] = 0
-
         return Response(
             {
                 "ticket": QueueTicketSerializer(ticket).data,
-                "prediction": prediction,
+                "prediction": get_ticket_prediction(ticket),
             }
         )
 

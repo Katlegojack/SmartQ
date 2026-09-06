@@ -91,7 +91,7 @@ function ManagerBody({ account }: { account: Account }) {
 
     <div className="manager-grid">
       <section className="surface">
-        <SectionHeader eyebrow="Live floor" title="Counters" action={<span className="live-indicator">Live · 5s</span>} />
+        <SectionHeader eyebrow="Live floor" title="Counters" action={<span className="live-indicator">Live</span>} />
         {staff.isError ? <ErrorState error={staff.error} message="Could not load available Counter Staff." /> : null}
         {!counters.length ? <EmptyState
           title="No counters configured"

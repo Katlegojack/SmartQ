@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ApiError, api, errorMessage } from "../api";
@@ -18,6 +18,13 @@ const FINAL = new Set(["completed", "cancelled", "no_show"]);
 const today = () => new Date().toLocaleDateString("en-CA");
 const niceDate = (value: string) => new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short" }).format(new Date(`${value}T00:00:00`));
 const niceTime = (value: string) => value.slice(0, 5);
+const durationMinutes = (seconds: number, mode: "elapsed" | "remaining" = "remaining") => {
+  const safe = Math.max(0, Math.floor(seconds));
+  if (safe === 0) return "0 min";
+  if (mode === "elapsed" && safe < 60) return "<1 min";
+  const minutes = mode === "elapsed" ? Math.floor(safe / 60) : Math.ceil(safe / 60);
+  return `${Math.max(minutes, 1)} min`;
+};
 
 async function getCurrentQueue(): Promise<CurrentQueue | null> {
   try {
@@ -38,6 +45,7 @@ function CustomerBody({ account }: { account: Account }) {
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
   const [message, setMessage] = useState("");
   const [formError, setFormError] = useState("");
+  const [clockMs, setClockMs] = useState(() => Date.now());
 
   const bookings = useQuery({
     queryKey: ["bookings", "mine"],
@@ -47,7 +55,7 @@ function CustomerBody({ account }: { account: Account }) {
   const queue = useQuery({
     queryKey: ["queue", "mine"],
     queryFn: getCurrentQueue,
-    refetchInterval: 5_000,
+    refetchInterval: 2_000,
   });
   const branches = useQuery({
     queryKey: ["branches"],
@@ -171,13 +179,46 @@ function CustomerBody({ account }: { account: Account }) {
   const activeQueue = queue.data;
   const bookingWritePending = createBooking.isPending || reschedule.isPending;
 
+  useEffect(() => {
+    if (!activeQueue) return undefined;
+    setClockMs(Date.now());
+    const timer = window.setInterval(() => setClockMs(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [activeQueue?.ticket.id, activeQueue?.ticket.status]);
+
+  const predictionAt = activeQueue?.prediction.prediction_generated_at
+    ? Date.parse(activeQueue.prediction.prediction_generated_at)
+    : clockMs;
+  const predictionAgeSeconds = Number.isFinite(predictionAt)
+    ? Math.max(0, Math.floor((clockMs - predictionAt) / 1_000))
+    : 0;
+  const isServing = activeQueue?.ticket.status === "serving";
+  const liveWaitSeconds = activeQueue
+    ? Math.max(0, activeQueue.prediction.estimated_wait_seconds - predictionAgeSeconds)
+    : 0;
+  const liveServiceElapsedSeconds = activeQueue && isServing
+    ? activeQueue.prediction.service_elapsed_seconds + predictionAgeSeconds
+    : 0;
+  const liveServiceRemainingSeconds = activeQueue && isServing
+    ? Math.max(activeQueue.prediction.service_target_seconds - liveServiceElapsedSeconds, 0)
+    : 0;
+
   return <>
     <FormMessage message={message} error={formError} />
 
     {activeQueue ? <section className="priority-panel">
       <div><span className="eyebrow">Live queue</span><div className="queue-number">{activeQueue.ticket.queue_number}</div><h2>{activeQueue.ticket.service_name}</h2><p>{activeQueue.ticket.branch_name}</p></div>
-      <div className="queue-facts"><Metric label="People ahead" value={activeQueue.prediction.people_ahead} /><Metric label="Estimated wait" value={`${activeQueue.prediction.estimated_wait_time} min`} /><Metric label="Status" value={<StatusPill value={activeQueue.ticket.status} />} /></div>
-      <div className="queue-message">{activeQueue.ticket.status === "serving" ? `Please go to counter ${activeQueue.ticket.assigned_counter ?? "assigned"}.` : "Keep this page open. Your place updates automatically."}</div>
+      <div className="queue-facts">
+        {isServing ? <>
+          <Metric label="Service elapsed" value={durationMinutes(liveServiceElapsedSeconds, "elapsed")} />
+          <Metric label="Target remaining" value={durationMinutes(liveServiceRemainingSeconds)} />
+        </> : <>
+          <Metric label="People ahead" value={activeQueue.prediction.people_ahead} />
+          <Metric label="Estimated wait" value={durationMinutes(liveWaitSeconds)} />
+        </>}
+        <Metric label="Status" value={<StatusPill value={activeQueue.ticket.status} />} />
+      </div>
+      {isServing ? <div className="queue-message">Please go to counter {activeQueue.ticket.assigned_counter ?? "assigned"}.</div> : null}
     </section> : null}
 
     {!activeQueue && next ? <section className="next-visit">

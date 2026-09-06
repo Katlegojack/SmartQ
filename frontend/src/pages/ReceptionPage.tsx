@@ -97,7 +97,7 @@ function ReceptionBody({ account }: { account: Account }) {
         <button className="button button--dark">Search</button>
         {submittedSearch ? <button type="button" className="button button--quiet" onClick={() => { setSubmittedSearch(""); setSearch(""); setFormError(""); }}>Clear</button> : null}
       </form>
-      <span className="live-indicator">Live · 5s</span>
+      <span className="live-indicator">Live</span>
     </section>
 
     <div className="reception-grid">
