@@ -157,6 +157,7 @@ REST_FRAMEWORK = {
 CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS")
 CORS_ALLOW_CREDENTIALS = env_bool("CORS_ALLOW_CREDENTIALS", default=True)
 CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS")
+CSRF_FAILURE_VIEW = "smartq.csrf.csrf_failure"
 
 # Local development may be opened through either HTTP or an HTTPS localhost
 # proxy/preview. Trust only these explicit loopback origins and only outside
