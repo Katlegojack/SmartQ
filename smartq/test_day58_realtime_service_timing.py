@@ -190,6 +190,8 @@ class Day58RealtimeServiceTimingTests(TestCase):
     def test_frontend_displays_minutes_while_internal_timing_stays_second_resolution(self):
         customer = self.repo_text("frontend/src/pages/CustomerPage.tsx")
         counter = self.repo_text("frontend/src/pages/CounterPage.tsx")
+        manager = self.repo_text("frontend/src/pages/ManagerPage.tsx")
+        reception = self.repo_text("frontend/src/pages/ReceptionPage.tsx")
         types = self.repo_text("frontend/src/types.ts")
 
         for source in [customer, counter]:
@@ -199,6 +201,9 @@ class Day58RealtimeServiceTimingTests(TestCase):
             self.assertIn('return `${Math.max(minutes, 1)} min`', source)
             self.assertNotIn("durationClock", source)
             self.assertNotIn("padStart(2", source)
+
+        for source in [counter, manager, reception]:
+            self.assertNotIn("Live · 5s", source)
 
         for contract in [
             "window.setInterval(() => setClockMs(Date.now()), 1_000)",
