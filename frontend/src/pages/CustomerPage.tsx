@@ -196,6 +196,10 @@ function CustomerBody({ account }: { account: Account }) {
   const liveWaitSeconds = activeQueue
     ? Math.max(0, activeQueue.prediction.estimated_wait_seconds - predictionAgeSeconds)
     : 0;
+  const checkedInAt = activeQueue?.ticket.checked_in_at ? Date.parse(activeQueue.ticket.checked_in_at) : NaN;
+  const waitingSoFarSeconds = activeQueue && !isServing && Number.isFinite(checkedInAt)
+    ? Math.max(0, Math.floor((clockMs - checkedInAt) / 1_000))
+    : 0;
   const liveServiceElapsedSeconds = activeQueue && isServing
     ? activeQueue.prediction.service_elapsed_seconds + predictionAgeSeconds
     : 0;
@@ -215,10 +219,11 @@ function CustomerBody({ account }: { account: Account }) {
         </> : <>
           <Metric label="People ahead" value={activeQueue.prediction.people_ahead} />
           <Metric label="Estimated wait" value={durationMinutes(liveWaitSeconds)} />
+          <Metric label="Waiting so far" value={durationMinutes(waitingSoFarSeconds, "elapsed")} />
         </>}
         <Metric label="Status" value={<StatusPill value={activeQueue.ticket.status} />} />
       </div>
-      {isServing ? <div className="queue-message">Please go to counter {activeQueue.ticket.assigned_counter ?? "assigned"}.</div> : null}
+      {isServing ? <div className="queue-message">Please go to Counter {activeQueue.ticket.assigned_counter_number ?? "assigned"}.</div> : <div className="queue-message">Your position and estimate refresh as the live queue moves.</div>}
     </section> : null}
 
     {!activeQueue && next ? <section className="next-visit">
