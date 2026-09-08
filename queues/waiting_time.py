@@ -40,7 +40,7 @@ def get_service_clock(ticket, now=None):
 
 
 def _waiting_ahead_queryset(ticket):
-    """Return same-queue waiting customers who entered before this ticket."""
+    """Return same-lane waiting customers who entered before this ticket."""
     checked_in_at = ticket.booking.checked_in_at
     if checked_in_at is None:
         return QueueTicket.objects.none()
@@ -58,8 +58,7 @@ def _waiting_ahead_queryset(ticket):
     ).select_related("booking", "booking__service").order_by("booking__checked_in_at", "id")
 
 
-def _serving_ahead_queryset(ticket):
-    """Return customers already being served by the same branch/queue type."""
+def _serving_same_lane_queryset(ticket):
     return QueueTicket.objects.filter(
         booking__branch=ticket.booking.branch,
         booking__booking_date=ticket.booking.booking_date,
@@ -69,11 +68,11 @@ def _serving_ahead_queryset(ticket):
 
 
 def get_people_ahead(ticket):
-    """Count waiting-ahead plus currently served customers for a live queue ticket."""
+    """Count same-lane waiting-ahead plus customers currently served from that lane."""
     if ticket.status == QueueTicket.SERVING:
         return 0
 
-    return _waiting_ahead_queryset(ticket).count() + _serving_ahead_queryset(ticket).count()
+    return _waiting_ahead_queryset(ticket).count() + _serving_same_lane_queryset(ticket).count()
 
 
 def get_queue_position(ticket):
@@ -82,16 +81,33 @@ def get_queue_position(ticket):
     return get_people_ahead(ticket) + 1
 
 
+def _eligible_counter_types(queue_type):
+    if queue_type == QueueTicket.GENERAL:
+        return {QueueTicket.GENERAL, QueueTicket.PRIORITY}
+    return {QueueTicket.PRIORITY}
+
+
+def _priority_waiting_queryset(ticket):
+    """Priority work currently competing for a flexible Priority counter."""
+    return QueueTicket.objects.filter(
+        booking__branch=ticket.booking.branch,
+        booking__booking_date=ticket.booking.booking_date,
+        booking__checked_in_at__isnull=False,
+        queue_type=QueueTicket.PRIORITY,
+        status=QueueTicket.WAITING,
+        assigned_counter__isnull=True,
+    ).select_related("booking", "booking__service").order_by("booking__checked_in_at", "id")
+
+
 def calculate_estimated_wait_seconds(ticket, now=None):
     """
-    Estimate time until this waiting customer can start service.
+    Estimate when this waiting customer can start service under Smart Q routing.
 
-    Smart Q now uses live counter availability rather than multiplying a static
-    queue position by one average. Busy counters contribute only their remaining
-    target time, idle OPEN counters are available immediately, and waiting
-    customers ahead are scheduled onto whichever matching counter becomes free
-    first. The browser can then tick this seconds value down locally between API
-    refreshes.
+    General counters serve only General customers. Priority counters are now
+    work-conserving: Priority is always served first, but an idle Priority counter
+    may help General. The ETA therefore models each physical counter separately
+    and, for a General customer, lets current Priority work consume the shared
+    counter before assigning General work to it.
     """
     if ticket.status == QueueTicket.SERVING:
         return 0
@@ -100,45 +116,88 @@ def calculate_estimated_wait_seconds(ticket, now=None):
     if now is None:
         now = timezone.now()
 
-    serving = list(_serving_ahead_queryset(ticket))
-    waiting_ahead = list(_waiting_ahead_queryset(ticket))
-
-    open_counter_ids = set(
+    eligible_types = _eligible_counter_types(ticket.queue_type)
+    counters = list(
         Counter.objects.filter(
             branch=ticket.booking.branch,
-            queue_type=ticket.queue_type,
+            queue_type__in=eligible_types,
             status=Counter.OPEN,
-        ).values_list("id", flat=True)
+        ).order_by("counter_number", "id")
+    )
+    counter_states = {
+        counter.id: {"type": counter.queue_type, "available": 0}
+        for counter in counters
+    }
+
+    serving = list(
+        QueueTicket.objects.filter(
+            booking__branch=ticket.booking.branch,
+            booking__booking_date=ticket.booking.booking_date,
+            status=QueueTicket.SERVING,
+            assigned_counter__queue_type__in=eligible_types,
+        ).select_related("booking", "booking__service", "assigned_counter")
     )
     for serving_ticket in serving:
-        if serving_ticket.assigned_counter_id is not None:
-            open_counter_ids.add(serving_ticket.assigned_counter_id)
-
-    # One availability bucket per usable physical counter. A virtual bucket
-    # preserves the deterministic fallback for branches that have not opened a
-    # counter yet instead of returning an unusable infinity/null ETA.
-    counter_available_seconds = {counter_id: 0 for counter_id in open_counter_ids}
-    virtual_counter_index = 0
-
-    for serving_ticket in serving:
-        remaining = get_service_clock(serving_ticket, now=now)["service_remaining_seconds"]
-        counter_id = serving_ticket.assigned_counter_id
-        if counter_id is None:
-            counter_id = f"virtual-{virtual_counter_index}"
-            virtual_counter_index += 1
-        counter_available_seconds[counter_id] = max(
-            counter_available_seconds.get(counter_id, 0),
-            remaining,
+        counter = serving_ticket.assigned_counter
+        if counter is None:
+            continue
+        if counter.id not in counter_states:
+            counter_states[counter.id] = {
+                "type": counter.queue_type,
+                "available": 0,
+            }
+        counter_states[counter.id]["available"] = max(
+            counter_states[counter.id]["available"],
+            get_service_clock(serving_ticket, now=now)["service_remaining_seconds"],
         )
 
-    if not counter_available_seconds:
-        counter_available_seconds["virtual-0"] = 0
+    if not counter_states:
+        # Preserve the historical deterministic fallback before counters open.
+        virtual_type = (
+            QueueTicket.PRIORITY
+            if ticket.queue_type == QueueTicket.PRIORITY
+            else QueueTicket.GENERAL
+        )
+        counter_states["virtual-0"] = {"type": virtual_type, "available": 0}
 
-    for ahead_ticket in waiting_ahead:
-        counter_id = min(counter_available_seconds, key=counter_available_seconds.get)
-        counter_available_seconds[counter_id] += _service_target_seconds(ahead_ticket)
+    same_lane_ahead = list(_waiting_ahead_queryset(ticket))
+    if ticket.queue_type == QueueTicket.PRIORITY:
+        priority_work = list(same_lane_ahead)
+        general_work = []
+    else:
+        priority_work = list(_priority_waiting_queryset(ticket))
+        general_work = list(same_lane_ahead)
 
-    return max(min(counter_available_seconds.values()), 0)
+    # Simulate dispatch until one eligible counter can accept the target ticket.
+    # Priority counters always consume pending Priority work before General work.
+    safety = len(priority_work) + len(general_work) + len(counter_states) + 10
+    for _ in range(max(safety, 1) * 3):
+        counter_id = min(
+            counter_states,
+            key=lambda key: (counter_states[key]["available"], str(key)),
+        )
+        state = counter_states[counter_id]
+
+        if state["type"] == QueueTicket.PRIORITY and priority_work:
+            work = priority_work.pop(0)
+            state["available"] += _service_target_seconds(work)
+            continue
+
+        if ticket.queue_type == QueueTicket.PRIORITY:
+            # No priority customer remains ahead; this Priority counter can call target.
+            return max(int(state["available"]), 0)
+
+        if general_work:
+            work = general_work.pop(0)
+            state["available"] += _service_target_seconds(work)
+            continue
+
+        # For a General target, either a General counter is free or a Priority
+        # counter has no remaining Priority work and can overflow to General.
+        return max(int(state["available"]), 0)
+
+    # Defensive fallback should never be reached, but remains finite.
+    return max(min(state["available"] for state in counter_states.values()), 0)
 
 
 def calculate_estimated_wait_time(ticket, now=None):
