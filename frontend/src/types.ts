@@ -58,6 +58,7 @@ export interface QueueTicket {
   queue_type: "general" | "priority" | string;
   status: "waiting" | "serving" | "completed" | "no_show" | "cancelled" | string;
   assigned_counter: number | null;
+  assigned_counter_number: string | null;
   branch_name: string;
   service_name: string;
   booking_date: string;
