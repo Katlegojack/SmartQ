@@ -315,9 +315,35 @@ def get_waiting_tickets(branch, booking_date=None, queue_type=None):
     )
 
 
+def _next_waiting_ticket(counter, booking_date, queue_type):
+    """Lock and return the oldest eligible waiting ticket for one queue lane."""
+    return (
+        QueueTicket.objects.select_for_update()
+        .select_related("booking", "booking__service")
+        .filter(
+            queue_type=queue_type,
+            booking__branch=counter.branch,
+            booking__booking_date=booking_date,
+            booking__checked_in_at__isnull=False,
+            booking__status__in=[Booking.PENDING, Booking.CONFIRMED],
+            status=QueueTicket.WAITING,
+            assigned_counter__isnull=True,
+        )
+        .order_by("booking__checked_in_at", "id")
+        .first()
+    )
+
+
 @transaction.atomic
 def call_next_ticket(counter, booking_date=None, *, actor=None):
-    """Assign the next checked-in waiting customer to an OPEN counter and start the service clock."""
+    """
+    Assign the next checked-in customer to an OPEN counter and start service.
+
+    General counters remain General-only. Priority counters are work-conserving:
+    they always call an eligible Priority customer first, but when the Priority
+    queue is empty they may help the oldest General customer. A General customer
+    already being served is never interrupted when Priority demand later arrives.
+    """
     if counter.status != Counter.OPEN:
         return None
     if booking_date is None:
@@ -330,17 +356,15 @@ def call_next_ticket(counter, booking_date=None, *, actor=None):
     if current_ticket:
         return None
 
-    ticket = QueueTicket.objects.select_for_update().select_related(
-        "booking", "booking__service"
-    ).filter(
-        queue_type=counter.queue_type,
-        booking__branch=counter.branch,
-        booking__booking_date=booking_date,
-        booking__checked_in_at__isnull=False,
-        booking__status__in=[Booking.PENDING, Booking.CONFIRMED],
-        status=QueueTicket.WAITING,
-        assigned_counter__isnull=True,
-    ).order_by("booking__checked_in_at", "id").first()
+    candidate_queue_types = [counter.queue_type]
+    if counter.queue_type == QueueTicket.PRIORITY:
+        candidate_queue_types.append(QueueTicket.GENERAL)
+
+    ticket = None
+    for queue_type in candidate_queue_types:
+        ticket = _next_waiting_ticket(counter, booking_date, queue_type)
+        if ticket is not None:
+            break
 
     if ticket is None:
         return None
@@ -374,6 +398,10 @@ def call_next_ticket(counter, booking_date=None, *, actor=None):
         ticket.booking.status = Booking.CONFIRMED
         ticket.booking.save(update_fields=["status"])
 
+    is_priority_overflow = (
+        counter.queue_type == QueueTicket.PRIORITY
+        and ticket.queue_type == QueueTicket.GENERAL
+    )
     record_queue_event(
         QueueEvent.CALLED,
         ticket=ticket,
@@ -388,6 +416,9 @@ def call_next_ticket(counter, booking_date=None, *, actor=None):
         metadata={
             "service_started_at": now.isoformat(),
             "service_target_seconds": service_target_seconds,
+            "counter_queue_type": counter.queue_type,
+            "served_queue_type": ticket.queue_type,
+            "priority_overflow": is_priority_overflow,
         },
     )
     return ticket
