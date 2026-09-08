@@ -1,9 +1,25 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { api, errorMessage } from "../api";
+import { ApiError, api, errorMessage } from "../api";
 import { EmptyState, ErrorState, Field, FormMessage, ProtectedWorkspace, SectionHeader, StatusPill } from "../components";
-import type { Account, Booking, BranchService, QueueTicket } from "../types";
+import type { Account, Booking, BranchService, Counter, QueueTicket } from "../types";
+
+type CounterLiveState = { counter: Counter; current: QueueTicket | null };
+
+async function getCounterLiveState(branchId: number | null): Promise<CounterLiveState[]> {
+  if (!branchId) return [];
+  const counters = await api<Counter[]>(`/api/v1/counters/branches/${branchId}/`);
+  return Promise.all(counters.map(async (counter) => {
+    try {
+      const current = await api<QueueTicket>(`/api/v1/queues/counters/${counter.id}/current/`);
+      return { counter, current };
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) return { counter, current: null };
+      throw error;
+    }
+  }));
+}
 
 function ReceptionBody({ account }: { account: Account }) {
   const client = useQueryClient();
@@ -22,7 +38,13 @@ function ReceptionBody({ account }: { account: Account }) {
     queryKey: ["queue", "branch", branchId],
     queryFn: () => api<QueueTicket[]>(`/api/v1/queues/branches/${branchId}/waiting/`),
     enabled: Boolean(branchId),
-    refetchInterval: 5_000,
+    refetchInterval: 2_000,
+  });
+  const counterState = useQuery({
+    queryKey: ["reception", "counter-state", branchId],
+    queryFn: () => getCounterLiveState(branchId),
+    enabled: Boolean(branchId),
+    refetchInterval: 2_000,
   });
   const services = useQuery({
     queryKey: ["branch-services", branchId],
@@ -57,6 +79,10 @@ function ReceptionBody({ account }: { account: Account }) {
   });
 
   const rows = submittedSearch ? (searchResults.data || []) : (today.data || []);
+  const waitingRows = waiting.data || [];
+  const generalWaiting = waitingRows.filter((ticket) => ticket.queue_type === "general").length;
+  const priorityWaiting = waitingRows.filter((ticket) => ticket.queue_type === "priority").length;
+  const servingCount = (counterState.data || []).filter((item) => Boolean(item.current)).length;
 
   async function submitWalkIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -97,7 +123,26 @@ function ReceptionBody({ account }: { account: Account }) {
         <button className="button button--dark">Search</button>
         {submittedSearch ? <button type="button" className="button button--quiet" onClick={() => { setSubmittedSearch(""); setSearch(""); setFormError(""); }}>Clear</button> : null}
       </form>
-      <span className="live-indicator">Live</span>
+      <span className="live-indicator">Live · 2s</span>
+    </section>
+
+    <section className="surface surface--flat">
+      <SectionHeader eyebrow="Branch now" title="Queue movement" />
+      <div className="queue-facts">
+        <div className="metric"><span>General waiting</span><strong>{generalWaiting}</strong></div>
+        <div className="metric"><span>Priority waiting</span><strong>{priorityWaiting}</strong></div>
+        <div className="metric"><span>Serving now</span><strong>{servingCount}</strong></div>
+      </div>
+      {counterState.isError ? <ErrorState error={counterState.error} /> : counterState.data?.length ? <div className="queue-stack">
+        {counterState.data.map(({ counter, current }) => <article className="queue-row" key={counter.id}>
+          <strong>Counter {counter.counter_number}</strong>
+          <div>
+            <span>{current ? `${current.queue_number} · ${current.customer_name}` : "Free"}</span>
+            <small>{current ? `${current.service_name} · ${current.queue_type}` : `${counter.queue_type} counter`}</small>
+          </div>
+          <StatusPill value={current ? "serving" : counter.status} />
+        </article>)}
+      </div> : <EmptyState title="No counters configured" />}
     </section>
 
     <div className="reception-grid">
@@ -116,13 +161,17 @@ function ReceptionBody({ account }: { account: Account }) {
       </section>
 
       <section className="surface surface--queue">
-        <SectionHeader eyebrow="Counter handoff" title="Live queue" action={<span className="count-badge">{waiting.data?.length || 0}</span>} />
-        {waiting.isError ? <ErrorState error={waiting.error} /> : waiting.data?.length ? <div className="queue-stack">{waiting.data.map((ticket) => <article className="queue-row" key={ticket.id}><strong>{ticket.queue_number}</strong><div><span>{ticket.customer_name}</span><small>{ticket.service_name}</small></div><StatusPill value={ticket.status} /></article>)}</div> : <EmptyState title="Queue is clear" detail="Checked-in customers will appear here automatically." />}
+        <SectionHeader eyebrow="Counter handoff" title="Live waiting queue" action={<span className="count-badge">{waitingRows.length}</span>} />
+        {waiting.isError ? <ErrorState error={waiting.error} /> : waitingRows.length ? <div className="queue-stack">{waitingRows.map((ticket) => <article className="queue-row" key={ticket.id}>
+          <strong>{ticket.queue_number}</strong>
+          <div><span>{ticket.customer_name}</span><small>{ticket.service_name} · {ticket.queue_type}</small></div>
+          <StatusPill value={ticket.status} />
+        </article>)}</div> : <EmptyState title="Queue is clear" detail="Checked-in customers and walk-ins appear here automatically." />}
       </section>
     </div>
 
     <section className="surface surface--flat">
-      <SectionHeader eyebrow="Walk-in" title="Add customer" />
+      <SectionHeader eyebrow="Walk-in" title="Add customer to live queue" />
       <form className="form-grid form-grid--walkin" onSubmit={submitWalkIn}>
         <Field label="Full name"><input name="full_name" required /></Field>
         <Field label="Phone"><input name="phone_number" /></Field>
@@ -138,5 +187,5 @@ function ReceptionBody({ account }: { account: Account }) {
 }
 
 export function ReceptionPage() {
-  return <ProtectedWorkspace role="receptionist" title="Reception" subtitle="Today's arrivals, check-ins and live handoff to counters.">{(account) => <ReceptionBody account={account} />}</ProtectedWorkspace>;
+  return <ProtectedWorkspace role="receptionist" title="Reception" subtitle="Today's arrivals, live queues, counters and walk-ins.">{(account) => <ReceptionBody account={account} />}</ProtectedWorkspace>;
 }
