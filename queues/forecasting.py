@@ -30,6 +30,18 @@ FORECAST_EXPORT_FIELDS = [
 ]
 
 
+def _eligible_open_counter_count(ticket):
+    """Count counters that can currently accept this queue lane under routing policy."""
+    queue_types = [ticket.queue_type]
+    if ticket.queue_type == QueueTicket.GENERAL:
+        queue_types.append(QueueTicket.PRIORITY)
+    return Counter.objects.filter(
+        branch=ticket.booking.branch,
+        queue_type__in=queue_types,
+        status=Counter.OPEN,
+    ).count()
+
+
 def capture_queue_entry_observation(ticket, *, now=None):
     """Capture only information that is known when a customer enters the live queue."""
     if now is None:
@@ -40,11 +52,7 @@ def capture_queue_entry_observation(ticket, *, now=None):
     ).get(pk=ticket.pk)
     booking = ticket.booking
 
-    open_counter_count = Counter.objects.filter(
-        branch=booking.branch,
-        queue_type=ticket.queue_type,
-        status=Counter.OPEN,
-    ).count()
+    open_counter_count = _eligible_open_counter_count(ticket)
     serving_count = QueueTicket.objects.filter(
         booking__branch=booking.branch,
         booking__booking_date=booking.booking_date,
