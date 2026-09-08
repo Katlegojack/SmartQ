@@ -49,6 +49,9 @@ jobs:
       - name: Run Django system checks
         run: python manage.py check
 
+      - name: Run Day 62 resilient live training tests
+        run: python manage.py test smartq.test_day62_resilient_live_training
+
       - name: Run account authentication and admin security tests
         run: python manage.py test accounts
 
@@ -153,9 +156,6 @@ jobs:
 
       - name: Run Day 61 busy-day simulation tests
         run: python manage.py test smartq.test_day61_busy_day_simulation
-
-      - name: Run Day 62 resilient live training tests
-        run: python manage.py test smartq.test_day62_resilient_live_training
 
       - name: Run full test suite
         run: python manage.py test
