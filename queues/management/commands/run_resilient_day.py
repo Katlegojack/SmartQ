@@ -3,6 +3,7 @@ from datetime import date, timedelta
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
+from django.db.models import Q
 from django.utils import timezone
 
 from bookings.models import Booking
@@ -147,9 +148,14 @@ class Command(BaseCommand):
                     branch=branch,
                     booking_date=target_date,
                 )
-                extra_completed = all_day.exclude(
-                    user__username__startswith=prefix
-                ).filter(status=Booking.COMPLETED).count()
+                extra_completed = (
+                    all_day.filter(status=Booking.COMPLETED)
+                    .filter(
+                        Q(user__isnull=True)
+                        | ~Q(user__username__startswith=prefix)
+                    )
+                    .count()
+                )
                 self.stdout.write(
                     self.style.SUCCESS(
                         "Day 62 resilient simulation complete: "
