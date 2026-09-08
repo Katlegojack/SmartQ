@@ -15,7 +15,7 @@ Smart Q supports five explicit roles:
 | Role | Responsibility |
 |---|---|
 | Customer | Book/reschedule visits, check in, join a live queue, track position/ETA, cancel, view history/recovery |
-| Receptionist | See today's arrivals, search customers, staff check-in, create guest walk-ins, hand work to the live queue |
+| Receptionist | See today's arrivals, search customers, staff check-in, create guest walk-ins, watch live queues/counters and hand work to the queue |
 | Counter Staff | Operate an assigned counter, call next, complete service, mark no-show, open/pause/resume/close |
 | Branch Manager | Own-branch live operations, counter staffing, reporting, disruptions and forecasting-data quality |
 | System Admin | Global branch/service/capacity/staff/counter configuration and reporting access |
@@ -158,7 +158,7 @@ When testing multiple roles simultaneously, use separate browser profiles/incogn
 
 Customer APIs include booking, own-booking retrieval, walk-ins, check-in, cancellation, rescheduling, current queue state and timeline APIs.
 
-Reception APIs include today's workload, customer search, assisted check-in, guest walk-in creation and branch waiting-queue visibility.
+Reception APIs include today's workload, customer search, assisted check-in, guest walk-in creation, branch waiting-queue visibility and live counter visibility.
 
 Counter Staff APIs include own-counter lookup, open/pause/resume/close, current customer, call-next, complete and no-show actions.
 
@@ -202,7 +202,7 @@ A counter becomes free immediately when service completes. Saved/lost minutes be
 
 Day 59 introduced `QueueForecastObservation` and event-driven labelled operational data collection.
 
-At `CHECKED_IN`, Smart Q snapshots information known before the outcome: branch, service, queue lane, booking source, check-in time, people ahead, open matching counters, serving count and baseline deterministic ETA.
+At `CHECKED_IN`, Smart Q snapshots information known before the outcome: branch, service, queue lane, booking source, check-in time, people ahead, open eligible counters, serving count and baseline deterministic ETA.
 
 At `CALLED`, it records actual wait, wait residual and service target. At `COMPLETED`, it records actual service duration and service residual.
 
@@ -230,17 +230,12 @@ The export intentionally excludes names, usernames, email addresses, phone numbe
 
 Day 61 moved forecasting work from collection infrastructure to a controlled **real-time synthetic operating day** that exercised the actual Smart Q queue lifecycle.
 
-## Scenario
-
 ```text
 Branch: ML01 - Smart Q Training Branch
 Customers: 80
 General: 72
 Priority: 8
-Counters: 3
-  Counter 1 - General
-  Counter 2 - General
-  Counter 3 - Priority
+Counters: 3 (2 General + 1 Priority)
 Services: Collections, ID Applications, Passport Applications
 Appointments: 08:00 through 15:45
 ```
@@ -253,98 +248,139 @@ Appointments: 08:00 through 15:45
 
 Actual synthetic service duration intentionally varies below, above and exactly on target. The variation is deterministic for a scenario date so the workload stays reproducible.
 
-## Live operating loop
+Verified live result — 7 September 2026:
 
 ```text
-scheduled booking becomes due
-        |
-        v
-CHECKED_IN / WAITING
-        |
-        v
-free matching counter calls next
-        |
-        v
-SERVING + target snapshot
-        |
-        v
-planned actual duration elapses
-        |
-        v
-COMPLETED
-        |
-        v
-actual duration + signed variance stored
-        |
-        v
-counter immediately becomes available
+Busy-day simulation complete: all 80 customers processed.
 ```
 
-If a service is targeted at 15 minutes but actually takes 8 minutes, the counter is free at minute 8. Smart Q does not wait for the unused seven minutes to expire.
+Day 61 validated that the live runner can process the complete workload through real queue operations while preserving the distinction between baseline prediction and measured outcome.
 
-## Commands used
+---
 
-Seed/rebuild the scenario:
+# Day 62 resilient live training - READY FOR LIVE RUN
+
+Day 62 is the controlled follow-up to Day 61. It keeps the same ML01 training environment and forecasting event path while adding realistic operational disturbances.
+
+**Target live date:** 9 September 2026  
+**Operating window:** 09:00–18:00
+
+```text
+110 seeded appointments
+99 General
+11 Priority
+10 deterministic-random seeded no-shows
+100 seeded attendees expected
+
+PLUS live extras:
+- normal registered Customer joins
+- Reception guest walk-ins
+```
+
+The extras are outside the seeded 110 and enter the same authoritative queue as everybody else.
+
+## Day 62 routing changes
+
+Counter 1 and Counter 2 remain General. Counter 3 remains Priority-first, but it is now work-conserving:
+
+```text
+Counter 3 free
+    |
+Priority waiting? ---- yes ---> serve Priority
+    |
+    no
+    |
+General waiting? ----- yes ---> help General
+```
+
+A General customer already being served is never interrupted when Priority demand later arrives. Priority gets first claim only when Counter 3 next becomes free.
+
+The deterministic ETA calculation follows the same policy: General customers can benefit from an available Priority counter, while outstanding Priority work remains first in line for that shared counter.
+
+## Day 62 no-show rule
+
+Ten seeded bookings are selected through deterministic date/version-seeded randomness. They never enter `WAITING`. Ten minutes after their appointment time they become `NO_SHOW`, a `QueueEvent.NO_SHOW` is recorded, and the queue continues without consuming a counter.
+
+## Reception live visibility
+
+Reception keeps its task-first workflow and now polls live queue/counter state every two seconds. It can see General waiting, Priority waiting, customers currently serving, each counter's current state/customer, the full waiting queue, today's arrivals and the normal add-walk-in flow.
+
+## Customer live queue experience
+
+A normal Customer account can join ML01 during the training day as an extra. The Customer screen shows:
+
+```text
+queue number
+people ahead
+estimated wait
+waiting so far
+status
+real counter number when called
+```
+
+The server refreshes authoritative queue/ETA state every two seconds. `Waiting so far` advances from the real check-in timestamp; ETA is recalculated from live queue/counter state rather than treated as a blind fixed countdown.
+
+## Day 62 commands
+
+Optional local-only observer passwords, set before seeding:
 
 ```bash
-python manage.py seed_busy_day \
-  --date 2026-09-07 \
-  --customers 80 \
+export SMARTQ_TRAINING_MANAGER_PASSWORD='choose-a-local-temporary-password'
+export SMARTQ_TRAINING_RECEPTION_PASSWORD='choose-a-local-temporary-password'
+```
+
+Never commit those values.
+
+Seed:
+
+```bash
+python manage.py seed_resilient_day \
+  --date 2026-09-09 \
+  --customers 110 \
+  --no-shows 10 \
   --reset
 ```
 
 Mandatory preflight:
 
 ```bash
-python manage.py verify_busy_day \
-  --date 2026-09-07 \
-  --customers 80
+python manage.py verify_resilient_day \
+  --date 2026-09-09 \
+  --customers 110 \
+  --no-shows 10
 ```
 
-Django terminal:
+Expected readiness line:
+
+```text
+READY: Day 62 is structurally ready for the 09:00 resilient live training run.
+```
+
+Terminal 1:
 
 ```bash
 python manage.py runserver 0.0.0.0:8000
 ```
 
-Simulator terminal:
+Terminal 2, before 09:00:
 
 ```bash
-python manage.py run_busy_day --date 2026-09-07
+python manage.py run_resilient_day \
+  --date 2026-09-09 \
+  --customers 110 \
+  --no-shows 10
 ```
 
-## Verified live result - 7 September 2026
-
-The full real-time workload completed successfully:
-
-```text
-Busy-day simulation complete: all 80 customers processed.
-```
-
-The terminal confirmed early, exact and late service outcomes, including:
-
-```text
-A066 - actual 22.0 min, target 15 min, variance +7.0 min
-A068 - actual  8.0 min, target 10 min, variance -2.0 min
-A067 - actual 27.0 min, target 20 min, variance +7.0 min
-A069 - actual 14.0 min, target 15 min, variance -1.0 min
-A070 - actual 17.0 min, target 20 min, variance -3.0 min
-A071 - actual 11.0 min, target 10 min, variance +1.0 min
-A072 - actual 15.0 min, target 15 min, variance +0.0 min
-```
-
-This validates that the runner can process the complete workload through real queue operations while preserving the distinction between **baseline prediction** and **measured outcome**.
-
-Export the completed day:
+After the live day:
 
 ```bash
 python manage.py export_forecasting_dataset \
-  --start-date 2026-09-07 \
-  --end-date 2026-09-07 \
-  --output smartq_training_2026-09-07.csv
+  --start-date 2026-09-09 \
+  --end-date 2026-09-09 \
+  --output smartq_training_2026-09-09.csv
 ```
 
-**Important:** Day 61 does not mean a machine-learning model is active in production. It creates and validates labelled operational data for later statistical/ML evaluation.
+**Day 62 is not complete merely because the implementation is merged.** It closes only after the 9 September live run and resulting data are verified. No ML model is active yet.
 
 ---
 
@@ -379,6 +415,7 @@ python manage.py test smartq.test_day59_forecasting_observations
 python manage.py test smartq.test_day60_workspace_shell_cleanup
 python manage.py test smartq.test_day61_busy_day_simulation
 python manage.py test smartq.test_day61_busy_day_readiness
+python manage.py test smartq.test_day62_resilient_live_training
 python manage.py test
 ```
 
@@ -398,6 +435,7 @@ docs/DAY59_FORECASTING_OBSERVATIONS.md
 docs/DAY61_BUSY_DAY_ML_SIMULATION.md
 docs/DAY61_TOMORROW_RUNBOOK.md
 docs/DAY61_FINAL_DOCUMENTATION.md
+docs/DAY62_RESILIENT_LIVE_TRAINING.md
 ```
 
 ---
@@ -418,9 +456,8 @@ Day 58     Live ETA + service timing observations          COMPLETE
 Day 59     Forecasting observation/data foundation         COMPLETE
 Day 60     Workspace shell engineering-text cleanup        COMPLETE
 Day 61     80-customer real-time busy-day simulation       COMPLETE
+Day 62     110-customer resilient live training run        READY FOR LIVE RUN
 ```
-
-Day 61 was closed after the live simulator successfully processed all 80 synthetic customers on 7 September 2026.
 
 ---
 
