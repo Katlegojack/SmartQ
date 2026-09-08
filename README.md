@@ -212,6 +212,13 @@ Forecasting quality:
 GET /api/v1/queues/branches/<branch_id>/reports/forecasting/
 ```
 
+The current forecasting status remains explicit:
+
+```text
+model_status = data_collection
+machine_learning_enabled = false
+```
+
 Dataset export:
 
 ```bash
