@@ -16,6 +16,11 @@ class QueueTicketSerializer(serializers.ModelSerializer):
         source="booking.customer_display_name",
         read_only=True,
     )
+    assigned_counter_number = serializers.CharField(
+        source="assigned_counter.counter_number",
+        read_only=True,
+        allow_null=True,
+    )
 
     class Meta:
         model = QueueTicket
@@ -26,6 +31,7 @@ class QueueTicketSerializer(serializers.ModelSerializer):
             "queue_type",
             "status",
             "assigned_counter",
+            "assigned_counter_number",
             "branch_name",
             "service_name",
             "booking_date",
