@@ -227,7 +227,7 @@ class MyCurrentQueueTicketAPIView(APIView):
         return Response(
             {
                 "ticket": QueueTicketSerializer(ticket).data,
-                "prediction": get_ticket_prediction(ticket),
+                "prediction": get_ticket_prediction(ticket, use_ml=True),
             }
         )
 
