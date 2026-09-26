@@ -128,12 +128,19 @@ class Day59ForecastingObservationTests(TestCase):
         self.assertEqual(observation.open_counter_count, 1)
         self.assertEqual(observation.serving_count, 1)
         self.assertEqual(observation.baseline_estimated_wait_seconds, 15 * 60)
+        self.assertEqual(observation.prediction_model, "xgboost")
+        self.assertIsNotNone(observation.ml_estimated_wait_seconds)
+        self.assertIsNotNone(observation.prediction_generated_at)
 
         # A001 finished at 09:15 instead of 09:20, so A002 waited 10 minutes
         # rather than the 15-minute queue-entry estimate. The saved five minutes
         # become a negative prediction residual instead of being discarded.
         self.assertEqual(observation.actual_wait_seconds, 10 * 60)
         self.assertEqual(observation.wait_variance_seconds, -5 * 60)
+        self.assertEqual(
+            observation.ml_wait_variance_seconds,
+            observation.actual_wait_seconds - observation.ml_estimated_wait_seconds,
+        )
 
         # A002 then completed its own 20-minute target in 13 minutes.
         self.assertEqual(observation.service_target_seconds, 20 * 60)
