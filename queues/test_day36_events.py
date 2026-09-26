@@ -131,11 +131,19 @@ class Day36QueueEventTests(TestCase):
         # The appointment fixture can cross midnight when this test runs late in
         # the day. Pass the fixture's date explicitly so the audit test verifies
         # the event transition instead of depending on the wall-clock date.
-        called = call_next_ticket(
-            counter,
-            booking_date=self.booking.booking_date,
-            actor=self.staff,
+        appointment_at = timezone.make_aware(
+            datetime.combine(
+                self.booking.booking_date,
+                self.booking.booking_time,
+            ),
+            timezone.get_current_timezone(),
         )
+        with patch("queues.services.timezone.now", return_value=appointment_at):
+            called = call_next_ticket(
+                counter,
+                booking_date=self.booking.booking_date,
+                actor=self.staff,
+            )
         self.assertEqual(called.id, ticket.id)
 
         event = QueueEvent.objects.get(
@@ -156,12 +164,24 @@ class Day36QueueEventTests(TestCase):
         self.assertIsNone(error)
         counter, error = open_counter(counter, actor=self.staff)
         self.assertIsNone(error)
-        call_next_ticket(
-            counter,
-            booking_date=self.booking.booking_date,
-            actor=self.staff,
+        appointment_at = timezone.make_aware(
+            datetime.combine(
+                self.booking.booking_date,
+                self.booking.booking_time,
+            ),
+            timezone.get_current_timezone(),
         )
-        completed = complete_current_ticket(counter, actor=self.staff)
+        with patch("queues.services.timezone.now", return_value=appointment_at):
+            call_next_ticket(
+                counter,
+                booking_date=self.booking.booking_date,
+                actor=self.staff,
+            )
+        with patch(
+            "queues.services.timezone.now",
+            return_value=appointment_at + timedelta(minutes=10),
+        ):
+            completed = complete_current_ticket(counter, actor=self.staff)
         self.assertEqual(completed.status, QueueTicket.COMPLETED)
 
         timeline = list(get_ticket_event_timeline(ticket).values_list("event_type", flat=True))
