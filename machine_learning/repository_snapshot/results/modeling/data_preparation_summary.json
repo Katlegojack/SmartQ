@@ -1,0 +1,28 @@
+{
+  "total_completed_rows": 92655,
+  "unique_operating_dates": 170,
+  "train": {"rows": 64074, "start": "2026-01-02", "end": "2026-06-16"},
+  "validation": {"rows": 14665, "start": "2026-06-17", "end": "2026-07-22"},
+  "test": {"rows": 13916, "start": "2026-07-23", "end": "2026-08-27"},
+  "target": "actual_wait_minutes",
+  "numeric_features": [
+    "arrival_offset_minutes", "people_ahead", "general_waiting", "priority_waiting",
+    "serving_count", "open_general_counters", "open_priority_counters",
+    "effective_open_counters", "counter_utilisation", "queue_pressure_index",
+    "workload_minutes_ahead", "recent_avg_service_minutes_10",
+    "recent_avg_wait_minutes_10", "recent_throughput_60m",
+    "service_target_minutes", "hour_of_day"
+  ],
+  "categorical_features": [
+    "branch_code", "service_code", "booking_source",
+    "queue_type", "day_of_week", "is_peak_period"
+  ],
+  "selected_model_by_validation_mae": "XGBoost",
+  "best_random_forest_params": {
+    "n_estimators": 150, "max_depth": 14, "min_samples_leaf": 2, "max_features": 1.0
+  },
+  "best_xgboost_params": {
+    "n_estimators": 200, "max_depth": 5, "learning_rate": 0.08,
+    "subsample": 0.9, "colsample_bytree": 0.9, "reg_lambda": 2.0
+  }
+}

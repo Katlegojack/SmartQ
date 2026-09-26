@@ -1,0 +1,11 @@
+model,split,mae,rmse,parameters
+Mean baseline,validation,15.956,25.8235,train_mean=16.5741
+Mean baseline,test,14.985,24.8143,train_mean=16.5741
+SmartQ deterministic ETA,validation,4.6871,6.325,existing baseline_eta_minutes
+SmartQ deterministic ETA,test,4.6386,6.3683,existing baseline_eta_minutes
+Linear Regression,validation,4.1146,6.1452,default LinearRegression; non-negative clipping
+Linear Regression,test,4.0645,6.4606,default LinearRegression; non-negative clipping
+Random Forest,validation,2.6315,4.492,"{""max_depth"": 14, ""max_features"": 1.0, ""min_samples_leaf"": 2, ""n_estimators"": 150}"
+Random Forest,test,2.5231,4.6425,"{""max_depth"": 14, ""max_features"": 1.0, ""min_samples_leaf"": 2, ""n_estimators"": 150}"
+XGBoost,validation,2.6302,4.3893,"{""colsample_bytree"": 0.9, ""learning_rate"": 0.08, ""max_depth"": 5, ""n_estimators"": 200, ""reg_lambda"": 2.0, ""subsample"": 0.9}"
+XGBoost,test,2.5824,4.9561,"{""colsample_bytree"": 0.9, ""learning_rate"": 0.08, ""max_depth"": 5, ""n_estimators"": 200, ""reg_lambda"": 2.0, ""subsample"": 0.9}"
