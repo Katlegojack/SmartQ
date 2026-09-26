@@ -160,7 +160,7 @@ class Day58RealtimeServiceTimingTests(TestCase):
         self.assertEqual(event.metadata["service_minutes_saved"], 5.0)
         self.assertEqual(event.metadata["service_overrun_minutes"], 0.0)
 
-    def test_idle_parallel_counter_can_make_next_customer_due_now(self):
+    def test_idle_parallel_counter_does_not_bypass_appointment_eligibility(self):
         Counter.objects.create(
             branch=self.branch,
             counter_number="2",
@@ -185,7 +185,10 @@ class Day58RealtimeServiceTimingTests(TestCase):
             now=self.started_at + timedelta(minutes=5),
         )
         self.assertEqual(prediction["people_ahead"], 1)
-        self.assertEqual(prediction["estimated_wait_seconds"], 0)
+        # The second customer checked in early for a 09:20 appointment. Even with
+        # an idle matching counter at 09:05, the customer is not service-eligible
+        # for another 15 minutes.
+        self.assertEqual(prediction["estimated_wait_seconds"], 15 * 60)
 
     def test_frontend_displays_minutes_while_internal_timing_stays_second_resolution(self):
         customer = self.repo_text("frontend/src/pages/CustomerPage.tsx")
