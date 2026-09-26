@@ -1,0 +1,34 @@
+name: SmartQ ML integration tests
+
+on:
+  push:
+    branches:
+      - feature/ml-integration
+    paths:
+      - "queues/ml_prediction.py"
+      - "queues/eligibility.py"
+      - "queues/waiting_time.py"
+      - "queues/services.py"
+      - "queues/api_views.py"
+      - "smartq/test_ml_integration.py"
+      - ".github/workflows/ml-integration-tests.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/ml-integration
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run ML integration tests
+        run: python manage.py test smartq.test_ml_integration
+      - name: Run ETA regression tests
+        run: python manage.py test smartq.test_day58_realtime_service_timing
+      - name: Run forecasting regression tests
+        run: python manage.py test smartq.test_day59_forecasting_observations
