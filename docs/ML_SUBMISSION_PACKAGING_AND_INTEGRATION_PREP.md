@@ -542,3 +542,30 @@ The harder engineering work is making sure:
 - the API and frontend tell the truth about which model is active.
 
 That is the difference between demonstrating a model in a notebook and engineering an ML-assisted system.
+
+
+## 24. Measured prediction latency
+
+I measured the live Django prediction path in GitHub Actions using the real packaged XGBoost artifact and the same feature-building code used by SmartQ.
+
+The measured result was:
+
+```text
+Cold prediction: 0.924552 seconds
+Warm prediction: 0.018159 seconds
+Requirement:     < 2.000000 seconds
+```
+
+Both measurements are below my project requirement.
+
+### What cold and warm mean
+
+**Cold prediction** means I first cleared the in-process model cache, so the timed call included loading the joblib bundle and making the prediction.
+
+**Warm prediction** means the bundle was already loaded, which represents normal repeated Customer queue refreshes inside the same Django process.
+
+The warm path was about 18 milliseconds in this CI measurement.
+
+I treat the numbers as reproducible test-environment measurements, not a guarantee that every production server/network response will have identical timing.
+
+The important conclusion is that the model-inference path itself is comfortably inside the two-second requirement, including the first uncached call in this test environment.
