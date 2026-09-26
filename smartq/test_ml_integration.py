@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
+from django.urls import reverse
 from django.utils import timezone
 
 from accounts.models import Profile
@@ -104,6 +105,18 @@ class SmartQMLIntegrationTests(TestCase):
         self.assertEqual(features["queue_pressure_index"], 0.0)
         self.assertEqual(features["service_target_minutes"], 15.0)
         self.assertTrue(features["is_peak_period"])
+
+    def test_customer_current_queue_api_returns_xgboost_prediction(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("api_my_current_queue_ticket"))
+
+        self.assertEqual(response.status_code, 200)
+        prediction = response.json()["prediction"]
+        self.assertEqual(prediction["prediction_model"], "xgboost")
+        self.assertEqual(prediction["model_status"], "active")
+        self.assertTrue(prediction["machine_learning_enabled"])
+        self.assertIsNotNone(prediction["ml_predicted_wait_minutes"])
+        self.assertGreaterEqual(prediction["estimated_wait_seconds"], 0)
 
     def test_packaged_xgboost_model_produces_live_prediction(self):
         load_wait_model_bundle.cache_clear()
