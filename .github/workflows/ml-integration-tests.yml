@@ -16,6 +16,8 @@ on:
       - "frontend/src/types.ts"
       - "frontend/src/pages/HistoryPage.tsx"
       - "requirements.txt"
+      - "smartq/settings.py"
+      - ".env.example"
       - "machine_learning/runtime/**"
       - "smartq/test_ml_integration.py"
       - "smartq/test_day58_realtime_service_timing.py"
