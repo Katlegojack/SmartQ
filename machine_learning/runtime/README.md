@@ -63,3 +63,16 @@ During Django integration I will keep the deterministic SmartQ ETA as a fallback
 ## Next step
 
 The remaining integration work is to build the 22 live model inputs from the Django queue state, load this artifact once per application process, return the ML estimate through the existing queue API, and verify end-to-end latency.
+
+
+## Measured integrated prediction latency
+
+I benchmarked the Django prediction function using this packaged artifact in GitHub Actions.
+
+- cold prediction: **0.924552 s**
+- warm prediction: **0.018159 s**
+- project requirement: **< 2 s**
+
+The cold measurement includes loading the model bundle after clearing the process cache. The warm measurement represents repeated predictions after the model has already been loaded.
+
+Both passed the integration latency test.
