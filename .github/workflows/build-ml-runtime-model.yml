@@ -1,26 +1,26 @@
-name: Build ML runtime model
+name: Verify ML runtime reproducibility
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - feature/ml-integration
+      - main
     paths:
+      - "machine_learning/repository_snapshot/src/train_models.py"
+      - "machine_learning/repository_snapshot/data/SmartQ_Synthetic_Operational_Dataset_100k.csv"
+      - "machine_learning/runtime/requirements.txt"
       - ".github/workflows/build-ml-runtime-model.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build-model:
+  verify-model:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout integration branch
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          ref: feature/ml-integration
-          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -28,21 +28,13 @@ jobs:
           python-version: "3.12"
 
       - name: Install tested ML versions
-        run: pip install pandas==2.2.3 numpy==2.3.5 scikit-learn==1.8.0 xgboost==3.1.3 joblib==1.5.3
+        run: pip install -r machine_learning/runtime/requirements.txt
 
-      - name: Train selected model from submission snapshot
+      - name: Reproduce selected model from submission snapshot
         working-directory: machine_learning/repository_snapshot
         run: python src/train_models.py
 
-      - name: Copy runtime model
+      - name: Verify generated runtime artifact exists
         run: |
-          mkdir -p machine_learning/runtime
-          cp machine_learning/repository_snapshot/models/smartq_wait_time_model.joblib machine_learning/runtime/smartq_wait_time_model.joblib
-
-      - name: Commit runtime model
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f machine_learning/runtime/smartq_wait_time_model.joblib
-          git commit -m "Package selected XGBoost runtime model"
-          git push
+          test -s machine_learning/repository_snapshot/models/smartq_wait_time_model.joblib
+          echo "SmartQ selected model reproduced successfully."
