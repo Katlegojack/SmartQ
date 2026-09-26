@@ -77,6 +77,11 @@ export interface QueuePrediction {
   people_ahead: number;
   estimated_wait_time: number;
   estimated_wait_seconds: number;
+  deterministic_estimated_wait_seconds: number;
+  ml_predicted_wait_minutes: number | null;
+  prediction_model: "xgboost" | "deterministic" | string;
+  model_status: "active" | "fallback" | "deterministic" | string;
+  machine_learning_enabled: boolean;
   prediction_generated_at: string;
   service_started_at: string | null;
   service_target_seconds: number;
