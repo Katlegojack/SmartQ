@@ -1,3 +1,4 @@
+import logging
 import math
 
 from django.db.models import Q
@@ -7,6 +8,9 @@ from counters.models import Counter
 from queues.models import QueueTicket
 
 from .eligibility import get_service_eligible_at, service_eligibility_delay_seconds
+
+
+logger = logging.getLogger(__name__)
 
 
 def _service_target_seconds(ticket):
@@ -183,7 +187,7 @@ def get_ticket_prediction(ticket, now=None, *, use_ml=False):
 
     if use_ml and ticket.status == QueueTicket.WAITING:
         try:
-            from .ml_prediction import predict_wait_minutes
+            from .ml_prediction import MLPredictionUnavailable, predict_wait_minutes
 
             ml_predicted_wait_minutes = predict_wait_minutes(ticket, now=now)
             if ml_predicted_wait_minutes is not None:
@@ -194,9 +198,16 @@ def get_ticket_prediction(ticket, now=None, *, use_ml=False):
                 prediction_model = "xgboost"
                 model_status = "active"
                 machine_learning_enabled = True
-        except Exception as exc:
+        except MLPredictionUnavailable as exc:
             model_status = "fallback"
             prediction_fallback_reason = str(exc)
+        except Exception:
+            logger.exception(
+                "SmartQ ML prediction failed for queue ticket %s; using deterministic ETA.",
+                ticket.pk,
+            )
+            model_status = "fallback"
+            prediction_fallback_reason = "ml_prediction_unavailable"
 
     return {
         "queue_number": ticket.queue_number,
