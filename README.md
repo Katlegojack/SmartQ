@@ -417,19 +417,25 @@ The runtime folder also contains pinned compatibility versions and first-person 
 
 ### Current integration truth
 
-The model is **trained, evaluated, diagnosed, reproduced and packaged**, but it is **not yet active in the Django queue flow**.
+The XGBoost model is now active for the logged-in Customer live queue prediction path.
 
-The live application still uses the deterministic ETA.
+The integration now:
 
-I will only change Smart Q's ML status to active after I have:
+1. builds the exact 22-feature model contract from live Django queue state;
+2. loads the packaged XGBoost bundle once per application process;
+3. returns the ML estimate through the existing customer queue API;
+4. preserves the deterministic ETA as fallback;
+5. respects appointment service eligibility before a customer can be called;
+6. logs ML prediction-vs-outcome evidence in forecasting observations;
+7. exposes current ML quality to Manager/Admin forecasting reporting.
 
-1. built the exact 22 live feature inputs from Django queue state;
-2. loaded the model safely once per application process;
-3. preserved deterministic ETA fallback;
-4. exposed the prediction through the existing queue API;
-5. measured prediction latency against the project requirement;
-6. passed integration/regression tests;
-7. logged predictions and later real outcomes.
+The forecasting contract now reports:
+
+`machine_learning_enabled = true`
+
+when the packaged runtime model is available and enabled.
+
+The deterministic ETA remains available both as a comparison baseline and as the safe fallback if ML prediction cannot be produced.
 
 Detailed documentation:
 
@@ -515,7 +521,7 @@ Day 61     80-customer real-time busy-day simulation       COMPLETE
 ML research Model comparison + diagnostics                  COMPLETE
 ML package  Full 100k submission snapshot                   COMPLETE
 ML runtime  Reproducible XGBoost model artifact             COMPLETE
-Integration Live Django feature/model/API wiring            IN PROGRESS
+Integration Live Django feature/model/API wiring            COMPLETE
 ```
 
 Day 61 was closed after the live simulator successfully processed all 80 synthetic customers on 7 September 2026.
@@ -539,21 +545,22 @@ selected model packaging                 COMPLETE
 full ML submission snapshot in SmartQ    COMPLETE
 ```
 
-The remaining path is application integration:
+The live application-integration path is now implemented:
 
 ```text
-1. map live Django state to the 22 trained features
-2. validate every feature against the training definition
-3. load the packaged XGBoost bundle once per process
-4. predict wait time without post-outcome leakage
-5. fall back to deterministic ETA on any ML failure
-6. expose prediction metadata through the current API
-7. benchmark end-to-end latency
-8. add integration/regression tests
-9. log prediction + eventual actual wait for future real-data retraining
+1. map live Django state to the 22 trained features             COMPLETE
+2. validate every feature against the training definition      COMPLETE
+3. load the packaged XGBoost bundle once per process            COMPLETE
+4. predict wait time without post-outcome leakage               COMPLETE
+5. fall back to deterministic ETA on any ML failure             COMPLETE
+6. expose prediction metadata through the current API           COMPLETE
+7. protect appointment service eligibility                      COMPLETE
+8. log ML prediction + eventual actual wait                     COMPLETE
+9. expose ML quality in forecasting reporting                   COMPLETE
+10. focused ML/ETA/forecasting regression workflow              PASSING
 ```
 
-I am deliberately keeping `machine_learning_enabled = false` until those runtime steps are genuinely complete.
+The current forecasting contract reports `machine_learning_enabled = true` when the packaged model is available.
 
 Smart Q should become AI-assisted because the model is integrated safely and measurably improves prediction, not simply because a model file exists.
 
