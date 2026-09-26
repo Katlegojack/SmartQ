@@ -7,6 +7,7 @@ from django.utils import timezone
 from accounts.models import Profile
 from bookings.models import Booking
 from counters.models import Counter
+from .eligibility import is_service_eligible
 from .events import record_queue_event
 from .models import QueueEvent, QueueNumberSequence, QueueTicket
 
@@ -330,7 +331,8 @@ def call_next_ticket(counter, booking_date=None, *, actor=None):
     if current_ticket:
         return None
 
-    ticket = QueueTicket.objects.select_for_update().select_related(
+    now = timezone.now()
+    candidates = QueueTicket.objects.select_for_update().select_related(
         "booking", "booking__service"
     ).filter(
         queue_type=counter.queue_type,
@@ -340,12 +342,26 @@ def call_next_ticket(counter, booking_date=None, *, actor=None):
         booking__status__in=[Booking.PENDING, Booking.CONFIRMED],
         status=QueueTicket.WAITING,
         assigned_counter__isnull=True,
-    ).order_by("booking__checked_in_at", "id").first()
+    ).order_by("booking__checked_in_at", "id")
+
+    eligible = [
+        candidate
+        for candidate in candidates
+        if is_service_eligible(candidate.booking, now=now)
+    ]
+    eligible.sort(
+        key=lambda candidate: (
+            max(candidate.booking.checked_in_at, get_booking_datetime(candidate.booking))
+            if candidate.booking.source == Booking.ONLINE
+            else candidate.booking.checked_in_at,
+            candidate.booking.checked_in_at,
+            candidate.id,
+        )
+    )
+    ticket = eligible[0] if eligible else None
 
     if ticket is None:
         return None
-
-    now = timezone.now()
     service_target_seconds = max(
         int(round((ticket.booking.service.average_service_time or 0) * 60)),
         0,
