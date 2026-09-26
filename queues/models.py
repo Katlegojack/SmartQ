@@ -96,6 +96,9 @@ class QueueForecastObservation(models.Model):
     # Baseline features captured at queue entry. These are facts available before
     # the customer's eventual wait outcome is known, which prevents target leakage.
     baseline_estimated_wait_seconds = models.PositiveIntegerField(null=True, blank=True)
+    ml_estimated_wait_seconds = models.PositiveIntegerField(null=True, blank=True)
+    prediction_model = models.CharField(max_length=40, blank=True)
+    prediction_generated_at = models.DateTimeField(null=True, blank=True)
     people_ahead = models.PositiveIntegerField(default=0)
     open_counter_count = models.PositiveIntegerField(default=0)
     serving_count = models.PositiveIntegerField(default=0)
@@ -104,6 +107,7 @@ class QueueForecastObservation(models.Model):
     called_at = models.DateTimeField(null=True, blank=True, db_index=True)
     actual_wait_seconds = models.PositiveIntegerField(null=True, blank=True)
     wait_variance_seconds = models.IntegerField(null=True, blank=True)
+    ml_wait_variance_seconds = models.IntegerField(null=True, blank=True)
 
     # Service-duration label populated as the visit progresses/completes.
     service_target_seconds = models.PositiveIntegerField(null=True, blank=True)
