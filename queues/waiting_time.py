@@ -1,3 +1,4 @@
+import logging
 import math
 
 from django.db.models import Q
@@ -5,6 +6,11 @@ from django.utils import timezone
 
 from counters.models import Counter
 from queues.models import QueueTicket
+
+from .eligibility import get_service_eligible_at, service_eligibility_delay_seconds
+
+
+logger = logging.getLogger(__name__)
 
 
 def _service_target_seconds(ticket):
@@ -40,22 +46,39 @@ def get_service_clock(ticket, now=None):
 
 
 def _waiting_ahead_queryset(ticket):
-    """Return same-queue waiting customers who entered before this ticket."""
+    """Return same-lane waiting customers ordered by service eligibility."""
     checked_in_at = ticket.booking.checked_in_at
-    if checked_in_at is None:
-        return QueueTicket.objects.none()
+    eligible_at = get_service_eligible_at(ticket.booking)
+    if checked_in_at is None or eligible_at is None:
+        return []
 
-    return QueueTicket.objects.filter(
+    current_key = (eligible_at, checked_in_at, ticket.id)
+    candidates = QueueTicket.objects.filter(
         booking__branch=ticket.booking.branch,
         booking__booking_date=ticket.booking.booking_date,
         booking__checked_in_at__isnull=False,
         queue_type=ticket.queue_type,
         status=QueueTicket.WAITING,
         assigned_counter__isnull=True,
-    ).filter(
-        Q(booking__checked_in_at__lt=checked_in_at)
-        | Q(booking__checked_in_at=checked_in_at, id__lt=ticket.id)
-    ).select_related("booking", "booking__service").order_by("booking__checked_in_at", "id")
+    ).exclude(pk=ticket.pk).select_related("booking", "booking__service")
+
+    ahead = []
+    for candidate in candidates:
+        candidate_eligible_at = get_service_eligible_at(candidate.booking)
+        if candidate_eligible_at is None:
+            continue
+        key = (candidate_eligible_at, candidate.booking.checked_in_at, candidate.id)
+        if key < current_key:
+            ahead.append(candidate)
+
+    return sorted(
+        ahead,
+        key=lambda item: (
+            get_service_eligible_at(item.booking),
+            item.booking.checked_in_at,
+            item.id,
+        ),
+    )
 
 
 def _serving_ahead_queryset(ticket):
@@ -73,7 +96,7 @@ def get_people_ahead(ticket):
     if ticket.status == QueueTicket.SERVING:
         return 0
 
-    return _waiting_ahead_queryset(ticket).count() + _serving_ahead_queryset(ticket).count()
+    return len(_waiting_ahead_queryset(ticket)) + _serving_ahead_queryset(ticket).count()
 
 
 def get_queue_position(ticket):
@@ -138,7 +161,9 @@ def calculate_estimated_wait_seconds(ticket, now=None):
         counter_id = min(counter_available_seconds, key=counter_available_seconds.get)
         counter_available_seconds[counter_id] += _service_target_seconds(ahead_ticket)
 
-    return max(min(counter_available_seconds.values()), 0)
+    counter_delay = max(min(counter_available_seconds.values()), 0)
+    eligibility_delay = service_eligibility_delay_seconds(ticket.booking, now=now)
+    return max(counter_delay, eligibility_delay)
 
 
 def calculate_estimated_wait_time(ticket, now=None):
@@ -147,12 +172,42 @@ def calculate_estimated_wait_time(ticket, now=None):
     return int(math.ceil(seconds / 60)) if seconds else 0
 
 
-def get_ticket_prediction(ticket, now=None):
+def get_ticket_prediction(ticket, now=None, *, use_ml=False):
     if now is None:
         now = timezone.now()
 
     service_clock = get_service_clock(ticket, now=now)
-    estimated_wait_seconds = calculate_estimated_wait_seconds(ticket, now=now)
+    deterministic_wait_seconds = calculate_estimated_wait_seconds(ticket, now=now)
+    estimated_wait_seconds = deterministic_wait_seconds
+    prediction_model = "deterministic"
+    model_status = "deterministic"
+    machine_learning_enabled = False
+    ml_predicted_wait_minutes = None
+    prediction_fallback_reason = None
+
+    if use_ml and ticket.status == QueueTicket.WAITING:
+        try:
+            from .ml_prediction import MLPredictionUnavailable, predict_wait_minutes
+
+            ml_predicted_wait_minutes = predict_wait_minutes(ticket, now=now)
+            if ml_predicted_wait_minutes is not None:
+                estimated_wait_seconds = max(
+                    int(round(ml_predicted_wait_minutes * 60)),
+                    0,
+                )
+                prediction_model = "xgboost"
+                model_status = "active"
+                machine_learning_enabled = True
+        except MLPredictionUnavailable as exc:
+            model_status = "fallback"
+            prediction_fallback_reason = str(exc)
+        except Exception:
+            logger.exception(
+                "SmartQ ML prediction failed for queue ticket %s; using deterministic ETA.",
+                ticket.pk,
+            )
+            model_status = "fallback"
+            prediction_fallback_reason = "ml_prediction_unavailable"
 
     return {
         "queue_number": ticket.queue_number,
@@ -161,6 +216,12 @@ def get_ticket_prediction(ticket, now=None):
         "queue_position": get_queue_position(ticket),
         "estimated_wait_time": int(math.ceil(estimated_wait_seconds / 60)) if estimated_wait_seconds else 0,
         "estimated_wait_seconds": estimated_wait_seconds,
+        "deterministic_estimated_wait_seconds": deterministic_wait_seconds,
+        "ml_predicted_wait_minutes": ml_predicted_wait_minutes,
+        "prediction_model": prediction_model,
+        "model_status": model_status,
+        "machine_learning_enabled": machine_learning_enabled,
+        "prediction_fallback_reason": prediction_fallback_reason,
         "prediction_generated_at": now,
         **service_clock,
     }

@@ -45,13 +45,16 @@ type Report = {
 };
 
 type ForecastingSummary = {
-  model_status: "data_collection" | string;
+  model_status: "active" | "data_collection" | string;
+  prediction_model: "xgboost" | "deterministic" | string;
   machine_learning_enabled: boolean;
   observations: number;
   wait_labels: number;
   service_labels: number;
   baseline_wait_mae_minutes: number | null;
   baseline_wait_bias_minutes: number | null;
+  ml_wait_mae_minutes: number | null;
+  ml_wait_bias_minutes: number | null;
   service_target_mae_minutes: number | null;
   service_target_bias_minutes: number | null;
 };
@@ -182,14 +185,16 @@ export function HistoryPage() {
       <SectionHeader eyebrow="Forecasting foundation" title="Data collection quality" />
       {forecasting.isError ? <ErrorState error={forecasting.error} message="Could not load forecasting observation quality." /> : forecast ? <>
         <p className="muted">
-          Smart Q is collecting labelled operational observations and measuring the current deterministic baseline.
-          No machine-learning model is active yet.
+          {forecast.machine_learning_enabled
+            ? "XGBoost is active for customer wait prediction. Smart Q is logging prediction-vs-outcome evidence while keeping the deterministic ETA as fallback."
+            : "Smart Q is collecting labelled operational observations and measuring the current deterministic baseline."}
         </p>
         <section className="manager-metrics history-metrics">
           <Metric label="Observations" value={forecast.observations} />
           <Metric label="Wait labels" value={forecast.wait_labels} />
           <Metric label="Service labels" value={forecast.service_labels} />
           <Metric label="Wait baseline MAE" value={minuteValue(forecast.baseline_wait_mae_minutes)} />
+          <Metric label="ML wait MAE" value={minuteValue(forecast.ml_wait_mae_minutes)} />
           <Metric label="Service target MAE" value={minuteValue(forecast.service_target_mae_minutes)} />
         </section>
       </> : <EmptyState title="No forecasting observations yet" detail="Completed live-queue visits will build this dataset automatically." />}

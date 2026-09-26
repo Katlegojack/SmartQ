@@ -31,6 +31,11 @@ def env_list(name, default=None):
 SMARTQ_ENV = os.getenv("SMARTQ_ENV", "development").strip().lower()
 IS_PRODUCTION = SMARTQ_ENV == "production"
 
+# The packaged XGBoost runtime is enabled by default for the integrated SmartQ
+# build. Operators can disable it immediately without a code change; the queue
+# then continues using the deterministic ETA fallback.
+SMARTQ_ML_ENABLED = env_bool("SMARTQ_ML_ENABLED", default=True)
+
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 if IS_PRODUCTION and not SECRET_KEY:
     raise ImproperlyConfigured("DJANGO_SECRET_KEY is required in production.")

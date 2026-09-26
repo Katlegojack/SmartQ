@@ -115,6 +115,7 @@ dashboard
 | Database | SQLite3 in the current development environment |
 | Tests | Django/DRF regression + frontend source/build contracts |
 | CI | GitHub Actions, Python 3.12, Node 22, React build, migrations check, focused gates, full suite |
+| ML research/runtime | pandas, scikit-learn, XGBoost, joblib; XGBoost active for supported live Customer wait predictions with deterministic fallback |
 
 ---
 
@@ -348,6 +349,112 @@ python manage.py export_forecasting_dataset \
 
 ---
 
+# Machine-learning research, submission packaging and runtime artifact
+
+After Day 61, I completed the offline machine-learning research in the dedicated `SmartQ-Machine-Learning` repository and then copied the complete tracked ML project into this SmartQ integration branch for submission.
+
+The full ML submission snapshot is available at:
+
+```text
+machine_learning/repository_snapshot/
+```
+
+I verified the copy file-for-file:
+
+```text
+source tracked files: 49
+copied tracked files: 49
+missing: 0
+extra: 0
+```
+
+The full 100,000-row synthetic dataset is included at:
+
+```text
+machine_learning/repository_snapshot/data/
+└── SmartQ_Synthetic_Operational_Dataset_100k.csv
+```
+
+Dataset properties:
+
+```text
+rows:    100,000
+columns: 45
+size:    35,059,222 bytes
+```
+
+I trained and evaluated the three proposal models on the same chronological data split:
+
+| Model | Validation MAE | Validation RMSE |
+|---|---:|---:|
+| Linear Regression | 4.1146 min | 6.1452 min |
+| Random Forest | 2.6315 min | 4.4920 min |
+| XGBoost | **2.6302 min** | **4.3893 min** |
+
+I selected XGBoost because I had already defined **lowest validation MAE** as my model-selection rule.
+
+The selected XGBoost final test result is:
+
+```text
+MAE:  2.5824 minutes
+RMSE: 4.9561 minutes
+R²:   0.9596
+```
+
+I also reproduced the training pipeline on GitHub Actions and committed the deployable model bundle at:
+
+```text
+machine_learning/runtime/smartq_wait_time_model.joblib
+```
+
+Artifact size:
+
+```text
+148,707 bytes
+```
+
+The runtime folder also contains pinned compatibility versions and first-person documentation.
+
+### Current integration truth
+
+The XGBoost model is now active for the logged-in Customer live queue prediction path.
+
+The integration now:
+
+1. builds the exact 22-feature model contract from live Django queue state;
+2. loads the packaged XGBoost bundle once per application process;
+3. returns the ML estimate through the existing customer queue API;
+4. preserves the deterministic ETA as fallback;
+5. respects appointment service eligibility before a customer can be called;
+6. logs ML prediction-vs-outcome evidence in forecasting observations;
+7. exposes current ML quality to Manager/Admin forecasting reporting.
+
+The forecasting contract now reports:
+
+`machine_learning_enabled = true`
+
+when the packaged runtime model is available and enabled.
+
+The deterministic ETA remains available both as a comparison baseline and as the safe fallback if ML prediction cannot be produced.
+
+Runtime toggle:
+
+```text
+SMARTQ_ML_ENABLED=true
+```
+
+Set it to `false` to disable ML immediately while keeping deterministic ETA available.
+
+Detailed documentation:
+
+```text
+docs/ML_SUBMISSION_PACKAGING_AND_INTEGRATION_PREP.md
+machine_learning/README.md
+machine_learning/runtime/README.md
+```
+
+---
+
 # Build and run
 
 ```bash
@@ -398,6 +505,7 @@ docs/DAY59_FORECASTING_OBSERVATIONS.md
 docs/DAY61_BUSY_DAY_ML_SIMULATION.md
 docs/DAY61_TOMORROW_RUNBOOK.md
 docs/DAY61_FINAL_DOCUMENTATION.md
+docs/ML_SUBMISSION_PACKAGING_AND_INTEGRATION_PREP.md
 ```
 
 ---
@@ -418,26 +526,51 @@ Day 58     Live ETA + service timing observations          COMPLETE
 Day 59     Forecasting observation/data foundation         COMPLETE
 Day 60     Workspace shell engineering-text cleanup        COMPLETE
 Day 61     80-customer real-time busy-day simulation       COMPLETE
+ML research Model comparison + diagnostics                  COMPLETE
+ML package  Full 100k submission snapshot                   COMPLETE
+ML runtime  Reproducible XGBoost model artifact             COMPLETE
+Integration Live Django feature/model/API wiring            COMPLETE
 ```
 
 Day 61 was closed after the live simulator successfully processed all 80 synthetic customers on 7 September 2026.
 
 ---
 
-# Forecasting way forward
+# Machine-learning way forward
+
+I have completed the offline research stages that were previously listed here:
 
 ```text
-1. export and inspect labelled observations
-2. audit missingness and feature distributions
-3. measure deterministic baseline MAE/bias
-4. split data chronologically into train/validation/test periods
-5. build simple statistical / classical ML baselines
-6. compare every model against the deterministic Smart Q baseline
-7. test a neural network only if data volume/non-linearity justify it
-8. deploy only if a model improves real accuracy and remains operationally safe
+dataset generation + validation          COMPLETE
+EDA / Data Understanding                 COMPLETE
+chronological train/validation/test       COMPLETE
+Linear Regression                        COMPLETE
+Random Forest                            COMPLETE
+XGBoost                                  COMPLETE
+MAE / RMSE / R² evaluation              COMPLETE
+statistical/model diagnostics            COMPLETE
+selected model packaging                 COMPLETE
+full ML submission snapshot in SmartQ    COMPLETE
 ```
 
-Smart Q should become AI-assisted because the data demonstrates value, not because an AI label looks good in a presentation.
+The live application-integration path is now implemented:
+
+```text
+1. map live Django state to the 22 trained features             COMPLETE
+2. validate every feature against the training definition      COMPLETE
+3. load the packaged XGBoost bundle once per process            COMPLETE
+4. predict wait time without post-outcome leakage               COMPLETE
+5. fall back to deterministic ETA on any ML failure             COMPLETE
+6. expose prediction metadata through the current API           COMPLETE
+7. protect appointment service eligibility                      COMPLETE
+8. log ML prediction + eventual actual wait                     COMPLETE
+9. expose ML quality in forecasting reporting                   COMPLETE
+10. focused ML/ETA/forecasting regression workflow              PASSING
+```
+
+The current forecasting contract reports `machine_learning_enabled = true` when the packaged model is available.
+
+Smart Q should become AI-assisted because the model is integrated safely and measurably improves prediction, not simply because a model file exists.
 
 ---
 

@@ -1,0 +1,38 @@
+name: SmartQ ML Quality
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "data/**"
+      - "src/**"
+      - "requirements.txt"
+      - ".github/workflows/ml-quality.yml"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install validation dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install "pandas>=2.2"
+
+      - name: Validate SmartQ dataset
+        run: python src/validate_dataset.py
+
+      - name: Syntax-check ML source files
+        run: python -m compileall -q src

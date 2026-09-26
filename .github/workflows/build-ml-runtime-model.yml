@@ -1,0 +1,40 @@
+name: Verify ML runtime reproducibility
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "machine_learning/repository_snapshot/src/train_models.py"
+      - "machine_learning/repository_snapshot/data/SmartQ_Synthetic_Operational_Dataset_100k.csv"
+      - "machine_learning/runtime/requirements.txt"
+      - ".github/workflows/build-ml-runtime-model.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-model:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tested ML versions
+        run: pip install -r machine_learning/runtime/requirements.txt
+
+      - name: Reproduce selected model from submission snapshot
+        working-directory: machine_learning/repository_snapshot
+        run: python src/train_models.py
+
+      - name: Verify generated runtime artifact exists
+        run: |
+          test -s machine_learning/repository_snapshot/models/smartq_wait_time_model.joblib
+          echo "SmartQ selected model reproduced successfully."
