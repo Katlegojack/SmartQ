@@ -179,6 +179,7 @@ def get_ticket_prediction(ticket, now=None, *, use_ml=False):
     model_status = "deterministic"
     machine_learning_enabled = False
     ml_predicted_wait_minutes = None
+    prediction_fallback_reason = None
 
     if use_ml and ticket.status == QueueTicket.WAITING:
         try:
@@ -193,8 +194,9 @@ def get_ticket_prediction(ticket, now=None, *, use_ml=False):
                 prediction_model = "xgboost"
                 model_status = "active"
                 machine_learning_enabled = True
-        except Exception:
+        except Exception as exc:
             model_status = "fallback"
+            prediction_fallback_reason = str(exc)
 
     return {
         "queue_number": ticket.queue_number,
@@ -208,6 +210,7 @@ def get_ticket_prediction(ticket, now=None, *, use_ml=False):
         "prediction_model": prediction_model,
         "model_status": model_status,
         "machine_learning_enabled": machine_learning_enabled,
+        "prediction_fallback_reason": prediction_fallback_reason,
         "prediction_generated_at": now,
         **service_clock,
     }
