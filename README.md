@@ -115,7 +115,7 @@ dashboard
 | Database | SQLite3 in the current development environment |
 | Tests | Django/DRF regression + frontend source/build contracts |
 | CI | GitHub Actions, Python 3.12, Node 22, React build, migrations check, focused gates, full suite |
-| ML research/runtime | pandas, scikit-learn, XGBoost, joblib; selected XGBoost artifact packaged but not yet active in Django |
+| ML research/runtime | pandas, scikit-learn, XGBoost, joblib; XGBoost active for supported live Customer wait predictions with deterministic fallback |
 
 ---
 
@@ -436,6 +436,14 @@ The forecasting contract now reports:
 when the packaged runtime model is available and enabled.
 
 The deterministic ETA remains available both as a comparison baseline and as the safe fallback if ML prediction cannot be produced.
+
+Runtime toggle:
+
+```text
+SMARTQ_ML_ENABLED=true
+```
+
+Set it to `false` to disable ML immediately while keeping deterministic ETA available.
 
 Detailed documentation:
 
