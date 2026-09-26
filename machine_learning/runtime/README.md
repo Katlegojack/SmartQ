@@ -60,9 +60,13 @@ I will not make the ML model the only way SmartQ can estimate waiting time.
 
 During Django integration I will keep the deterministic SmartQ ETA as a fallback if the model cannot load, an input feature cannot be built safely, or prediction fails.
 
-## Next step
+## Current integration state
 
-The remaining integration work is to build the 22 live model inputs from the Django queue state, load this artifact once per application process, return the ML estimate through the existing queue API, and verify end-to-end latency.
+I now use this artifact from the Django Customer live-queue prediction path.
+
+The runtime integration builds the 22-feature input contract, caches this bundle once per process, returns XGBoost estimates through the existing queue API, and falls back to the deterministic ETA when ML cannot be used safely.
+
+I also log the ML estimate and later actual wait so I can compare real prediction-vs-outcome performance over time.
 
 
 ## Measured integrated prediction latency
