@@ -94,20 +94,21 @@ The packaged model was built with:
 
 ## Important current status
 
-The model file now exists inside SmartQ, but **ML prediction is not yet active in the Django queue flow**.
+The packaged XGBoost model is now integrated into the logged-in Customer live queue prediction path.
 
-The current application still uses the deterministic live ETA.
+I now:
 
-I will only mark machine learning as active after I:
+- build the 22 live model inputs from Django queue state;
+- load the model bundle once per Django process;
+- return XGBoost predictions through the existing current-queue API;
+- keep the deterministic ETA as fallback;
+- reject unsafe numeric extrapolation outside the synthetic training domain;
+- prevent early appointment customers from being called before service eligibility;
+- log ML prediction-vs-outcome evidence;
+- report ML quality to Manager/Admin;
+- measure cold and warm prediction latency in CI.
 
-- build the 22 live model features correctly;
-- load the model safely inside Django;
-- preserve deterministic ETA fallback;
-- expose the prediction through the existing API;
-- verify latency;
-- pass integration tests.
-
-I keep this distinction because packaging a model and integrating a model are two different engineering stages.
+The deterministic ETA remains part of SmartQ because I want the application to stay operational if ML is disabled, unavailable or outside its validated input range.
 
 ## Detailed documentation
 
