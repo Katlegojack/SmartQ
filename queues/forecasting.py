@@ -22,8 +22,12 @@ FORECAST_EXPORT_FIELDS = [
     "open_counter_count",
     "serving_count",
     "baseline_estimated_wait_seconds",
+    "ml_estimated_wait_seconds",
+    "prediction_model",
+    "prediction_generated_at",
     "actual_wait_seconds",
     "wait_variance_seconds",
+    "ml_wait_variance_seconds",
     "service_target_seconds",
     "actual_service_seconds",
     "service_variance_seconds",
@@ -51,7 +55,13 @@ def capture_queue_entry_observation(ticket, *, now=None):
         queue_type=ticket.queue_type,
         status=QueueTicket.SERVING,
     ).count()
-    prediction = get_ticket_prediction(ticket, now=now)
+    baseline_prediction = get_ticket_prediction(ticket, now=now)
+    ml_prediction = get_ticket_prediction(ticket, now=now, use_ml=True)
+    ml_estimated_wait_seconds = (
+        ml_prediction["estimated_wait_seconds"]
+        if ml_prediction["prediction_model"] == "xgboost"
+        else None
+    )
 
     return QueueForecastObservation.objects.create(
         ticket=ticket,
@@ -60,8 +70,11 @@ def capture_queue_entry_observation(ticket, *, now=None):
         queue_type=ticket.queue_type,
         booking_source=booking.source,
         checked_in_at=now,
-        baseline_estimated_wait_seconds=prediction["estimated_wait_seconds"],
-        people_ahead=prediction["people_ahead"],
+        baseline_estimated_wait_seconds=baseline_prediction["estimated_wait_seconds"],
+        ml_estimated_wait_seconds=ml_estimated_wait_seconds,
+        prediction_model=ml_prediction["prediction_model"],
+        prediction_generated_at=ml_prediction["prediction_generated_at"],
+        people_ahead=baseline_prediction["people_ahead"],
         open_counter_count=open_counter_count,
         serving_count=serving_count,
     )
@@ -95,12 +108,17 @@ def record_call_outcome(ticket, *, called_at, service_target_seconds):
     observation.wait_variance_seconds = (
         actual_wait_seconds - baseline if baseline is not None else None
     )
+    ml_baseline = observation.ml_estimated_wait_seconds
+    observation.ml_wait_variance_seconds = (
+        actual_wait_seconds - ml_baseline if ml_baseline is not None else None
+    )
     observation.service_target_seconds = max(int(service_target_seconds), 0)
     observation.save(
         update_fields=[
             "called_at",
             "actual_wait_seconds",
             "wait_variance_seconds",
+            "ml_wait_variance_seconds",
             "service_target_seconds",
         ]
     )
@@ -185,8 +203,16 @@ def observation_to_training_row(observation):
         "open_counter_count": observation.open_counter_count,
         "serving_count": observation.serving_count,
         "baseline_estimated_wait_seconds": observation.baseline_estimated_wait_seconds,
+        "ml_estimated_wait_seconds": observation.ml_estimated_wait_seconds,
+        "prediction_model": observation.prediction_model,
+        "prediction_generated_at": (
+            timezone.localtime(observation.prediction_generated_at).isoformat()
+            if observation.prediction_generated_at is not None
+            else None
+        ),
         "actual_wait_seconds": observation.actual_wait_seconds,
         "wait_variance_seconds": observation.wait_variance_seconds,
+        "ml_wait_variance_seconds": observation.ml_wait_variance_seconds,
         "service_target_seconds": observation.service_target_seconds,
         "actual_service_seconds": observation.actual_service_seconds,
         "service_variance_seconds": observation.service_variance_seconds,
@@ -226,6 +252,13 @@ def build_forecasting_summary(branch, start_date, end_date):
         and item.baseline_estimated_wait_seconds is not None
         and item.wait_variance_seconds is not None
     ]
+    ml_wait_errors = [
+        item.ml_wait_variance_seconds
+        for item in observations
+        if item.actual_wait_seconds is not None
+        and item.ml_estimated_wait_seconds is not None
+        and item.ml_wait_variance_seconds is not None
+    ]
     service_errors = [
         item.service_variance_seconds
         for item in observations
@@ -241,13 +274,16 @@ def build_forecasting_summary(branch, start_date, end_date):
             "start_date": start_date,
             "end_date": end_date,
         },
-        "model_status": "data_collection",
-        "machine_learning_enabled": False,
+        "model_status": "active",
+        "prediction_model": "xgboost",
+        "machine_learning_enabled": True,
         "observations": len(observations),
         "wait_labels": sum(item.actual_wait_seconds is not None for item in observations),
         "service_labels": sum(item.actual_service_seconds is not None for item in observations),
         "baseline_wait_mae_minutes": _mean_minutes(wait_errors, absolute=True),
         "baseline_wait_bias_minutes": _mean_minutes(wait_errors),
+        "ml_wait_mae_minutes": _mean_minutes(ml_wait_errors, absolute=True),
+        "ml_wait_bias_minutes": _mean_minutes(ml_wait_errors),
         "service_target_mae_minutes": _mean_minutes(service_errors, absolute=True),
         "service_target_bias_minutes": _mean_minutes(service_errors),
     }
