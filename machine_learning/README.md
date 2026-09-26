@@ -1,35 +1,120 @@
-# SmartQ Machine-Learning Submission Snapshot
+# SmartQ Machine-Learning Submission & Integration Workspace
 
-I keep the dedicated `SmartQ-Machine-Learning` repository for ML research history, but I also copy its complete tracked contents into the main SmartQ repository for submission and integration.
+I keep the dedicated `SmartQ-Machine-Learning` repository for my ML research history, but I also copied its complete tracked contents into the main SmartQ repository for submission and integration.
 
-## Complete snapshot
+## Why I keep both
 
-The full copy is here:
+I use the dedicated ML repository to preserve a clean research history.
+
+For submission, I also want one repository that contains:
+
+- the SmartQ application;
+- the full 100,000-row dataset;
+- all ML notebooks;
+- all model evaluation and diagnostics;
+- my learning/engineering notes;
+- the deployable XGBoost model.
+
+That is why this folder exists.
+
+## Complete ML snapshot
+
+The full copied ML repository is here:
 
 `machine_learning/repository_snapshot/`
 
-I verified it file-for-file against the ML repository:
+I verified the copy file-for-file against the ML repository:
 
 - source tracked files: **49**
 - copied tracked files: **49**
 - missing files: **0**
-- extra files: **0**
+- extra copied files: **0**
 
-The snapshot includes the full 100,000-row CSV dataset, all ML notebooks, the embedded-dataset notebook, dataset DOCX documentation, project notes, EDA/model/diagnostic results, Python source code, requirements, README files and ML workflow files.
+The copied source version came from:
 
-## Dataset
+- repository: `Katlegojack/SmartQ-Machine-Learning`
+- branch: `main`
+- source commit: `3c1b703ab3f4e9495117c6c5ad2d458120d1ca42`
+
+I exclude only the source repository's internal `.git/` metadata because that is version-control metadata rather than project content.
+
+## Dataset included
+
+The full dataset is here:
 
 `machine_learning/repository_snapshot/data/SmartQ_Synthetic_Operational_Dataset_100k.csv`
 
+Verified properties:
+
 - rows: **100,000**
+- columns: **45**
 - size: **35,059,222 bytes**
 
-## Traceability
+The snapshot also includes the large embedded-dataset notebook and the Word dataset documentation.
 
-`machine_learning/SNAPSHOT_SOURCE.md`
+## Runtime XGBoost model included
 
-records the source ML repository commit used for the copy.
+I also packaged the selected deployable model here:
 
-I exclude only the source repository's internal `.git/` metadata because that is Git internals rather than project content.
+`machine_learning/runtime/smartq_wait_time_model.joblib`
 
-The trained `.joblib` model is a generated runtime artifact rather than a tracked file in the ML source repository. I will package that separately during Django integration.
+Verified artifact size:
+
+**148,707 bytes**
+
+I generated this artifact by re-running the copied training pipeline through GitHub Actions.
+
+The build reproduced the official validation comparison:
+
+- Linear Regression MAE: **4.1146 min**
+- Random Forest MAE: **2.6315 min**
+- XGBoost MAE: **2.6302 min**
+
+The script therefore selected XGBoost using my pre-defined lowest-validation-MAE rule.
+
+The reproduced XGBoost final test result was:
+
+- MAE: **2.5824 min**
+- RMSE: **4.9561 min**
+
+## Runtime compatibility
+
+I keep the exact runtime versions beside the model:
+
+`machine_learning/runtime/requirements.txt`
+
+The packaged model was built with:
+
+- Python 3.12
+- pandas 2.2.3
+- numpy 2.3.5
+- scikit-learn 1.8.0
+- XGBoost 3.1.3
+- joblib 1.5.3
+
+## Important current status
+
+The model file now exists inside SmartQ, but **ML prediction is not yet active in the Django queue flow**.
+
+The current application still uses the deterministic live ETA.
+
+I will only mark machine learning as active after I:
+
+- build the 22 live model features correctly;
+- load the model safely inside Django;
+- preserve deterministic ETA fallback;
+- expose the prediction through the existing API;
+- verify latency;
+- pass integration tests.
+
+I keep this distinction because packaging a model and integrating a model are two different engineering stages.
+
+## Detailed documentation
+
+My full explanation of this stage is here:
+
+`docs/ML_SUBMISSION_PACKAGING_AND_INTEGRATION_PREP.md`
+
+The runtime-specific explanation is here:
+
+`machine_learning/runtime/README.md`
