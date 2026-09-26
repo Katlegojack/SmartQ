@@ -159,6 +159,28 @@ class SmartQMLIntegrationTests(TestCase):
         self.assertLess(cold_elapsed, 2.0)
         self.assertLess(warm_elapsed, 2.0)
 
+    def test_unexpected_ml_error_does_not_leak_internal_details(self):
+        with patch(
+            "queues.ml_prediction.predict_wait_minutes",
+            side_effect=FileNotFoundError("/private/server/model/path"),
+        ):
+            prediction = get_ticket_prediction(
+                self.ticket,
+                now=self.now,
+                use_ml=True,
+            )
+
+        self.assertEqual(prediction["prediction_model"], "deterministic")
+        self.assertEqual(prediction["model_status"], "fallback")
+        self.assertEqual(
+            prediction["prediction_fallback_reason"],
+            "ml_prediction_unavailable",
+        )
+        self.assertNotIn(
+            "/private/server/model/path",
+            prediction["prediction_fallback_reason"],
+        )
+
     @override_settings(SMARTQ_ML_ENABLED=False)
     def test_disabled_ml_uses_deterministic_fallback_contract(self):
         prediction = get_ticket_prediction(
