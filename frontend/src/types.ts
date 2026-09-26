@@ -82,6 +82,7 @@ export interface QueuePrediction {
   prediction_model: "xgboost" | "deterministic" | string;
   model_status: "active" | "fallback" | "deterministic" | string;
   machine_learning_enabled: boolean;
+  prediction_fallback_reason: string | null;
   prediction_generated_at: string;
   service_started_at: string | null;
   service_target_seconds: number;
