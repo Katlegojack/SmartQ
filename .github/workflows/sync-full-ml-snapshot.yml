@@ -1,0 +1,79 @@
+name: Sync full ML submission snapshot
+
+on:
+  push:
+    branches:
+      - feature/ml-integration
+    paths:
+      - ".github/workflows/sync-full-ml-snapshot.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout SmartQ integration branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/ml-integration
+          fetch-depth: 0
+
+      - name: Clone full SmartQ ML repository
+        run: |
+          rm -rf /tmp/SmartQ-Machine-Learning
+          git clone --depth 1 https://github.com/Katlegojack/SmartQ-Machine-Learning.git /tmp/SmartQ-Machine-Learning
+
+      - name: Copy every tracked ML repository file into SmartQ
+        run: |
+          rm -rf machine_learning/repository_snapshot
+          mkdir -p machine_learning/repository_snapshot
+          rsync -a --exclude=".git/" /tmp/SmartQ-Machine-Learning/ machine_learning/repository_snapshot/
+
+          ML_SHA="$(git -C /tmp/SmartQ-Machine-Learning rev-parse HEAD)"
+          ML_DATE="$(git -C /tmp/SmartQ-Machine-Learning show -s --format=%cI HEAD)"
+          cat > machine_learning/SNAPSHOT_SOURCE.md <<EOF
+          # ML Submission Snapshot Source
+
+          I copied the complete tracked contents of my dedicated SmartQ machine-learning repository into this main SmartQ repository for submission and integration.
+
+          - Source repository: `Katlegojack/SmartQ-Machine-Learning`
+          - Source branch: `main`
+          - Source commit: `${ML_SHA}`
+          - Source commit date: `${ML_DATE}`
+          - Destination: `machine_learning/repository_snapshot/`
+
+          I included the full tracked repository contents, including the 100,000-row synthetic dataset, notebooks, documentation, results, source code, hidden project notes, requirements and repository workflows.
+
+          I excluded only the source repository's internal `.git/` metadata because that is version-control internals rather than project content.
+          EOF
+
+      - name: Verify submission-critical files exist
+        run: |
+          test -f machine_learning/repository_snapshot/data/SmartQ_Synthetic_Operational_Dataset_100k.csv
+          test -f machine_learning/repository_snapshot/notebooks/01_Data_Understanding_EDA.ipynb
+          test -f machine_learning/repository_snapshot/notebooks/02_Data_Preparation.ipynb
+          test -f machine_learning/repository_snapshot/notebooks/03_Model_Training_Evaluation.ipynb
+          test -f machine_learning/repository_snapshot/notebooks/04_Model_Diagnostics_Statistical_Analysis.ipynb
+          test -f machine_learning/repository_snapshot/notebooks/SmartQ_ML_100k_Embedded_Dataset.ipynb
+          test -f machine_learning/repository_snapshot/docs/SmartQ_100k_Synthetic_Dataset_Documentation.docx
+          test -f machine_learning/repository_snapshot/src/train_models.py
+          test -f machine_learning/repository_snapshot/src/predict.py
+          echo "Full ML submission snapshot verified."
+
+      - name: Commit full snapshot
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A machine_learning
+
+          if git diff --cached --quiet; then
+            echo "ML snapshot is already current."
+            exit 0
+          fi
+
+          git commit -m "Sync full ML repository snapshot including dataset"
+          git push origin HEAD:feature/ml-integration
