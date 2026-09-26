@@ -1,0 +1,48 @@
+name: Build ML runtime model
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/ml-integration
+    paths:
+      - ".github/workflows/build-ml-runtime-model.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build-model:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout integration branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/ml-integration
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tested ML versions
+        run: pip install pandas==2.2.3 numpy==2.3.5 scikit-learn==1.8.0 xgboost==3.1.3 joblib==1.5.3
+
+      - name: Train selected model from submission snapshot
+        working-directory: machine_learning/repository_snapshot
+        run: python src/train_models.py
+
+      - name: Copy runtime model
+        run: |
+          mkdir -p machine_learning/runtime
+          cp machine_learning/repository_snapshot/models/smartq_wait_time_model.joblib machine_learning/runtime/smartq_wait_time_model.joblib
+
+      - name: Commit runtime model
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f machine_learning/runtime/smartq_wait_time_model.joblib
+          git commit -m "Package selected XGBoost runtime model"
+          git push
