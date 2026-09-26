@@ -11,6 +11,9 @@ on:
       - "queues/services.py"
       - "queues/api_views.py"
       - "smartq/test_ml_integration.py"
+      - "smartq/test_day58_realtime_service_timing.py"
+      - "smartq/test_day59_forecasting_observations.py"
+      - "queues/test_day36_events.py"
       - ".github/workflows/ml-integration-tests.yml"
   workflow_dispatch:
 
