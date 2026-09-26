@@ -119,16 +119,32 @@ class SmartQMLIntegrationTests(TestCase):
         self.assertIsNotNone(prediction["ml_predicted_wait_minutes"])
         self.assertGreaterEqual(prediction["estimated_wait_seconds"], 0)
 
-    def test_warm_ml_prediction_is_under_two_seconds(self):
+    def test_cold_and_warm_ml_prediction_are_under_two_seconds(self):
         load_wait_model_bundle.cache_clear()
-        get_ticket_prediction(self.ticket, now=self.now, use_ml=True)
 
-        started = perf_counter()
-        prediction = get_ticket_prediction(self.ticket, now=self.now, use_ml=True)
-        elapsed = perf_counter() - started
+        cold_started = perf_counter()
+        cold_prediction = get_ticket_prediction(
+            self.ticket,
+            now=self.now,
+            use_ml=True,
+        )
+        cold_elapsed = perf_counter() - cold_started
 
-        self.assertEqual(prediction["prediction_model"], "xgboost")
-        self.assertLess(elapsed, 2.0)
+        warm_started = perf_counter()
+        warm_prediction = get_ticket_prediction(
+            self.ticket,
+            now=self.now,
+            use_ml=True,
+        )
+        warm_elapsed = perf_counter() - warm_started
+
+        print(f"SMARTQ_ML_COLD_PREDICTION_SECONDS={cold_elapsed:.6f}")
+        print(f"SMARTQ_ML_WARM_PREDICTION_SECONDS={warm_elapsed:.6f}")
+
+        self.assertEqual(cold_prediction["prediction_model"], "xgboost")
+        self.assertEqual(warm_prediction["prediction_model"], "xgboost")
+        self.assertLess(cold_elapsed, 2.0)
+        self.assertLess(warm_elapsed, 2.0)
 
     @override_settings(SMARTQ_ML_ENABLED=False)
     def test_disabled_ml_uses_deterministic_fallback_contract(self):
