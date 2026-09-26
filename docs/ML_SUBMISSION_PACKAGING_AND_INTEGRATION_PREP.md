@@ -328,3 +328,217 @@ The model is now ready to be integrated, but I am deliberately not calling the M
 - live prediction/outcome logging.
 
 My next step is therefore **actual Django ML integration**, not more offline model training.
+
+
+---
+
+## 13. Live Django integration I implemented
+
+I connected the packaged XGBoost model to the existing Customer live-queue API instead of creating a separate disconnected ML API.
+
+The live request path is now:
+
+```text
+Customer current queue request
+        ↓
+SmartQ reads the live QueueTicket / Booking / Counter state
+        ↓
+I build the 22 trained ML inputs
+        ↓
+I validate that critical numeric inputs are still inside the training domain
+        ↓
+I run the saved preprocessing transformer
+        ↓
+I run the packaged XGBoost model
+        ↓
+I clip impossible negative waiting time to zero
+        ↓
+Customer receives the estimated wait
+```
+
+If ML cannot be used safely, SmartQ keeps the deterministic ETA as the fallback.
+
+I did this because adding machine learning should not make the queue system less reliable.
+
+## 14. Why I fixed appointment service eligibility during integration
+
+One important engineering lesson from my abandoned Day 62 experiment was that **check-in time and service-eligibility time are not always the same thing**.
+
+An appointment customer can check in before the appointment time.
+
+That does not mean the customer should be called immediately.
+
+I added a service-eligibility contract:
+
+- Walk-in: eligible at check-in.
+- Appointment: eligible at `max(check_in_at, appointment_at)`.
+
+I then changed counter call-next logic so an early checked-in appointment is not called before the booked time.
+
+I also changed deterministic ETA logic so an idle counter does not incorrectly turn an early appointment into a zero-minute wait.
+
+This fix matters independently of machine learning. The model should be integrated into a queue workflow that is already logically correct.
+
+## 15. How I build the 22 live inputs
+
+I map the current Django queue state into the same feature names used during training.
+
+Examples:
+
+- `people_ahead`: eligible same-lane customers ahead;
+- `general_waiting` and `priority_waiting`: live waiting counts;
+- `serving_count`: customers currently being served;
+- `open_general_counters` / `open_priority_counters`: live open capacity;
+- `effective_open_counters`: capacity for the customer's own lane;
+- `counter_utilisation`: serving customers divided by total open counters;
+- `queue_pressure_index`: waiting + serving demand divided by open capacity;
+- `workload_minutes_ahead`: remaining same-lane service workload plus target service time of eligible customers ahead;
+- recent service/wait history: completed outcomes already known before prediction;
+- `recent_throughput_60m`: services completed in the previous 60 minutes;
+- branch/service/queue/time variables: taken from the current booking and local check-in time.
+
+I deliberately do not use post-outcome fields.
+
+## 16. One feature is currently a live proxy
+
+The synthetic training data has a separate physical `arrival_at` and `check_in_at`.
+
+The current SmartQ production-style Booking model stores `checked_in_at`, but it does not store a separate physical-arrival timestamp.
+
+Because of that, for appointments I currently calculate:
+
+`arrival_offset_minutes = checked_in_at - appointment_at`
+
+instead of the synthetic generator's more precise:
+
+`arrival_at - appointment_at`
+
+In the synthetic data, check-in followed arrival by only a small handoff delay, so the values are related, but they are not literally identical.
+
+I document this instead of pretending feature parity is perfect.
+
+A future data-model improvement would be to add a dedicated `arrived_at` field so the live feature matches the training definition exactly.
+
+## 17. Why I added a training-domain guard
+
+Tree models can still return a number when I give them a queue state far outside anything they saw during training.
+
+That does not mean the number has reliable validation evidence.
+
+I therefore added conservative runtime bounds based on the synthetic dataset:
+
+```text
+arrival_offset_minutes       -25 to 25
+people_ahead                   0 to 41
+effective_open_counters        1 to 5
+queue_pressure_index           0 to 14.667
+workload_minutes_ahead         0 to 600.3
+service_target_minutes        10 to 20
+```
+
+If a critical live numeric value falls outside those ranges, I do **not** force XGBoost to extrapolate.
+
+I fall back to the deterministic ETA and expose the fallback reason in the prediction metadata.
+
+I did this because a safe fallback is better than presenting an unsupported ML number as if it had the same 2.58-minute test MAE.
+
+## 18. How I load the model
+
+I cache the joblib model bundle with a one-item process cache.
+
+This means I do not reload the 149 KB model file from disk every time the Customer page refreshes.
+
+The first prediction loads the model; later predictions reuse it in that Django process.
+
+This reduces unnecessary I/O and supports the latency requirement.
+
+## 19. Prediction metadata returned by the API
+
+The Customer current-queue prediction now includes both the customer-facing estimate and engineering metadata:
+
+```text
+estimated_wait_seconds
+estimated_wait_time
+deterministic_estimated_wait_seconds
+ml_predicted_wait_minutes
+prediction_model
+model_status
+machine_learning_enabled
+prediction_fallback_reason
+prediction_generated_at
+```
+
+When XGBoost succeeds:
+
+```text
+prediction_model = xgboost
+model_status = active
+machine_learning_enabled = true
+```
+
+If ML fails or the queue state is outside my validated training domain, the deterministic estimate remains available.
+
+## 20. Prediction-vs-outcome logging
+
+I extended `QueueForecastObservation` so I can save:
+
+- the deterministic estimate;
+- the ML estimate;
+- which prediction model was used;
+- when the prediction was generated;
+- the eventual actual waiting time;
+- deterministic residual;
+- ML residual.
+
+This is important because real deployment should create evidence for the next model version.
+
+Instead of permanently trusting synthetic-data performance, I can later compare live predictions with actual waits and retrain using representative operational data.
+
+## 21. Manager/Admin ML quality reporting
+
+I extended the forecasting summary so management reporting can show:
+
+- deterministic wait MAE;
+- deterministic wait bias;
+- ML wait MAE;
+- ML wait bias;
+- service-target MAE;
+- service-target bias;
+- whether the ML runtime is active;
+- which prediction model is active.
+
+I also updated the History & Recovery workspace so it no longer claims that no ML model is active when the runtime model is available.
+
+## 22. Integration tests I added
+
+I added focused tests for:
+
+- exact 22-feature contract;
+- real packaged XGBoost loading and prediction;
+- warm inference below two seconds;
+- deterministic fallback when ML is disabled;
+- deterministic fallback outside the validated training domain;
+- appointment not being called before service eligibility;
+- Day 58 ETA behaviour after the eligibility fix;
+- Day 59 forecasting behaviour after ML activation.
+
+I also added a focused GitHub Actions workflow so these ML integration regressions can be checked separately from the full SmartQ suite.
+
+## 23. What I learned from integration
+
+I learned that model integration is not just:
+
+> load joblib -> call predict()
+
+The harder engineering work is making sure:
+
+- live feature definitions match training definitions;
+- the queue lifecycle itself is correct;
+- the model is not given future information;
+- the model is not trusted far outside its training domain;
+- there is a deterministic fallback;
+- prediction latency is acceptable;
+- later outcomes are recorded for monitoring;
+- the API and frontend tell the truth about which model is active.
+
+That is the difference between demonstrating a model in a notebook and engineering an ML-assisted system.
