@@ -1,0 +1,17 @@
+feature,VIF
+queue_pressure_index,44.140561449088956
+people_ahead,38.90692129834399
+serving_count,38.756639092827044
+counter_utilisation,38.542412751887845
+general_waiting,35.15631646608962
+workload_minutes_ahead,33.18079587889263
+open_general_counters,7.793059034084757
+recent_avg_wait_minutes_10,4.2414195749823795
+effective_open_counters,2.269271207001032
+recent_throughput_60m,1.5435584829067168
+priority_waiting,1.433586465319021
+hour_of_day,1.2415666221279769
+recent_avg_service_minutes_10,1.1827390799629158
+open_priority_counters,1.06773077070839
+arrival_offset_minutes,1.0171568489746616
+service_target_minutes,1.0001521077588063

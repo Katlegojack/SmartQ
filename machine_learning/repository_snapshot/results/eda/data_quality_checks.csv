@@ -1,0 +1,9 @@
+check,violations
+negative_wait_rows,0
+nonpositive_service_rows,0
+queue_position_mismatch,0
+call_before_service_eligibility,0
+service_start_before_call,0
+completion_before_service_start,0
+appointment_eligible_before_booked_time,0
+walkin_eligibility_not_equal_checkin,0
