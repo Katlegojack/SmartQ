@@ -47,6 +47,13 @@ REQUIRED_FEATURES = [
 ]
 
 
+def ml_runtime_available():
+    return bool(
+        getattr(settings, "SMARTQ_ML_ENABLED", True)
+        and MODEL_PATH.exists()
+    )
+
+
 @lru_cache(maxsize=1)
 def load_wait_model_bundle():
     if not MODEL_PATH.exists():
