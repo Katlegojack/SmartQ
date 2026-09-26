@@ -166,7 +166,7 @@ class Day59ForecastingObservationTests(TestCase):
         model_fields = {field.name for field in QueueForecastObservation._meta.get_fields()}
         self.assertTrue(forbidden.isdisjoint(model_fields))
 
-    def test_forecasting_summary_reports_baseline_error_without_claiming_ml(self):
+    def test_forecasting_summary_reports_baseline_and_active_ml_quality(self):
         self.run_two_customer_early_finish_journey()
         self.client.force_login(self.manager)
 
@@ -175,13 +175,16 @@ class Day59ForecastingObservationTests(TestCase):
             f"{url}?start_date={self.day.isoformat()}&end_date={self.day.isoformat()}"
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["model_status"], "data_collection")
-        self.assertFalse(response.json()["machine_learning_enabled"])
+        self.assertEqual(response.json()["model_status"], "active")
+        self.assertEqual(response.json()["prediction_model"], "xgboost")
+        self.assertTrue(response.json()["machine_learning_enabled"])
         self.assertEqual(response.json()["observations"], 2)
         self.assertEqual(response.json()["wait_labels"], 2)
         self.assertEqual(response.json()["service_labels"], 2)
         self.assertEqual(response.json()["baseline_wait_mae_minutes"], 2.5)
         self.assertEqual(response.json()["baseline_wait_bias_minutes"], -2.5)
+        self.assertIsNotNone(response.json()["ml_wait_mae_minutes"])
+        self.assertIsNotNone(response.json()["ml_wait_bias_minutes"])
         self.assertEqual(response.json()["service_target_mae_minutes"], 6.0)
         self.assertEqual(response.json()["service_target_bias_minutes"], -6.0)
 
@@ -239,7 +242,7 @@ class Day59ForecastingObservationTests(TestCase):
         self.assertIn("actual_wait_seconds", forecast_source)
         self.assertIn("wait_variance_seconds", forecast_source)
 
-    def test_manager_history_ui_exposes_collection_quality_without_claiming_ml(self):
+    def test_manager_history_ui_exposes_active_ml_quality(self):
         root = Path(__file__).resolve().parents[1]
         history = (root / "frontend" / "src" / "pages" / "HistoryPage.tsx").read_text(
             encoding="utf-8"
@@ -250,6 +253,6 @@ class Day59ForecastingObservationTests(TestCase):
         self.assertIn("Data collection quality", history)
         self.assertIn("Wait baseline MAE", history)
         self.assertIn("Service target MAE", history)
-        self.assertIn("No machine-learning model is active yet.", history)
-        self.assertIn("machine_learning_enabled = false", readme)
+        self.assertIn("XGBoost is active for customer wait prediction.", history)
+        self.assertIn("machine_learning_enabled = true", readme)
         self.assertIn("export_forecasting_dataset", readme)
