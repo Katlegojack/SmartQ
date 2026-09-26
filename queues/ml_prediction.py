@@ -21,6 +21,22 @@ MODEL_PATH = (
     / "smartq_wait_time_model.joblib"
 )
 
+class MLPredictionUnavailable(ValueError):
+    """Raised when live queue state is outside the model's validated training domain."""
+
+
+# Conservative bounds measured from the synthetic training dataset. I use these
+# to avoid asking the model to extrapolate far beyond queue states it learned.
+TRAINING_DOMAIN = {
+    "arrival_offset_minutes": (-25.0, 25.0),
+    "people_ahead": (0.0, 41.0),
+    "effective_open_counters": (1.0, 5.0),
+    "queue_pressure_index": (0.0, 14.667),
+    "workload_minutes_ahead": (0.0, 600.3),
+    "service_target_minutes": (10.0, 20.0),
+}
+
+
 REQUIRED_FEATURES = [
     "arrival_offset_minutes",
     "people_ahead",
@@ -253,12 +269,35 @@ def build_live_ml_features(ticket, *, now=None):
     return features
 
 
+def validate_training_domain(features):
+    """
+    Refuse unsafe extrapolation beyond the queue states represented in training.
+
+    The model can technically return a number outside these ranges, but that
+    number would not have the same validation evidence as the reported test MAE.
+    """
+    violations = []
+    for name, (minimum, maximum) in TRAINING_DOMAIN.items():
+        value = features.get(name)
+        if value is None:
+            continue
+        numeric = float(value)
+        if numeric < minimum or numeric > maximum:
+            violations.append(
+                f"{name}={numeric:g} outside [{minimum:g}, {maximum:g}]"
+            )
+
+    if violations:
+        raise MLPredictionUnavailable("; ".join(violations))
+
+
 def predict_wait_minutes(ticket, *, now=None):
     """Return an ML wait estimate in minutes, or None when ML is disabled."""
     if not getattr(settings, "SMARTQ_ML_ENABLED", True):
         return None
 
     features = build_live_ml_features(ticket, now=now)
+    validate_training_domain(features)
     bundle = load_wait_model_bundle()
     expected = bundle.get("features") or REQUIRED_FEATURES
     missing = [name for name in expected if name not in features]
