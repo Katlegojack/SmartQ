@@ -146,6 +146,28 @@ class SmartQMLIntegrationTests(TestCase):
             prediction["deterministic_estimated_wait_seconds"],
         )
 
+    def test_out_of_domain_arrival_offset_uses_safe_deterministic_fallback(self):
+        self.booking.booking_time = time(10, 30)
+        self.booking.save(update_fields=["booking_time"])
+
+        prediction = get_ticket_prediction(
+            self.ticket,
+            now=self.now,
+            use_ml=True,
+        )
+
+        self.assertEqual(prediction["prediction_model"], "deterministic")
+        self.assertEqual(prediction["model_status"], "fallback")
+        self.assertFalse(prediction["machine_learning_enabled"])
+        self.assertIn(
+            "arrival_offset_minutes=-30 outside [-25, 25]",
+            prediction["prediction_fallback_reason"],
+        )
+        self.assertEqual(
+            prediction["estimated_wait_seconds"],
+            prediction["deterministic_estimated_wait_seconds"],
+        )
+
     def test_early_checked_in_appointment_cannot_be_called_before_booking_time(self):
         future_time = (self.now + timedelta(minutes=30)).time().replace(tzinfo=None)
         self.booking.booking_time = future_time
