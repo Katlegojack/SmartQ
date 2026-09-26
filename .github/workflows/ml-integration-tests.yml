@@ -3,7 +3,11 @@ name: SmartQ ML integration tests
 on:
   push:
     branches:
+      - main
       - feature/ml-integration
+  pull_request:
+    branches:
+      - main
     paths:
       - "queues/ml_prediction.py"
       - "queues/eligibility.py"
@@ -31,8 +35,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: feature/ml-integration
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
