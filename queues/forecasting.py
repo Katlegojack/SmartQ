@@ -4,6 +4,7 @@ from django.utils import timezone
 
 from counters.models import Counter
 
+from .ml_prediction import ml_runtime_available
 from .models import QueueForecastObservation, QueueTicket
 from .waiting_time import get_ticket_prediction
 
@@ -267,6 +268,8 @@ def build_forecasting_summary(branch, start_date, end_date):
         and item.service_variance_seconds is not None
     ]
 
+    ml_active = ml_runtime_available()
+
     return {
         "branch_id": branch.id,
         "branch_name": branch.name,
@@ -274,9 +277,9 @@ def build_forecasting_summary(branch, start_date, end_date):
             "start_date": start_date,
             "end_date": end_date,
         },
-        "model_status": "active",
-        "prediction_model": "xgboost",
-        "machine_learning_enabled": True,
+        "model_status": "active" if ml_active else "data_collection",
+        "prediction_model": "xgboost" if ml_active else "deterministic",
+        "machine_learning_enabled": ml_active,
         "observations": len(observations),
         "wait_labels": sum(item.actual_wait_seconds is not None for item in observations),
         "service_labels": sum(item.actual_service_seconds is not None for item in observations),
