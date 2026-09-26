@@ -1,0 +1,16 @@
+metric,value
+total_rows,100000
+columns,45
+completed_rows,92655
+completed_pct,92.66
+no_show_rows,5096
+cancelled_rows,2249
+mean_wait_minutes,16.03
+median_wait_minutes,7.50
+p95_wait_minutes,61.73
+max_wait_minutes,358.10
+mean_service_minutes,16.00
+median_service_minutes,15.10
+p95_service_minutes,27.30
+deterministic_eta_mae_minutes,4.72
+deterministic_eta_rmse_minutes,6.56

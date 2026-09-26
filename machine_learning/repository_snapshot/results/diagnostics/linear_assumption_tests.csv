@@ -1,0 +1,9 @@
+diagnostic,statistic,p_value,interpretation
+Breusch-Pagan LM,13674.77685194431,0.0,Heteroscedasticity detected; use robust standard errors
+Breusch-Pagan F,620.6169097586859,0.0,Heteroscedasticity detected
+Jarque-Bera,163042.08515091182,0.0,Residuals are not normally distributed
+Residual skewness,0.8483097227952826,,Positive/right-skewed residuals
+Residual kurtosis,10.628345299270082,,Heavy-tailed residual distribution
+Durbin-Watson,1.909449290929921,,Near 2; no obvious strong first-order autocorrelation in row order
+OLS R2,0.9485518920862538,,Training statistical fit
+OLS adjusted R2,0.9485293993542437,,Training fit adjusted for number of terms

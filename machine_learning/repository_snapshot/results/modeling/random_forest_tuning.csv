@@ -1,0 +1,3 @@
+n_estimators,max_depth,min_samples_leaf,max_features,validation_mae,validation_rmse
+100,18,2,0.8,2.6346752630694388,4.471175314963453
+150,14,2,1.0,2.6314683541541846,4.492031771049984

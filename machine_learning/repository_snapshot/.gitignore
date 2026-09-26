@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Generated model artifacts
+models/*.joblib
+models/*.pkl
+models/*.json
+
+# Capstone result files are intentionally tracked for reproducibility.
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
