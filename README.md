@@ -516,9 +516,7 @@ My selection rule was decided before the final test:
 
 That selected **XGBoost**.
 
-Random Forest and XGBoost were extremely close, so I do not claim that XGBoost destroyed Random Forest.
-
-It won by a very small validation margin.
+Random Forest and XGBoost were extremely close.
 
 ## Final test results
 
