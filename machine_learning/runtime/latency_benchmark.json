@@ -1,0 +1,11 @@
+{
+  "benchmark": "SmartQ Django XGBoost prediction path",
+  "environment": "GitHub Actions Ubuntu runner, Python 3.12",
+  "workflow_run_id": 36252362892,
+  "cold_prediction_seconds": 0.924552,
+  "warm_prediction_seconds": 0.018159,
+  "requirement_seconds": 2.0,
+  "cold_passed": true,
+  "warm_passed": true,
+  "notes": "Cold timing includes loading the cached joblib bundle after cache_clear(). Warm timing reuses the in-process model bundle. Both timings include live Django feature construction and XGBoost prediction in the integration test fixture."
+}
