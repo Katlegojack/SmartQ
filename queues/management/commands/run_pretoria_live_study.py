@@ -49,6 +49,7 @@ class Command(BaseCommand):
         parser.add_argument("--window-minutes", type=int, default=90)
         parser.add_argument("--poll-seconds", type=float, default=2.0)
         parser.add_argument("--branch-code", default=DEFAULT_BRANCH_CODE)
+        parser.add_argument("--prepare-only", action="store_true")
 
     def handle(self, *args, **options):
         if getattr(settings, "IS_PRODUCTION", False) and not self._env_bool(
@@ -92,6 +93,14 @@ class Command(BaseCommand):
             priority_count=priority_count,
             window_minutes=window_minutes,
         )
+
+        if options.get("prepare_only"):
+            self.stdout.write(
+                self.style.SUCCESS(
+                    "PREPARED — Pretoria Central study data is ready; counters remain closed until start time."
+                )
+            )
+            return
 
         now = timezone.now()
         if now > end_of_arrivals + timedelta(hours=4):
