@@ -106,6 +106,8 @@ export interface QueuePreview {
   people_ahead: number;
   waiting_ahead: number;
   serving_ahead: number;
+  branch_waiting: number;
+  branch_serving: number;
   open_counters: number;
   open_general_counters: number;
   open_priority_counters: number;
