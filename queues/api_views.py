@@ -15,7 +15,9 @@ from accounts.permissions import (
 from bookings.models import Booking
 from branches.models import Branch
 from counters.models import Counter
+from services.models import BranchService, Service
 from .events import get_booking_event_timeline
+from .ml_prediction import build_walk_in_preview
 from .models import QueueEvent, QueueTicket
 from .serializers import QueueTicketSerializer
 from .services import (
@@ -200,6 +202,49 @@ class BranchWaitingQueueAPIView(APIView):
             queue_type=queue_type,
         )
         return Response(QueueTicketSerializer(tickets, many=True).data)
+
+
+
+class CustomerQueuePreviewAPIView(APIView):
+    """Preview the live queue and XGBoost wait before a customer joins."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        profile = get_user_profile(request.user)
+        if profile is None or profile.role != Profile.CUSTOMER:
+            return Response(
+                {"detail": "Queue preview is available to customer accounts."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        branch_id = request.data.get("branch")
+        service_id = request.data.get("service")
+        if not branch_id or not service_id:
+            return Response(
+                {"detail": "branch and service are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        branch = get_object_or_404(Branch, pk=branch_id, is_active=True)
+        service = get_object_or_404(Service, pk=service_id, is_active=True)
+        if not BranchService.objects.filter(
+            branch=branch,
+            service=service,
+            is_active=True,
+        ).exists():
+            return Response(
+                {"detail": "That service is not active at this branch."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        is_pregnant = bool(request.data.get("is_pregnant", False))
+        preview = build_walk_in_preview(
+            request.user,
+            branch,
+            service,
+            is_pregnant=is_pregnant,
+        )
+        return Response(preview, status=status.HTTP_200_OK)
 
 
 class MyCurrentQueueTicketAPIView(APIView):
