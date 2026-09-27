@@ -13,12 +13,12 @@ python manage.py bootstrap_demo
 if [ "${SMARTQ_LIVE_STUDY_ENABLED:-false}" = "true" ]; then
   python manage.py reschedule_pretoria_live_study \
     --date "${SMARTQ_LIVE_STUDY_DATE}" \
-    --start-time "${SMARTQ_LIVE_STUDY_START:-02:00}" \
+    --start-time "01:10" \
     --window-minutes "${SMARTQ_LIVE_STUDY_WINDOW_MINUTES:-90}" || true
 
   python manage.py run_pretoria_live_study \
     --date "${SMARTQ_LIVE_STUDY_DATE}" \
-    --start-time "${SMARTQ_LIVE_STUDY_START:-02:00}" \
+    --start-time "01:10" \
     --customers "${SMARTQ_LIVE_STUDY_CUSTOMERS:-15}" \
     --priority "${SMARTQ_LIVE_STUDY_PRIORITY:-5}" \
     --window-minutes "${SMARTQ_LIVE_STUDY_WINDOW_MINUTES:-90}" \
