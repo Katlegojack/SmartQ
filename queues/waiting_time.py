@@ -209,11 +209,31 @@ def get_ticket_prediction(ticket, now=None, *, use_ml=False):
             model_status = "fallback"
             prediction_fallback_reason = "ml_prediction_unavailable"
 
+    open_general_counters = Counter.objects.filter(
+        branch=ticket.booking.branch,
+        queue_type=QueueTicket.GENERAL,
+        status=Counter.OPEN,
+    ).count()
+    open_priority_counters = Counter.objects.filter(
+        branch=ticket.booking.branch,
+        queue_type=QueueTicket.PRIORITY,
+        status=Counter.OPEN,
+    ).count()
+    effective_open_counters = (
+        open_general_counters
+        if ticket.queue_type == QueueTicket.GENERAL
+        else open_priority_counters
+    )
+
     return {
         "queue_number": ticket.queue_number,
         "queue_type": ticket.queue_type,
         "people_ahead": get_people_ahead(ticket),
         "queue_position": get_queue_position(ticket),
+        "open_counters": open_general_counters + open_priority_counters,
+        "open_general_counters": open_general_counters,
+        "open_priority_counters": open_priority_counters,
+        "effective_open_counters": effective_open_counters,
         "estimated_wait_time": int(math.ceil(estimated_wait_seconds / 60)) if estimated_wait_seconds else 0,
         "estimated_wait_seconds": estimated_wait_seconds,
         "deterministic_estimated_wait_seconds": deterministic_wait_seconds,
