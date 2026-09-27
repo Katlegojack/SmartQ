@@ -214,7 +214,7 @@ def cancel_expired_unchecked_booking(booking, now=None, *, actor=None):
 @transaction.atomic
 def check_in_booking(booking, *, actor=None):
     """Activate an eligible online or in-person booking into the live queue."""
-    booking = Booking.objects.select_for_update().select_related(
+    booking = Booking.objects.select_for_update(of=("self",)).select_related(
         "branch", "service", "user", "user__profile", "guest_customer"
     ).get(pk=booking.pk)
 
@@ -332,7 +332,7 @@ def call_next_ticket(counter, booking_date=None, *, actor=None):
         return None
 
     now = timezone.now()
-    candidates = QueueTicket.objects.select_for_update().select_related(
+    candidates = QueueTicket.objects.select_for_update(of=("self",)).select_related(
         "booking", "booking__service"
     ).filter(
         queue_type=counter.queue_type,
