@@ -411,7 +411,7 @@ def call_next_ticket(counter, booking_date=None, *, actor=None):
 
 @transaction.atomic
 def complete_current_ticket(counter, *, actor=None):
-    ticket = QueueTicket.objects.select_for_update().filter(
+    ticket = QueueTicket.objects.select_for_update(of=("self",)).filter(
         assigned_counter=counter,
         status=QueueTicket.SERVING,
     ).select_related("booking", "booking__service").first()
@@ -492,7 +492,7 @@ def complete_current_ticket(counter, *, actor=None):
 @transaction.atomic
 def mark_current_ticket_no_show(counter, *, actor=None):
     """Mark a called/serving checked-in customer as NO_SHOW."""
-    ticket = QueueTicket.objects.select_for_update().filter(
+    ticket = QueueTicket.objects.select_for_update(of=("self",)).filter(
         assigned_counter=counter,
         status=QueueTicket.SERVING,
         booking__checked_in_at__isnull=False,
