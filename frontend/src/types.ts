@@ -135,7 +135,9 @@ export interface Booking {
   checked_in_at: string | null;
   is_checked_in: boolean;
   created_at: string;
-  queue_ticket: Pick<QueueTicket, "id" | "queue_number" | "queue_type" | "status"> | null;
+  queue_ticket: (Pick<QueueTicket, "id" | "queue_number" | "queue_type" | "status"> & {
+    actual_wait_seconds: number | null;
+  }) | null;
 }
 
 export interface SlotAvailability {
