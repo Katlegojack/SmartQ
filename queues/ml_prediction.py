@@ -480,6 +480,8 @@ def build_walk_in_preview(user, branch, service, *, is_pregnant=False, now=None)
         "people_ahead": len(same_lane_waiting) + len(same_lane_serving),
         "waiting_ahead": len(same_lane_waiting),
         "serving_ahead": len(same_lane_serving),
+        "branch_waiting": general_waiting + priority_waiting,
+        "branch_serving": serving_count,
         "open_counters": total_open,
         "open_general_counters": open_general,
         "open_priority_counters": open_priority,
