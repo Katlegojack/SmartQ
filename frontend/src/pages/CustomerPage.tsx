@@ -322,7 +322,7 @@ function CustomerBody({ account }: { account: Account }) {
 
     {history.length ? <section className="surface surface--flat">
       <SectionHeader eyebrow="Recent" title="History" />
-      <div className="list-stack">{history.map((item) => <article className="list-row list-row--history" key={item.id}><div><strong>{item.service_name}</strong><span>{item.branch_name}</span></div><div><strong>{niceDate(item.booking_date)}</strong><span>{niceTime(item.booking_time)}</span></div><StatusPill value={item.status} /></article>)}</div>
+      <div className="list-stack">{history.map((item) => <article className="list-row list-row--history" key={item.id}><div><strong>{item.service_name}</strong><span>{item.branch_name}</span></div><div><strong>{niceDate(item.booking_date)}</strong><span>{niceTime(item.booking_time)}</span></div>{item.status === "completed" ? <div><strong>Waited</strong><span>{item.queue_ticket?.actual_wait_seconds == null ? "Not recorded" : durationMinutes(item.queue_ticket.actual_wait_seconds, "elapsed")}</span></div> : null}<StatusPill value={item.status} /></article>)}</div>
     </section> : null}
   </>;
 }
