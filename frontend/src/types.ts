@@ -75,6 +75,10 @@ export interface QueueTicket {
 export interface QueuePrediction {
   queue_position: number;
   people_ahead: number;
+  open_counters: number;
+  open_general_counters: number;
+  open_priority_counters: number;
+  effective_open_counters: number;
   estimated_wait_time: number;
   estimated_wait_seconds: number;
   deterministic_estimated_wait_seconds: number;
@@ -95,6 +99,23 @@ export interface QueuePrediction {
 export interface CurrentQueue {
   ticket: QueueTicket;
   prediction: QueuePrediction;
+}
+
+export interface QueuePreview {
+  queue_type: "general" | "priority" | string;
+  people_ahead: number;
+  waiting_ahead: number;
+  serving_ahead: number;
+  open_counters: number;
+  open_general_counters: number;
+  open_priority_counters: number;
+  effective_open_counters: number;
+  estimated_wait_minutes: number | null;
+  ml_predicted_wait_minutes: number | null;
+  prediction_model: "xgboost" | "deterministic" | string;
+  model_status: "active" | "fallback" | string;
+  prediction_fallback_reason: string | null;
+  generated_at: string;
 }
 
 export interface Booking {
