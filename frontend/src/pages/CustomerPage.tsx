@@ -222,10 +222,10 @@ function CustomerBody({ account }: { account: Account }) {
     {activeQueue ? <section className="priority-panel">
       <div><span className="eyebrow">Live queue</span><div className="queue-number">{activeQueue.ticket.queue_number}</div><h2>{activeQueue.ticket.service_name}</h2><p>{activeQueue.ticket.branch_name}</p></div>
       <div className="queue-facts">
-        <Metric label="People ahead" value={activeQueue.prediction.people_ahead} />
+        <Metric label={`People ahead (${activeQueue.ticket.queue_type})`} value={activeQueue.prediction.people_ahead} />
         <Metric
           label="Counters open"
-          value={`${activeQueue.prediction.open_counters ?? 0} total · ${activeQueue.prediction.effective_open_counters ?? 0} for your lane`}
+          value={`${activeQueue.prediction.open_counters ?? 0} total · ${activeQueue.prediction.effective_open_counters ?? 0} for ${activeQueue.ticket.queue_type}`}
         />
         <Metric label="Estimated wait" value={durationMinutes(liveWaitSeconds)} />
         <Metric label="Status" value={<StatusPill value={activeQueue.ticket.status} />} />
@@ -273,17 +273,24 @@ function CustomerBody({ account }: { account: Account }) {
         </div>
         {account.gender === "female" ? <label className="check-field"><input type="checkbox" checked={pregnant} onChange={(event) => setPregnant(event.target.checked)} disabled={Boolean(editingBooking)} /><span>Pregnancy applies to this visit</span></label> : null}
         {!editingBooking && branchId && serviceId ? <div className="queue-facts">
-          <Metric label="People ahead now" value={queuePreview.data?.people_ahead ?? "…"} />
+          <Metric
+            label={queuePreview.data ? `People ahead (${queuePreview.data.queue_type})` : "People ahead"}
+            value={queuePreview.data?.people_ahead ?? "…"}
+          />
+          <Metric
+            label="Branch active now"
+            value={queuePreview.data ? `${queuePreview.data.branch_waiting} waiting · ${queuePreview.data.branch_serving} serving` : "…"}
+          />
           <Metric
             label="Counters open"
-            value={queuePreview.data ? `${queuePreview.data.open_counters} total · ${queuePreview.data.effective_open_counters} for your lane` : "…"}
+            value={queuePreview.data ? `${queuePreview.data.open_counters} total · ${queuePreview.data.effective_open_counters} for ${queuePreview.data.queue_type}` : "…"}
           />
           <Metric
             label="Estimated wait now"
             value={queuePreview.data?.estimated_wait_minutes == null ? "…" : `${Math.max(0, Math.ceil(queuePreview.data.estimated_wait_minutes))} min`}
           />
         </div> : null}
-        {!editingBooking && queuePreview.data?.prediction_model === "xgboost" ? <p className="muted">XGBoost live estimate · updates every 2 seconds.</p> : null}
+        {!editingBooking && queuePreview.data?.prediction_model === "xgboost" ? <p className="muted">XGBoost live estimate · uses your lane, people ahead, open counters, workload and recent queue history · updates every 2 seconds.</p> : null}
         <div className="slot-list" aria-label="Available times">
           {availability.isFetching ? <span className="muted">Checking times…</span> : availability.data?.slots.filter((item) => item.is_available).map((item) => <button type="button" key={item.time} className={slot === item.time ? "slot is-selected" : "slot"} onClick={() => setSlot(item.time)}>{niceTime(item.time)}</button>)}
         </div>
