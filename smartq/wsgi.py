@@ -25,14 +25,6 @@ def _env_bool(name):
 
 
 def _start_scheduled_live_study():
-    """
-    Presentation-only scheduler.
-
-    Render's free web service has no separate worker process. When explicitly
-    enabled by environment variable, the single Gunicorn worker starts one
-    daemon thread that arms the Pretoria Central live-study management command.
-    The command itself is idempotent so a Render restart can safely resume it.
-    """
     global _live_study_started
 
     if not _env_bool("SMARTQ_LIVE_STUDY_ENABLED"):
@@ -44,7 +36,7 @@ def _start_scheduled_live_study():
         _live_study_started = True
 
     target_date = os.getenv("SMARTQ_LIVE_STUDY_DATE", "").strip()
-    start_time = os.getenv("SMARTQ_LIVE_STUDY_START", "02:00").strip()
+    start_time = "01:10"
     customers = int(os.getenv("SMARTQ_LIVE_STUDY_CUSTOMERS", "15"))
     priority = int(os.getenv("SMARTQ_LIVE_STUDY_PRIORITY", "5"))
     window_minutes = int(os.getenv("SMARTQ_LIVE_STUDY_WINDOW_MINUTES", "90"))
