@@ -53,7 +53,7 @@ def get_counter_status_summary(branch, queue_type):
 
 
 def _lock_counter(counter):
-    return Counter.objects.select_for_update().select_related(
+    return Counter.objects.select_for_update(of=("self",)).select_related(
         "branch", "assigned_staff", "assigned_staff__profile"
     ).get(pk=counter.pk)
 
