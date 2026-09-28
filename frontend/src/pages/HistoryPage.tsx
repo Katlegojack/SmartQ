@@ -55,6 +55,11 @@ type ForecastingSummary = {
   baseline_wait_bias_minutes: number | null;
   ml_wait_mae_minutes: number | null;
   ml_wait_bias_minutes: number | null;
+  baseline_within_5_minutes_percent: number | null;
+  baseline_p90_absolute_error_minutes: number | null;
+  ml_within_5_minutes_percent: number | null;
+  ml_p90_absolute_error_minutes: number | null;
+  ml_improvement_percent: number | null;
   service_target_mae_minutes: number | null;
   service_target_bias_minutes: number | null;
 };
@@ -80,6 +85,17 @@ function isoOffset(days: number) {
 
 function minuteValue(value: number | null) {
   return value == null ? "—" : `${value} min`;
+}
+
+function percentValue(value: number | null) {
+  return value == null ? "—" : `${value}%`;
+}
+
+function biasDetail(value: number | null) {
+  if (value == null) return "Not enough completed waits yet.";
+  if (value > 0) return "Positive means the real wait was longer than predicted.";
+  if (value < 0) return "Negative means the prediction was higher than the real wait.";
+  return "Predictions are centred on the actual wait.";
 }
 
 export function HistoryPage() {
@@ -182,22 +198,72 @@ export function HistoryPage() {
     </section> : null}
 
     {branchId ? <section className="surface surface--flat">
-      <SectionHeader eyebrow="Forecasting foundation" title="Data collection quality" />
-      {forecasting.isError ? <ErrorState error={forecasting.error} message="Could not load forecasting observation quality." /> : forecast ? <>
+      <SectionHeader eyebrow="Wait prediction performance" title="XGBoost vs baseline ETA" />
+      {forecasting.isError ? <ErrorState error={forecasting.error} message="Could not load wait-prediction performance." /> : forecast ? <>
         <p className="muted">
           {forecast.machine_learning_enabled
-            ? "XGBoost is active for customer wait prediction. Smart Q is logging prediction-vs-outcome evidence while keeping the deterministic ETA as fallback."
-            : "Smart Q is collecting labelled operational observations and measuring the current deterministic baseline."}
+            ? "XGBoost is the live ML estimator. The baseline ETA is Smart Q's deterministic queue estimator. Both are compared with the real wait measured from check-in until the customer is called."
+            : "The deterministic ETA is active while Smart Q collects completed waits for ML evaluation."}
         </p>
         <section className="manager-metrics history-metrics">
-          <Metric label="Observations" value={forecast.observations} />
-          <Metric label="Wait labels" value={forecast.wait_labels} />
-          <Metric label="Service labels" value={forecast.service_labels} />
-          <Metric label="Wait baseline MAE" value={minuteValue(forecast.baseline_wait_mae_minutes)} />
-          <Metric label="ML wait MAE" value={minuteValue(forecast.ml_wait_mae_minutes)} />
-          <Metric label="Service target MAE" value={minuteValue(forecast.service_target_mae_minutes)} />
+          <Metric
+            label="XGBoost wait MAE"
+            value={minuteValue(forecast.ml_wait_mae_minutes)}
+            detail="Average number of minutes the ML wait prediction was wrong by. Lower is better."
+          />
+          <Metric
+            label="Baseline ETA MAE"
+            value={minuteValue(forecast.baseline_wait_mae_minutes)}
+            detail="Average error of the deterministic ETA used as the comparison baseline. Lower is better."
+          />
+          <Metric
+            label="ML improvement vs baseline"
+            value={percentValue(forecast.ml_improvement_percent)}
+            detail="Reduction in MAE from the baseline ETA to XGBoost. Positive means ML is more accurate."
+          />
+          <Metric
+            label="Completed waits evaluated"
+            value={forecast.wait_labels}
+            detail="Customers with a saved prediction and a real check-in-to-call waiting time."
+          />
+          <Metric
+            label="ML within ±5 min"
+            value={percentValue(forecast.ml_within_5_minutes_percent)}
+            detail="Share of XGBoost predictions that landed within five minutes of the real wait."
+          />
+          <Metric
+            label="Baseline within ±5 min"
+            value={percentValue(forecast.baseline_within_5_minutes_percent)}
+            detail="Share of deterministic ETA predictions within five minutes of the real wait."
+          />
+          <Metric
+            label="ML prediction bias"
+            value={minuteValue(forecast.ml_wait_bias_minutes)}
+            detail={biasDetail(forecast.ml_wait_bias_minutes)}
+          />
+          <Metric
+            label="ML 90th-percentile error"
+            value={minuteValue(forecast.ml_p90_absolute_error_minutes)}
+            detail="About 90% of absolute ML wait errors are at or below this value."
+          />
+          <Metric
+            label="Baseline 90th-percentile error"
+            value={minuteValue(forecast.baseline_p90_absolute_error_minutes)}
+            detail="About 90% of absolute baseline ETA errors are at or below this value."
+          />
+          <Metric
+            label="Completed services measured"
+            value={forecast.service_labels}
+            detail="Services with a recorded start and completion time."
+          />
+          <Metric
+            label="Service-time target MAE"
+            value={minuteValue(forecast.service_target_mae_minutes)}
+            detail="Average error between the service-time target and actual service duration."
+          />
         </section>
-      </> : <EmptyState title="No forecasting observations yet" detail="Completed live-queue visits will build this dataset automatically." />}
+        {forecast.wait_labels < 30 ? <p className="muted">Early evidence: only {forecast.wait_labels} completed waits are available in this period, so treat the accuracy figures as provisional.</p> : null}
+      </> : <EmptyState title="No prediction evidence yet" detail="Completed live-queue visits will build the comparison automatically." />}
     </section> : null}
 
     <div className="history-grid">

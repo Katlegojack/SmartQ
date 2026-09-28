@@ -118,6 +118,21 @@ class SmartQMLIntegrationTests(TestCase):
         self.assertIsNotNone(prediction["ml_predicted_wait_minutes"])
         self.assertGreaterEqual(prediction["estimated_wait_seconds"], 0)
 
+    def test_live_xgboost_wait_becomes_remaining_time_after_check_in(self):
+        later = self.now + timedelta(minutes=3)
+        with patch("queues.ml_prediction.predict_wait_minutes", return_value=10.0):
+            prediction = get_ticket_prediction(
+                self.ticket,
+                now=later,
+                use_ml=True,
+            )
+
+        self.assertEqual(prediction["prediction_model"], "xgboost")
+        self.assertEqual(prediction["wait_elapsed_seconds"], 3 * 60)
+        self.assertEqual(prediction["estimated_wait_seconds"], 7 * 60)
+        self.assertEqual(prediction["ml_remaining_wait_seconds"], 7 * 60)
+        self.assertEqual(prediction["ml_predicted_wait_minutes"], 10.0)
+
     def test_packaged_xgboost_model_produces_live_prediction(self):
         load_wait_model_bundle.cache_clear()
         prediction = get_ticket_prediction(
