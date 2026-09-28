@@ -227,14 +227,14 @@ function CustomerBody({ account }: { account: Account }) {
           label="Counters open"
           value={`${activeQueue.prediction.open_counters ?? 0} total · ${activeQueue.prediction.effective_open_counters ?? 0} for ${activeQueue.ticket.queue_type}`}
         />
-        <Metric label="Estimated wait" value={durationMinutes(liveWaitSeconds)} />
+        <Metric label="Estimated remaining" value={durationMinutes(liveWaitSeconds)} />
         <Metric label="Status" value={<StatusPill value={activeQueue.ticket.status} />} />
         {isServing ? <>
           <Metric label="Service elapsed" value={durationMinutes(liveServiceElapsedSeconds, "elapsed")} />
           <Metric label="Target remaining" value={durationMinutes(liveServiceRemainingSeconds)} />
         </> : null}
       </div>
-      {!isServing && activeQueue.prediction.prediction_model === "xgboost" ? <div className="queue-message">Live wait estimate is from XGBoost and refreshes as the queue changes.</div> : null}
+      {!isServing && activeQueue.prediction.prediction_model === "xgboost" ? <div className="queue-message">Live remaining wait is from XGBoost, updates with queue conditions, and keeps counting down between refreshes.</div> : null}
       {isServing ? <div className="queue-message">Please go to counter {activeQueue.ticket.assigned_counter ?? "assigned"}.</div> : null}
     </section> : null}
 
