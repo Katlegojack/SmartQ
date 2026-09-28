@@ -69,6 +69,16 @@ export interface QueueTicket {
   service_target_seconds: number | null;
   actual_service_seconds: number | null;
   service_variance_seconds: number | null;
+  wait_elapsed_seconds?: number;
+  estimated_wait_seconds?: number;
+  estimated_wait_time?: number;
+  deterministic_estimated_wait_seconds?: number;
+  prediction_model?: "xgboost" | "deterministic" | string;
+  machine_learning_enabled?: boolean;
+  people_ahead?: number;
+  open_counters?: number;
+  effective_open_counters?: number;
+  prediction_generated_at?: string;
   created_at: string;
 }
 
@@ -79,10 +89,12 @@ export interface QueuePrediction {
   open_general_counters: number;
   open_priority_counters: number;
   effective_open_counters: number;
+  wait_elapsed_seconds: number;
   estimated_wait_time: number;
   estimated_wait_seconds: number;
   deterministic_estimated_wait_seconds: number;
   ml_predicted_wait_minutes: number | null;
+  ml_remaining_wait_seconds: number | null;
   prediction_model: "xgboost" | "deterministic" | string;
   model_status: "active" | "fallback" | "deterministic" | string;
   machine_learning_enabled: boolean;
