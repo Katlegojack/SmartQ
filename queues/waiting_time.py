@@ -22,6 +22,19 @@ def _service_target_seconds(ticket):
     return max(int(round(average_minutes * 60)), 0)
 
 
+def get_wait_elapsed_seconds(ticket, now=None):
+    """Return the real elapsed waiting time from check-in until service starts."""
+    if now is None:
+        now = timezone.now()
+
+    checked_in_at = ticket.booking.checked_in_at
+    if checked_in_at is None:
+        return 0
+
+    end = ticket.service_started_at or now
+    return max(int((end - checked_in_at).total_seconds()), 0)
+
+
 def get_service_clock(ticket, now=None):
     """Return live elapsed/remaining service timing for a ticket."""
     if now is None:
@@ -177,6 +190,7 @@ def get_ticket_prediction(ticket, now=None, *, use_ml=False):
         now = timezone.now()
 
     service_clock = get_service_clock(ticket, now=now)
+    wait_elapsed_seconds = get_wait_elapsed_seconds(ticket, now=now)
     deterministic_wait_seconds = calculate_estimated_wait_seconds(ticket, now=now)
     estimated_wait_seconds = deterministic_wait_seconds
     prediction_model = "deterministic"
@@ -191,8 +205,16 @@ def get_ticket_prediction(ticket, now=None, *, use_ml=False):
 
             ml_predicted_wait_minutes = predict_wait_minutes(ticket, now=now)
             if ml_predicted_wait_minutes is not None:
-                estimated_wait_seconds = max(
+                # The trained model predicts total wait from check-in to call.
+                # Customer-facing live ETA must be REMAINING wait, so subtract
+                # the time the customer has already waited. This keeps the ETA
+                # moving even when the queue shape itself has not changed.
+                ml_total_wait_seconds = max(
                     int(round(ml_predicted_wait_minutes * 60)),
+                    0,
+                )
+                estimated_wait_seconds = max(
+                    ml_total_wait_seconds - wait_elapsed_seconds,
                     0,
                 )
                 prediction_model = "xgboost"
@@ -209,15 +231,39 @@ def get_ticket_prediction(ticket, now=None, *, use_ml=False):
             model_status = "fallback"
             prediction_fallback_reason = "ml_prediction_unavailable"
 
+    open_general_counters = Counter.objects.filter(
+        branch=ticket.booking.branch,
+        queue_type=QueueTicket.GENERAL,
+        status=Counter.OPEN,
+    ).count()
+    open_priority_counters = Counter.objects.filter(
+        branch=ticket.booking.branch,
+        queue_type=QueueTicket.PRIORITY,
+        status=Counter.OPEN,
+    ).count()
+    effective_open_counters = (
+        open_general_counters
+        if ticket.queue_type == QueueTicket.GENERAL
+        else open_priority_counters
+    )
+
     return {
         "queue_number": ticket.queue_number,
         "queue_type": ticket.queue_type,
         "people_ahead": get_people_ahead(ticket),
         "queue_position": get_queue_position(ticket),
+        "open_counters": open_general_counters + open_priority_counters,
+        "open_general_counters": open_general_counters,
+        "open_priority_counters": open_priority_counters,
+        "effective_open_counters": effective_open_counters,
+        "wait_elapsed_seconds": wait_elapsed_seconds,
         "estimated_wait_time": int(math.ceil(estimated_wait_seconds / 60)) if estimated_wait_seconds else 0,
         "estimated_wait_seconds": estimated_wait_seconds,
         "deterministic_estimated_wait_seconds": deterministic_wait_seconds,
         "ml_predicted_wait_minutes": ml_predicted_wait_minutes,
+        "ml_remaining_wait_seconds": (
+            estimated_wait_seconds if prediction_model == "xgboost" else None
+        ),
         "prediction_model": prediction_model,
         "model_status": model_status,
         "machine_learning_enabled": machine_learning_enabled,

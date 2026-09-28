@@ -5,6 +5,14 @@ import { api, errorMessage } from "../api";
 import { EmptyState, ErrorState, Field, FormMessage, ProtectedWorkspace, SectionHeader, StatusPill } from "../components";
 import type { Account, Booking, BranchService, QueueTicket } from "../types";
 
+const durationMinutes = (seconds?: number, mode: "elapsed" | "remaining" = "remaining") => {
+  const safe = Math.max(0, Math.floor(seconds || 0));
+  if (safe === 0) return "0 min";
+  if (mode === "elapsed" && safe < 60) return "<1 min";
+  const minutes = mode === "elapsed" ? Math.floor(safe / 60) : Math.ceil(safe / 60);
+  return `${Math.max(minutes, 1)} min`;
+};
+
 function ReceptionBody({ account }: { account: Account }) {
   const client = useQueryClient();
   const branchId = account.branch_id;
@@ -117,7 +125,15 @@ function ReceptionBody({ account }: { account: Account }) {
 
       <section className="surface surface--queue">
         <SectionHeader eyebrow="Counter handoff" title="Live queue" action={<span className="count-badge">{waiting.data?.length || 0}</span>} />
-        {waiting.isError ? <ErrorState error={waiting.error} /> : waiting.data?.length ? <div className="queue-stack">{waiting.data.map((ticket) => <article className="queue-row" key={ticket.id}><strong>{ticket.queue_number}</strong><div><span>{ticket.customer_name}</span><small>{ticket.service_name}</small></div><StatusPill value={ticket.status} /></article>)}</div> : <EmptyState title="Queue is clear" detail="Checked-in customers will appear here automatically." />}
+        {waiting.isError ? <ErrorState error={waiting.error} /> : waiting.data?.length ? <div className="queue-stack">{waiting.data.map((ticket) => <article className="queue-row" key={ticket.id}>
+          <strong>{ticket.queue_number}</strong>
+          <div>
+            <span>{ticket.customer_name}</span>
+            <small>{ticket.service_name} · {ticket.queue_type}</small>
+            <small>Waited {durationMinutes(ticket.wait_elapsed_seconds, "elapsed")} · Est. remaining {durationMinutes(ticket.estimated_wait_seconds)}</small>
+          </div>
+          <StatusPill value={ticket.status} />
+        </article>)}</div> : <EmptyState title="Queue is clear" detail="Checked-in customers will appear here automatically." />}
       </section>
     </div>
 
