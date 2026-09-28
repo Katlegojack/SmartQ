@@ -201,7 +201,24 @@ class BranchWaitingQueueAPIView(APIView):
             booking_date=timezone.localdate(),
             queue_type=queue_type,
         )
-        return Response(QueueTicketSerializer(tickets, many=True).data)
+
+        payload = []
+        for ticket in tickets:
+            row = QueueTicketSerializer(ticket).data
+            prediction = get_ticket_prediction(ticket, use_ml=True)
+            row["wait_elapsed_seconds"] = prediction["wait_elapsed_seconds"]
+            row["estimated_wait_seconds"] = prediction["estimated_wait_seconds"]
+            row["estimated_wait_time"] = prediction["estimated_wait_time"]
+            row["deterministic_estimated_wait_seconds"] = prediction["deterministic_estimated_wait_seconds"]
+            row["prediction_model"] = prediction["prediction_model"]
+            row["machine_learning_enabled"] = prediction["machine_learning_enabled"]
+            row["people_ahead"] = prediction["people_ahead"]
+            row["open_counters"] = prediction["open_counters"]
+            row["effective_open_counters"] = prediction["effective_open_counters"]
+            row["prediction_generated_at"] = prediction["prediction_generated_at"]
+            payload.append(row)
+
+        return Response(payload)
 
 
 
