@@ -115,9 +115,9 @@ I also keep protected personal details out of forecasting/ML exports. The ML dat
 
 # My development journey
 
-## Stage 1 — From nothing to a queue engine
+## Stage 1  From nothing to a queue engine
 
-### Day 1 — The problem and the direction
+### Day 1: The problem and the direction
 
 Smart Q started as an idea and an engineering problem.
 
@@ -136,13 +136,13 @@ My direction became clear very early:
 
 > build the queue rules correctly first, then build the interfaces around them.
 
-### Day 2 — Queue model and admin foundation
+### Day 2: Queue model and admin foundation
 
 I created the early queue data model and used Django Admin to inspect and manage the data while the product was still very small.
 
 This gave me my first working backend foundation.
 
-### Day 3 — Views, URLs, templates and QuerySets
+### Day 3: Views, URLs, templates and QuerySets
 
 I learned how the Django request flow connected the model to the rest of the application.
 
@@ -155,7 +155,7 @@ I worked with:
 
 This was where Smart Q started moving from stored data to actual application behaviour.
 
-### Day 4 — I corrected the design
+### Day 4: I corrected the design
 
 I changed two important ideas:
 
@@ -164,7 +164,7 @@ I changed two important ideas:
 
 This was an important engineering change because I stopped treating the queue as user-entered data and started treating it as a controlled workflow.
 
-### Day 5 — Branches, services and bookings
+### Day 5 : Branches, services and bookings
 
 I added the organisational structure around the queue:
 
@@ -174,13 +174,13 @@ I added the organisational structure around the queue:
 
 A queue only makes sense when the system knows **where** the customer is going and **what** they are going there for.
 
-### Day 6 — Automatic QueueTicket and queue numbers
+### Day 6: Automatic QueueTicket and queue numbers
 
 I connected bookings to actual queue tickets and automatic numbering.
 
 The backend became responsible for creating the queue identity instead of expecting a user to type one.
 
-### Day 7 — Priority logic
+### Day 7: Priority logic
 
 I moved priority into the domain logic.
 
@@ -188,7 +188,7 @@ This meant the application could place a customer into the correct queue lane co
 
 ---
 
-## Stage 2 — Turning the backend into an API
+## Stage 2: Turning the backend into an API
 
 From Day 20 onward I moved the project deeper into Django REST Framework.
 
@@ -227,7 +227,7 @@ By the end of this stage I had moved away from “can I make this feature work?�
 
 ---
 
-## Stage 3 — Building the frontend around the engine
+## Stage 3: Building the frontend around the engine
 
 Days 41–50 were the frontend roadmap.
 
@@ -252,7 +252,7 @@ Each role should see **the information needed to do the job**, not the entire da
 
 ---
 
-## Stage 4 — Making the workflows feel like one system
+## Stage 4: Making the workflows feel like one system
 
 The next work was less about adding pages and more about fixing how people coordinate.
 
@@ -350,7 +350,7 @@ That would be data leakage.
 
 ---
 
-# Simulation — Day 61
+# Simulation: Day 61
 
 Before I had a large ML dataset, I wanted to prove that Smart Q could survive a realistic operating flow.
 
