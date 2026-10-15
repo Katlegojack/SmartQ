@@ -398,6 +398,59 @@ class ReceptionWorkflowAPITests(APITestCase):
         self.assertEqual(booking.queueticket.queue_type, QueueTicket.PRIORITY)
         self.assertTrue(booking.queueticket.queue_number.startswith("P"))
 
+    def test_reception_rejects_pregnancy_for_male_guest(self):
+        response = self.client.post(
+            reverse("api_reception_guest_walk_in"),
+            {
+                "full_name": "Male Guest",
+                "date_of_birth": "1994-04-10",
+                "gender": Profile.MALE,
+                "is_pregnant": True,
+                "service": self.service.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("is_pregnant", response.data)
+        self.assertFalse(GuestCustomer.objects.filter(full_name="Male Guest").exists())
+
+    def test_reception_female_guest_can_receive_pregnancy_priority(self):
+        response = self.client.post(
+            reverse("api_reception_guest_walk_in"),
+            {
+                "full_name": "Female Guest",
+                "date_of_birth": "1994-04-10",
+                "gender": Profile.FEMALE,
+                "is_pregnant": True,
+                "service": self.service.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        booking = Booking.objects.get(pk=response.data["id"])
+        self.assertTrue(booking.is_pregnant)
+        self.assertEqual(booking.queueticket.queue_type, QueueTicket.PRIORITY)
+
+    def test_reception_male_guest_without_pregnancy_uses_general_queue(self):
+        response = self.client.post(
+            reverse("api_reception_guest_walk_in"),
+            {
+                "full_name": "Male General Guest",
+                "date_of_birth": "1994-04-10",
+                "gender": Profile.MALE,
+                "is_pregnant": False,
+                "service": self.service.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        booking = Booking.objects.get(pk=response.data["id"])
+        self.assertFalse(booking.is_pregnant)
+        self.assertEqual(booking.queueticket.queue_type, QueueTicket.GENERAL)
+
     def test_customer_role_cannot_create_guest_walk_in(self):
         self.client.force_authenticate(user=self.customer)
 

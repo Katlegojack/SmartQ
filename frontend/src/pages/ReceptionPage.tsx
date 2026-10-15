@@ -12,6 +12,8 @@ function ReceptionBody({ account }: { account: Account }) {
   const [submittedSearch, setSubmittedSearch] = useState("");
   const [message, setMessage] = useState("");
   const [formError, setFormError] = useState("");
+  const [walkInGender, setWalkInGender] = useState("");
+  const [walkInPregnant, setWalkInPregnant] = useState(false);
 
   const today = useQuery({
     queryKey: ["reception", "today"],
@@ -69,12 +71,14 @@ function ReceptionBody({ account }: { account: Account }) {
         full_name: data.get("full_name"),
         phone_number: data.get("phone_number"),
         date_of_birth: data.get("date_of_birth"),
-        gender: data.get("gender"),
+        gender: walkInGender,
         disability_status: data.get("disability_status") === "on",
-        is_pregnant: data.get("is_pregnant") === "on",
+        is_pregnant: walkInGender === "female" && walkInPregnant,
         service: Number(data.get("service")),
       });
       form.reset();
+      setWalkInGender("");
+      setWalkInPregnant(false);
     } catch {
       // Mutation onError owns the user-facing message. Keep the form intact.
     }
@@ -127,10 +131,10 @@ function ReceptionBody({ account }: { account: Account }) {
         <Field label="Full name"><input name="full_name" required /></Field>
         <Field label="Phone"><input name="phone_number" /></Field>
         <Field label="Date of birth"><input name="date_of_birth" type="date" required /></Field>
-        <Field label="Gender"><select name="gender" required><option value="">Select</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option></select></Field>
+        <Field label="Gender"><select name="gender" value={walkInGender} onChange={(event) => { setWalkInGender(event.target.value); setWalkInPregnant(false); }} required><option value="">Select</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option></select></Field>
         <Field label="Service"><select name="service" required><option value="">Select service</option>{services.data?.map((item) => <option key={item.service_id} value={item.service_id}>{item.service_name}</option>)}</select></Field>
         <label className="check-field"><input type="checkbox" name="disability_status" /><span>Disability</span></label>
-        <label className="check-field"><input type="checkbox" name="is_pregnant" /><span>Pregnant</span></label>
+        {walkInGender === "female" ? <label className="check-field"><input type="checkbox" name="is_pregnant" checked={walkInPregnant} onChange={(event) => setWalkInPregnant(event.target.checked)} /><span>Pregnant</span></label> : null}
         <button className="button button--primary" disabled={walkIn.isPending}>{walkIn.isPending ? "Adding…" : "Add to queue"}</button>
       </form>
     </section>

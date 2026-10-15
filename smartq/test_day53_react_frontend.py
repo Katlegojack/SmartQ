@@ -174,6 +174,17 @@ class Day53ReactFrontendReengineeringTests(TestCase):
         ]:
             self.assertIn(contract, manager)
 
+    def test_reception_pregnancy_option_matches_backend_gender_rule(self):
+        source = self.frontend_text("src/pages/ReceptionPage.tsx")
+
+        self.assertIn('const [walkInGender, setWalkInGender] = useState("");', source)
+        self.assertIn('const [walkInPregnant, setWalkInPregnant] = useState(false);', source)
+        self.assertIn('setWalkInGender(event.target.value); setWalkInPregnant(false);', source)
+        self.assertIn('walkInGender === "female" ? <label', source)
+        self.assertIn('is_pregnant: walkInGender === "female" && walkInPregnant,', source)
+        self.assertIn('setWalkInGender("");', source)
+        self.assertIn('setWalkInPregnant(false);', source)
+
     def test_admin_react_console_has_real_crud_and_operating_hours(self):
         source = self.frontend_text("src/pages/AdminPage.tsx")
         for contract in [
