@@ -127,7 +127,15 @@ function CounterBody({ account }: { account: Account }) {
 
       <section className="surface">
         <SectionHeader eyebrow="Waiting" title="Next customers" action={<span className="live-indicator">Live</span>} />
-        {waiting.isError ? <ErrorState error={waiting.error} /> : waiting.data?.length ? <div className="queue-stack">{waiting.data.slice(0, 12).map((item) => <article className="queue-row queue-row--counter" key={item.id}><strong>{item.queue_number}</strong><div><span>{item.customer_name}</span><small>{item.service_name}</small></div><StatusPill value={item.queue_type} /></article>)}</div> : <EmptyState title="No one waiting" />}
+        {waiting.isError ? <ErrorState error={waiting.error} /> : waiting.data?.length ? <div className="queue-stack">{waiting.data.slice(0, 12).map((item) => <article className="queue-row queue-row--counter" key={item.id}>
+          <strong>{item.queue_number}</strong>
+          <div>
+            <span>{item.customer_name}</span>
+            <small>{item.service_name}</small>
+            <small>Waited {durationMinutes(item.wait_elapsed_seconds || 0, "elapsed")} · Est. remaining {durationMinutes(item.estimated_wait_seconds || 0)}</small>
+          </div>
+          <StatusPill value={item.queue_type} />
+        </article>)}</div> : <EmptyState title="No one waiting" />}
       </section>
     </div>
   </>;

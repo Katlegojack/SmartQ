@@ -211,7 +211,7 @@ class Day58RealtimeServiceTimingTests(TestCase):
         for contract in [
             "window.setInterval(() => setClockMs(Date.now()), 1_000)",
             "refetchInterval: 2_000",
-            'Metric label="Estimated wait"',
+            'Metric label="Estimated remaining"',
             'Metric label="Service elapsed"',
             'Metric label="Target remaining"',
             "estimated_wait_seconds",

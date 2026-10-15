@@ -7,6 +7,7 @@ from .api_views import (
     CompleteCurrentTicketAPIView,
     CurrentCounterTicketAPIView,
     CustomerBookingTimelineAPIView,
+    CustomerQueuePreviewAPIView,
     MyCurrentQueueTicketAPIView,
     NoShowCurrentTicketAPIView,
 )
@@ -14,7 +15,8 @@ from .reporting_api import BranchForecastingSummaryAPIView, BranchOperationalRep
 
 
 urlpatterns = [
-    # Customer queue tracker: current ticket + position + estimated wait.
+    # Customer queue preview before joining + active ticket tracker after joining.
+    path("preview/", CustomerQueuePreviewAPIView.as_view(), name="api_customer_queue_preview"),
     path("my-current/", MyCurrentQueueTicketAPIView.as_view(), name="api_my_current_queue_ticket"),
 
     # Customer-owned append-only lifecycle history for one booking.

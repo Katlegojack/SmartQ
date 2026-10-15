@@ -12,7 +12,7 @@ import {
   SectionHeader,
   StatusPill,
 } from "../components";
-import type { Account, AvailabilityResponse, Booking, Branch, BranchService, CurrentQueue } from "../types";
+import type { Account, AvailabilityResponse, Booking, Branch, BranchService, CurrentQueue, QueuePreview } from "../types";
 
 const FINAL = new Set(["completed", "cancelled", "no_show"]);
 const today = () => new Date().toLocaleDateString("en-CA");
@@ -71,6 +71,19 @@ function CustomerBody({ account }: { account: Account }) {
     queryFn: () => api<AvailabilityResponse>(`/api/v1/services/branches/${branchId}/${serviceId}/availability/?date=${date}`),
     enabled: Boolean(branchId && serviceId && date),
     refetchInterval: date === today() ? 15_000 : false,
+  });
+  const queuePreview = useQuery({
+    queryKey: ["queue-preview", branchId, serviceId, pregnant],
+    queryFn: () => api<QueuePreview>("/api/v1/queues/preview/", {
+      method: "POST",
+      body: {
+        branch: Number(branchId),
+        service: Number(serviceId),
+        is_pregnant: account.gender === "female" && pregnant,
+      },
+    }),
+    enabled: Boolean(branchId && serviceId && !queue.data),
+    refetchInterval: 2_000,
   });
 
   const refresh = async () => Promise.all([
@@ -209,15 +222,19 @@ function CustomerBody({ account }: { account: Account }) {
     {activeQueue ? <section className="priority-panel">
       <div><span className="eyebrow">Live queue</span><div className="queue-number">{activeQueue.ticket.queue_number}</div><h2>{activeQueue.ticket.service_name}</h2><p>{activeQueue.ticket.branch_name}</p></div>
       <div className="queue-facts">
+        <Metric label={`People ahead (${activeQueue.ticket.queue_type})`} value={activeQueue.prediction.people_ahead} />
+        <Metric
+          label="Counters open"
+          value={`${activeQueue.prediction.open_counters ?? 0} total · ${activeQueue.prediction.effective_open_counters ?? 0} for ${activeQueue.ticket.queue_type}`}
+        />
+        <Metric label="Estimated remaining" value={durationMinutes(liveWaitSeconds)} />
+        <Metric label="Status" value={<StatusPill value={activeQueue.ticket.status} />} />
         {isServing ? <>
           <Metric label="Service elapsed" value={durationMinutes(liveServiceElapsedSeconds, "elapsed")} />
           <Metric label="Target remaining" value={durationMinutes(liveServiceRemainingSeconds)} />
-        </> : <>
-          <Metric label="People ahead" value={activeQueue.prediction.people_ahead} />
-          <Metric label="Estimated wait" value={durationMinutes(liveWaitSeconds)} />
-        </>}
-        <Metric label="Status" value={<StatusPill value={activeQueue.ticket.status} />} />
+        </> : null}
       </div>
+      {!isServing && activeQueue.prediction.prediction_model === "xgboost" ? <div className="queue-message">Live remaining wait is from XGBoost, updates with queue conditions, and keeps counting down between refreshes.</div> : null}
       {isServing ? <div className="queue-message">Please go to counter {activeQueue.ticket.assigned_counter ?? "assigned"}.</div> : null}
     </section> : null}
 
@@ -255,6 +272,25 @@ function CustomerBody({ account }: { account: Account }) {
           <Field label="Date"><input type="date" min={today()} value={date} onChange={(event) => { setDate(event.target.value); setSlot(""); }} /></Field>
         </div>
         {account.gender === "female" ? <label className="check-field"><input type="checkbox" checked={pregnant} onChange={(event) => setPregnant(event.target.checked)} disabled={Boolean(editingBooking)} /><span>Pregnancy applies to this visit</span></label> : null}
+        {!editingBooking && branchId && serviceId ? <div className="queue-facts">
+          <Metric
+            label={queuePreview.data ? `People ahead (${queuePreview.data.queue_type})` : "People ahead"}
+            value={queuePreview.data?.people_ahead ?? "…"}
+          />
+          <Metric
+            label="Branch active now"
+            value={queuePreview.data ? `${queuePreview.data.branch_waiting} waiting · ${queuePreview.data.branch_serving} serving` : "…"}
+          />
+          <Metric
+            label="Counters open"
+            value={queuePreview.data ? `${queuePreview.data.open_counters} total · ${queuePreview.data.effective_open_counters} for ${queuePreview.data.queue_type}` : "…"}
+          />
+          <Metric
+            label="Estimated wait now"
+            value={queuePreview.data?.estimated_wait_minutes == null ? "…" : `${Math.max(0, Math.ceil(queuePreview.data.estimated_wait_minutes))} min`}
+          />
+        </div> : null}
+        {!editingBooking && queuePreview.data?.prediction_model === "xgboost" ? <p className="muted">XGBoost live estimate · uses your lane, people ahead, open counters, workload and recent queue history · updates every 2 seconds.</p> : null}
         <div className="slot-list" aria-label="Available times">
           {availability.isFetching ? <span className="muted">Checking times…</span> : availability.data?.slots.filter((item) => item.is_available).map((item) => <button type="button" key={item.time} className={slot === item.time ? "slot is-selected" : "slot"} onClick={() => setSlot(item.time)}>{niceTime(item.time)}</button>)}
         </div>
@@ -286,7 +322,7 @@ function CustomerBody({ account }: { account: Account }) {
 
     {history.length ? <section className="surface surface--flat">
       <SectionHeader eyebrow="Recent" title="History" />
-      <div className="list-stack">{history.map((item) => <article className="list-row list-row--history" key={item.id}><div><strong>{item.service_name}</strong><span>{item.branch_name}</span></div><div><strong>{niceDate(item.booking_date)}</strong><span>{niceTime(item.booking_time)}</span></div><StatusPill value={item.status} /></article>)}</div>
+      <div className="list-stack">{history.map((item) => <article className="list-row list-row--history" key={item.id}><div><strong>{item.service_name}</strong><span>{item.branch_name}</span></div><div><strong>{niceDate(item.booking_date)}</strong><span>{niceTime(item.booking_time)}</span></div>{item.status === "completed" ? <div><strong>Waited</strong><span>{item.queue_ticket?.actual_wait_seconds == null ? "Not recorded" : durationMinutes(item.queue_ticket.actual_wait_seconds, "elapsed")}</span></div> : null}<StatusPill value={item.status} /></article>)}</div>
     </section> : null}
   </>;
 }
