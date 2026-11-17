@@ -7,6 +7,7 @@ import pandas as pd
 from django.conf import settings
 from django.utils import timezone
 
+from accounts.models import Profile
 from bookings.models import Booking
 from counters.models import Counter
 
@@ -291,12 +292,11 @@ def validate_training_domain(features):
         raise MLPredictionUnavailable("; ".join(violations))
 
 
-def predict_wait_minutes(ticket, *, now=None):
-    """Return an ML wait estimate in minutes, or None when ML is disabled."""
+def predict_wait_from_features(features):
+    """Run the packaged wait model against an already-built 22-feature row."""
     if not getattr(settings, "SMARTQ_ML_ENABLED", True):
         return None
 
-    features = build_live_ml_features(ticket, now=now)
     validate_training_domain(features)
     bundle = load_wait_model_bundle()
     expected = bundle.get("features") or REQUIRED_FEATURES
@@ -308,3 +308,194 @@ def predict_wait_minutes(ticket, *, now=None):
     transformed = bundle["preprocessor"].transform(row)
     raw = float(bundle["model"].predict(transformed)[0])
     return max(0.0, raw)
+
+
+def predict_wait_minutes(ticket, *, now=None):
+    """Return an ML wait estimate in minutes, or None when ML is disabled."""
+    if not getattr(settings, "SMARTQ_ML_ENABLED", True):
+        return None
+
+    features = build_live_ml_features(ticket, now=now)
+    return predict_wait_from_features(features)
+
+
+def _preview_queue_type(user, *, is_pregnant=False):
+    profile = user.profile
+    today = timezone.localdate()
+    age = today.year - profile.date_of_birth.year
+    if (today.month, today.day) < (profile.date_of_birth.month, profile.date_of_birth.day):
+        age -= 1
+
+    if age >= 55 or profile.disability_status:
+        return QueueTicket.PRIORITY
+    if profile.gender == Profile.FEMALE and is_pregnant:
+        return QueueTicket.PRIORITY
+    return QueueTicket.GENERAL
+
+
+def build_walk_in_preview(user, branch, service, *, is_pregnant=False, now=None):
+    """
+    Build a no-write live queue preview for a customer considering a walk-in.
+
+    This uses the same queue-state inputs as the runtime model without creating a
+    Booking or QueueTicket. The customer can therefore see the queue before
+    deciding to join it.
+    """
+    if now is None:
+        now = timezone.now()
+
+    queue_type = _preview_queue_type(user, is_pregnant=is_pregnant)
+    booking_date = timezone.localdate(now)
+
+    waiting = list(_waiting_tickets(branch, booking_date))
+    general_waiting = sum(item.queue_type == QueueTicket.GENERAL for item in waiting)
+    priority_waiting = sum(item.queue_type == QueueTicket.PRIORITY for item in waiting)
+    same_lane_waiting = [item for item in waiting if item.queue_type == queue_type]
+
+    serving = list(
+        QueueTicket.objects.filter(
+            booking__branch=branch,
+            booking__booking_date=booking_date,
+            status=QueueTicket.SERVING,
+        ).select_related("booking", "booking__service", "assigned_counter")
+    )
+    serving_count = len(serving)
+    same_lane_serving = [item for item in serving if item.queue_type == queue_type]
+
+    open_general_ids = list(
+        Counter.objects.filter(
+            branch=branch,
+            queue_type=QueueTicket.GENERAL,
+            status=Counter.OPEN,
+        ).values_list("id", flat=True)
+    )
+    open_priority_ids = list(
+        Counter.objects.filter(
+            branch=branch,
+            queue_type=QueueTicket.PRIORITY,
+            status=Counter.OPEN,
+        ).values_list("id", flat=True)
+    )
+    open_general = len(open_general_ids)
+    open_priority = len(open_priority_ids)
+    total_open = open_general + open_priority
+    effective_ids = open_general_ids if queue_type == QueueTicket.GENERAL else open_priority_ids
+    effective_open = len(effective_ids)
+
+    counter_utilisation = serving_count / total_open if total_open else 0.0
+    queue_pressure = (
+        (general_waiting + priority_waiting + serving_count) / total_open
+        if total_open
+        else float(general_waiting + priority_waiting + serving_count)
+    )
+
+    workload_seconds = 0
+    counter_available = {counter_id: 0 for counter_id in effective_ids}
+    for serving_ticket in same_lane_serving:
+        target = serving_ticket.service_target_seconds
+        if target is None:
+            target = int(round(_service_target_minutes(serving_ticket) * 60))
+        started = serving_ticket.service_started_at
+        if started is None:
+            remaining = target
+        else:
+            elapsed = max(int((now - started).total_seconds()), 0)
+            remaining = max(target - elapsed, 0)
+        workload_seconds += remaining
+
+        counter_id = serving_ticket.assigned_counter_id
+        if counter_id is not None:
+            if counter_id not in counter_available:
+                counter_available[counter_id] = 0
+            counter_available[counter_id] = max(counter_available[counter_id], remaining)
+
+    for ahead_ticket in same_lane_waiting:
+        target = int(round(_service_target_minutes(ahead_ticket) * 60))
+        workload_seconds += target
+        if counter_available:
+            counter_id = min(counter_available, key=counter_available.get)
+            counter_available[counter_id] += target
+
+    deterministic_wait_seconds = (
+        max(min(counter_available.values()), 0) if counter_available else None
+    )
+
+    avg_service, avg_wait, throughput = _recent_history(branch, now)
+    local_now = timezone.localtime(now)
+    minute_of_day = local_now.hour * 60 + local_now.minute
+    is_peak = (
+        9 * 60 <= minute_of_day <= 11 * 60 + 30
+        or 13 * 60 <= minute_of_day <= 15 * 60 + 30
+    )
+
+    features = {
+        "arrival_offset_minutes": 0.0,
+        "people_ahead": float(len(same_lane_waiting)),
+        "general_waiting": float(general_waiting),
+        "priority_waiting": float(priority_waiting),
+        "serving_count": float(serving_count),
+        "open_general_counters": float(open_general),
+        "open_priority_counters": float(open_priority),
+        "effective_open_counters": float(effective_open),
+        "counter_utilisation": float(counter_utilisation),
+        "queue_pressure_index": float(queue_pressure),
+        "workload_minutes_ahead": float(workload_seconds / 60),
+        "recent_avg_service_minutes_10": avg_service,
+        "recent_avg_wait_minutes_10": avg_wait,
+        "recent_throughput_60m": throughput,
+        "service_target_minutes": float(service.average_service_time or 0),
+        "hour_of_day": float(local_now.hour),
+        "branch_code": branch.branch_code,
+        "service_code": service.service_code,
+        "booking_source": "WALK_IN",
+        "queue_type": queue_type.upper(),
+        "day_of_week": local_now.strftime("%A"),
+        "is_peak_period": bool(is_peak),
+    }
+
+    prediction_model = "deterministic"
+    model_status = "fallback"
+    fallback_reason = None
+    ml_minutes = None
+
+    try:
+        ml_minutes = predict_wait_from_features(features)
+        if ml_minutes is not None:
+            prediction_model = "xgboost"
+            model_status = "active"
+    except MLPredictionUnavailable as exc:
+        fallback_reason = str(exc)
+    except Exception:
+        fallback_reason = "ml_prediction_unavailable"
+
+    if ml_minutes is not None:
+        estimated_wait_minutes = ml_minutes
+    elif deterministic_wait_seconds is not None:
+        estimated_wait_minutes = deterministic_wait_seconds / 60
+    else:
+        estimated_wait_minutes = None
+
+    return {
+        "queue_type": queue_type,
+        "people_ahead": len(same_lane_waiting) + len(same_lane_serving),
+        "waiting_ahead": len(same_lane_waiting),
+        "serving_ahead": len(same_lane_serving),
+        "branch_waiting": general_waiting + priority_waiting,
+        "branch_serving": serving_count,
+        "open_counters": total_open,
+        "open_general_counters": open_general,
+        "open_priority_counters": open_priority,
+        "effective_open_counters": effective_open,
+        "estimated_wait_minutes": (
+            round(float(estimated_wait_minutes), 2)
+            if estimated_wait_minutes is not None
+            else None
+        ),
+        "ml_predicted_wait_minutes": (
+            round(float(ml_minutes), 2) if ml_minutes is not None else None
+        ),
+        "prediction_model": prediction_model,
+        "model_status": model_status,
+        "prediction_fallback_reason": fallback_reason,
+        "generated_at": now,
+    }

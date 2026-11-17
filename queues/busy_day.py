@@ -125,7 +125,7 @@ def appointment_datetime(booking: Booking):
 @transaction.atomic
 def activate_simulation_booking(booking: Booking, *, occurred_at=None):
     """Activate a scheduled synthetic booking through the normal queue event path."""
-    booking = Booking.objects.select_for_update().select_related(
+    booking = Booking.objects.select_for_update(of=("self",)).select_related(
         "branch", "service", "user", "user__profile"
     ).get(pk=booking.pk)
 

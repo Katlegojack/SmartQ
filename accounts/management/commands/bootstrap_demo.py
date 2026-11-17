@@ -1,3 +1,4 @@
+import os
 from datetime import date, time
 
 from django.conf import settings
@@ -12,15 +13,23 @@ from queues.models import QueueTicket
 from services.models import BranchService, Service
 
 
-DEMO_PASSWORD = "SmartQDemo2026!"
+DEMO_PASSWORD = os.getenv("SMARTQ_DEMO_PASSWORD", "SmartQDemo2026!")
 
 
 class Command(BaseCommand):
     help = "Create or refresh a safe local Smart Q demo environment with all operational roles."
 
     def handle(self, *args, **options):
-        if getattr(settings, "IS_PRODUCTION", False):
-            raise CommandError("bootstrap_demo is disabled in production.")
+        allow_production_demo = os.getenv("SMARTQ_ALLOW_DEMO_BOOTSTRAP", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        if getattr(settings, "IS_PRODUCTION", False) and not allow_production_demo:
+            raise CommandError(
+                "bootstrap_demo is disabled in production unless SMARTQ_ALLOW_DEMO_BOOTSTRAP=true."
+            )
 
         with transaction.atomic():
             pretoria, _ = Branch.objects.update_or_create(

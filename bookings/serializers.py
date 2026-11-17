@@ -101,11 +101,32 @@ class BookingListSerializer(serializers.ModelSerializer):
             ticket = obj.queueticket
         except ObjectDoesNotExist:
             return None
+        observation = (
+            ticket.forecast_observations.filter(actual_wait_seconds__isnull=False)
+            .order_by("-called_at", "-id")
+            .first()
+        )
+        actual_wait_seconds = (
+            observation.actual_wait_seconds
+            if observation is not None
+            else None
+        )
+        if (
+            actual_wait_seconds is None
+            and obj.checked_in_at is not None
+            and ticket.service_started_at is not None
+        ):
+            actual_wait_seconds = max(
+                int(round((ticket.service_started_at - obj.checked_in_at).total_seconds())),
+                0,
+            )
+
         return {
             "id": ticket.id,
             "queue_number": ticket.queue_number,
             "queue_type": ticket.queue_type,
             "status": ticket.status,
+            "actual_wait_seconds": actual_wait_seconds,
         }
 
 

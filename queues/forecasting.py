@@ -1,4 +1,5 @@
 from datetime import datetime, time, timedelta
+import math
 
 from django.utils import timezone
 
@@ -238,6 +239,22 @@ def _mean_minutes(values, *, absolute=False):
     return round(sum(values) / len(values) / 60, 2)
 
 
+def _within_minutes_percent(values, threshold_minutes):
+    values = [abs(value) for value in values if value is not None]
+    if not values:
+        return None
+    threshold_seconds = threshold_minutes * 60
+    return round(100 * sum(value <= threshold_seconds for value in values) / len(values), 1)
+
+
+def _percentile_minutes(values, percentile):
+    values = sorted(abs(value) for value in values if value is not None)
+    if not values:
+        return None
+    index = max(0, min(len(values) - 1, math.ceil(percentile * len(values)) - 1))
+    return round(values[index] / 60, 2)
+
+
 def build_forecasting_summary(branch, start_date, end_date):
     observations = list(
         forecasting_queryset(
@@ -269,6 +286,11 @@ def build_forecasting_summary(branch, start_date, end_date):
     ]
 
     ml_active = ml_runtime_available()
+    baseline_mae = _mean_minutes(wait_errors, absolute=True)
+    ml_mae = _mean_minutes(ml_wait_errors, absolute=True)
+    ml_improvement_percent = None
+    if baseline_mae not in (None, 0) and ml_mae is not None:
+        ml_improvement_percent = round((baseline_mae - ml_mae) / baseline_mae * 100, 1)
 
     return {
         "branch_id": branch.id,
@@ -283,10 +305,15 @@ def build_forecasting_summary(branch, start_date, end_date):
         "observations": len(observations),
         "wait_labels": sum(item.actual_wait_seconds is not None for item in observations),
         "service_labels": sum(item.actual_service_seconds is not None for item in observations),
-        "baseline_wait_mae_minutes": _mean_minutes(wait_errors, absolute=True),
+        "baseline_wait_mae_minutes": baseline_mae,
         "baseline_wait_bias_minutes": _mean_minutes(wait_errors),
-        "ml_wait_mae_minutes": _mean_minutes(ml_wait_errors, absolute=True),
+        "baseline_within_5_minutes_percent": _within_minutes_percent(wait_errors, 5),
+        "baseline_p90_absolute_error_minutes": _percentile_minutes(wait_errors, 0.90),
+        "ml_wait_mae_minutes": ml_mae,
         "ml_wait_bias_minutes": _mean_minutes(ml_wait_errors),
+        "ml_within_5_minutes_percent": _within_minutes_percent(ml_wait_errors, 5),
+        "ml_p90_absolute_error_minutes": _percentile_minutes(ml_wait_errors, 0.90),
+        "ml_improvement_percent": ml_improvement_percent,
         "service_target_mae_minutes": _mean_minutes(service_errors, absolute=True),
         "service_target_bias_minutes": _mean_minutes(service_errors),
     }
